@@ -1,0 +1,75 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information and role.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "name": { "type": "string", "description": "Full name of the user" },
+        "email": { "type": "string", "format": "email", "description": "Email address" },
+        "role": { 
+          "type": "string", 
+          "enum": ["Learner", "Admin", "TrainingCenter", "AssessmentCenter", "DistrictOffice", "Employer"],
+          "description": "User role in the system"
+        },
+        "office": { "type": "string", "description": "Associated office or institution name" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "name", "email", "role"]
+    },
+    "Badge": {
+      "title": "Badge",
+      "description": "Definition of a TESDA micro-credential badge.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "programName": { "type": "string" },
+        "badgeType": { "type": "string", "enum": ["Proficient", "Expert", "Skilled", "Master"] },
+        "description": { "type": "string" },
+        "issuer": { "type": "string" },
+        "criteria": { "type": "string" },
+        "alignment": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "standards": { "type": "array", "items": { "type": "string" } },
+        "hierarchyLevel": { "type": "integer" }
+      },
+      "required": ["id", "programName", "badgeType", "issuer"]
+    },
+    "IssuedBadge": {
+      "title": "IssuedBadge",
+      "description": "A badge that has been issued to a learner.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "badgeId": { "type": "string" },
+        "learnerId": { "type": "string" },
+        "learnerName": { "type": "string" },
+        "issuerId": { "type": "string" },
+        "issuerName": { "type": "string" },
+        "issuanceDate": { "type": "string", "format": "date-time" },
+        "verificationId": { "type": "string" },
+        "validity": { "type": "string" },
+        "status": { "type": "string", "enum": ["Active", "Expired", "Revoked", "Pending Approval"] },
+        "evidenceUrl": { "type": "string" },
+        "approvedBy": { "type": "string" },
+        "approvedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["badgeId", "learnerId", "issuerId", "status", "verificationId"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/badges/{badgeId}": {
+      "schema": "Badge",
+      "description": "Badge definitions"
+    },
+    "/issuedBadges/{issuedBadgeId}": {
+      "schema": "IssuedBadge",
+      "description": "Badges issued to learners"
+    }
+  }
+}
