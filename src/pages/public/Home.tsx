@@ -30,7 +30,7 @@ export default function Home() {
                 Empowering learners and industry with trusted competency verification.
               </p>
               <div className="flex flex-wrap gap-4">
-                <Link to="/learner">
+                <Link to="/login">
                   <Button size="lg" className="bg-blue-600 hover:bg-blue-700 h-14 px-8 text-lg">
                     Access My Wallet
                     <ArrowRight className="ml-2 h-5 w-5" />

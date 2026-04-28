@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Shield, Menu, X, Search, User, LogIn, LogOut, Settings, LayoutDashboard } from 'lucide-react';
+import { Shield, Menu, X, Search, User, LogIn, LogOut, Settings, LayoutDashboard, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
 import {
@@ -101,22 +101,32 @@ export default function Navbar() {
                       </DropdownMenuLabel>
                     </DropdownMenuGroup>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      render={
-                        <Link to={getDashboardLink()} className="cursor-pointer">
-                          <LayoutDashboard className="mr-2 h-4 w-4" />
-                          <span>Dashboard</span>
-                        </Link>
-                      }
-                    />
-                    <DropdownMenuItem
-                      render={
-                        <Link to="/profile" className="cursor-pointer">
-                          <User className="mr-2 h-4 w-4" />
-                          <span>Profile Settings</span>
-                        </Link>
-                      }
-                    />
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem
+                        render={
+                          <Link to={getDashboardLink()} className="cursor-pointer">
+                            <LayoutDashboard className="mr-2 h-4 w-4" />
+                            <span>Dashboard</span>
+                          </Link>
+                        }
+                      />
+                      <DropdownMenuItem
+                        render={
+                          <Link to="/profile" className="cursor-pointer">
+                            <User className="mr-2 h-4 w-4" />
+                            <span>Profile Settings</span>
+                          </Link>
+                        }
+                      />
+                      <DropdownMenuItem
+                        render={
+                          <Link to="/faq" className="cursor-pointer font-medium text-blue-600">
+                            <HelpCircle className="mr-2 h-4 w-4" />
+                            <span>Help Center</span>
+                          </Link>
+                        }
+                      />
+                    </DropdownMenuGroup>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleLogout} className="text-rose-600 cursor-pointer">
                       <LogOut className="mr-2 h-4 w-4" />
@@ -132,12 +142,14 @@ export default function Navbar() {
                   </Button>
                 </Link>
               )}
-              <Link to="/verify">
-                <Button size="sm" className="bg-blue-600 hover:bg-blue-700 gap-2">
-                  <Search className="h-4 w-4" />
-                  Verify Badge
-                </Button>
-              </Link>
+              {!user && (
+                <Link to="/faq">
+                  <Button variant="outline" size="sm" className="gap-2 border-slate-200">
+                    <HelpCircle className="h-4 w-4 text-blue-600" />
+                    Help Center
+                  </Button>
+                </Link>
+              )}
             </div>
           </div>
 
@@ -189,6 +201,12 @@ export default function Navbar() {
                     My Dashboard
                   </Button>
                 </Link>
+                <Link to="/faq" onClick={() => setIsOpen(false)}>
+                  <Button variant="outline" className="w-full justify-start gap-2 border-blue-100 text-blue-600">
+                    <HelpCircle className="h-4 w-4" />
+                    Help Center
+                  </Button>
+                </Link>
                 <Button 
                   onClick={() => { handleLogout(); setIsOpen(false); }} 
                   variant="ghost" 
@@ -206,12 +224,14 @@ export default function Navbar() {
                 </Button>
               </Link>
             )}
-            <Link to="/verify" onClick={() => setIsOpen(false)}>
-              <Button className="w-full bg-blue-600 hover:bg-blue-700 justify-start gap-2">
-                <Search className="h-4 w-4" />
-                Verify Badge
-              </Button>
-            </Link>
+            {!user && (
+              <Link to="/faq" onClick={() => setIsOpen(false)}>
+                <Button variant="outline" className="w-full justify-start gap-2 border-slate-200">
+                  <HelpCircle className="h-4 w-4 text-blue-600" />
+                  Help Center
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
       )}

@@ -7,13 +7,20 @@ import Verification from './pages/employer/Verification';
 import LearnerDashboard from './pages/learner/LearnerDashboard';
 import DistrictOfficeDashboard from './pages/districtoffice/DistrictOfficeDashboard';
 import ApprovalQueue from './pages/districtoffice/ApprovalQueue';
-import ApprovalHistory from './pages/districtoffice/ApprovalHistory';
 import RenewalManagement from './pages/districtoffice/RenewalManagement';
-import CenterMonitoring from './pages/districtoffice/CenterMonitoring';
+import BadgeRequestStatus from './pages/districtoffice/BadgeRequestStatus';
+import TrainingCenters from './pages/districtoffice/TrainingCenters';
+import AssessmentCenters from './pages/districtoffice/AssessmentCenters';
 import CentralAdminDashboard from './pages/admin/CentralAdminDashboard';
 import Organizations from './pages/admin/Organizations';
 import Users from './pages/admin/Users';
 import BadgeTemplates from './pages/admin/BadgeTemplates';
+
+// Office Modules
+import QSODashboard from './pages/qso/QSODashboard';
+import CODashboard from './pages/co/CODashboard';
+import ICTODashboard from './pages/icto/ICTODashboard';
+
 import TrainingDashboard from './pages/training/TrainingDashboard';
 import LearnerManagement from './pages/training/LearnerManagement';
 import TrainingRecords from './pages/training/TrainingRecords';
@@ -36,30 +43,59 @@ export default function App() {
           <Route path="/learner" element={<DashboardLayout role="Learner" />}>
             <Route index element={<LearnerDashboard />} />
             <Route path="wallet" element={<LearnerDashboard />} />
-            <Route path="hierarchy" element={<div className="p-8 text-center text-slate-500">Badge Hierarchy View (Coming Soon)</div>} />
-            <Route path="programs" element={<div className="p-8 text-center text-slate-500">Programs & Recommendations (Coming Soon)</div>} />
-            <Route path="notifications" element={<div className="p-8 text-center text-slate-500">Notifications (Coming Soon)</div>} />
+            <Route path="hierarchy" element={<div className="p-8 text-center text-slate-500 font-medium">Badge Hierarchy (QSO Module Syncing...)</div>} />
+            <Route path="programs" element={<div className="p-8 text-center text-slate-500 font-medium">Recommended Programs (Coming Soon)</div>} />
           </Route>
 
-          {/* Central Admin Portal */}
+          {/* Super Admin Module */}
           <Route path="/admin" element={<DashboardLayout role="Admin" />}>
             <Route index element={<CentralAdminDashboard />} />
             <Route path="organizations" element={<Organizations />} />
             <Route path="users" element={<Users />} />
-            <Route path="templates" element={<BadgeTemplates />} />
-            <Route path="oversight" element={<div className="p-8 text-center text-slate-500">Approval Oversight (Coming Soon)</div>} />
-            <Route path="logs" element={<div className="p-8 text-center text-slate-500">Audit Logs (Coming Soon)</div>} />
-            <Route path="notifications" element={<div className="p-8 text-center text-slate-500">Notifications (Coming Soon)</div>} />
+            <Route path="assignments" element={<div className="p-8 text-center text-slate-500">District Assignment Module</div>} />
+            <Route path="reports" element={<div className="p-8 text-center text-slate-500">System Reports</div>} />
+            <Route path="logs" element={<div className="p-8 text-center text-slate-500 font-medium italic">Audit Trail Logs (Live Monitoring)</div>} />
+            <Route path="settings" element={<div className="p-8 text-center text-slate-500">Platform-wide Settings</div>} />
           </Route>
 
-          {/* District Office Portal */}
+          {/* QSO Module */}
+          <Route path="/qso" element={<DashboardLayout role="qso_admin" />}>
+            <Route index element={<QSODashboard />} />
+            <Route path="templates" element={<BadgeTemplates />} />
+            <Route path="metadata" element={<div className="p-8 text-center text-slate-500">Metadata Standards Management</div>} />
+            <Route path="hierarchy" element={<div className="p-8 text-center text-slate-500">Badge Hierarchy View</div>} />
+            <Route path="alignment" element={<div className="p-8 text-center text-slate-500">Qualification Alignment Tool</div>} />
+            <Route path="conventions" element={<div className="p-8 text-center text-slate-500">Naming Conventions Policy</div>} />
+          </Route>
+
+          {/* CO Module */}
+          <Route path="/co" element={<DashboardLayout role="co_admin" />}>
+            <Route index element={<CODashboard />} />
+            <Route path="oversight" element={<div className="p-8 text-center text-slate-500">Skilled & Master Oversight Queue</div>} />
+            <Route path="renewal" element={<div className="p-8 text-center text-slate-500">Validity and Renewal Configuration</div>} />
+            <Route path="revocation" element={<div className="p-8 text-center text-slate-500">Revocation and Suspension Management</div>} />
+            <Route path="monitoring" element={<div className="p-8 text-center text-slate-500 font-mono text-sm">Certification Pulse Monitor</div>} />
+          </Route>
+
+          {/* ICTO Module */}
+          <Route path="/icto" element={<DashboardLayout role="icto_admin" />}>
+            <Route index element={<ICTODashboard />} />
+            <Route path="auth" element={<div className="p-8 text-center text-slate-500">Auth Service Settings</div>} />
+            <Route path="verification" element={<div className="p-8 text-center text-slate-500">Public Verification Node Config</div>} />
+            <Route path="security" element={<div className="p-8 text-center text-slate-500 font-mono text-sm">Security & Encryption Modules</div>} />
+            <Route path="integrations" element={<div className="p-8 text-center text-slate-500">External API Integrations (TESDABest)</div>} />
+            <Route path="logs" element={<div className="p-8 text-center text-slate-500 font-mono text-xs">RAW SYSTEM LOGS</div>} />
+            <Route path="config" element={<div className="p-8 text-center text-slate-500">Infrastructure Configuration</div>} />
+          </Route>
+
+          {/* Regional & Center Portals */}
           <Route path="/districtoffice" element={<DashboardLayout role="DistrictOffice" />}>
             <Route index element={<DistrictOfficeDashboard />} />
             <Route path="queue" element={<ApprovalQueue />} />
-            <Route path="approved" element={<ApprovalHistory />} />
-            <Route path="rejected" element={<ApprovalHistory />} />
+            <Route path="status" element={<BadgeRequestStatus />} />
             <Route path="renewal" element={<RenewalManagement />} />
-            <Route path="centers" element={<CenterMonitoring />} />
+            <Route path="training-centers" element={<TrainingCenters />} />
+            <Route path="assessment-centers" element={<AssessmentCenters />} />
             <Route path="notifications" element={<div className="p-8 text-center text-slate-500">Notifications (Coming Soon)</div>} />
           </Route>
 
@@ -76,8 +112,13 @@ export default function App() {
           {/* Assessment Center Portal */}
           <Route path="/assessmentcenter" element={<DashboardLayout role="AssessmentCenter" />}>
             <Route index element={<AssessmentDashboard />} />
-            <Route path="issue" element={<div className="p-8 text-center text-slate-500">Issue Skilled/Master Badges (Coming Soon)</div>} />
-            <Route path="pending" element={<div className="p-8 text-center text-slate-500">Pending Approvals (Coming Soon)</div>} />
+            <Route path="search" element={<AssessmentDashboard />} />
+            <Route path="profiles" element={<AssessmentDashboard />} />
+            <Route path="records" element={<AssessmentDashboard />} />
+            <Route path="rpl" element={<AssessmentDashboard />} />
+            <Route path="submit" element={<AssessmentDashboard />} />
+            <Route path="tracking" element={<AssessmentDashboard />} />
+            <Route path="notifications" element={<AssessmentDashboard />} />
           </Route>
 
           {/* Fallback */}

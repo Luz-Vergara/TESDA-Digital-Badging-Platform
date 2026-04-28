@@ -10,13 +10,85 @@
         "email": { "type": "string", "format": "email", "description": "Email address" },
         "role": { 
           "type": "string", 
-          "enum": ["Learner", "Admin", "TrainingCenter", "AssessmentCenter", "DistrictOffice", "Employer"],
+          "enum": ["Learner", "Admin", "TrainingCenter", "AssessmentCenter", "DistrictOffice", "Employer", "qso_admin", "co_admin", "icto_admin"],
           "description": "User role in the system"
         },
         "office": { "type": "string", "description": "Associated office or institution name" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "assignedDistrictId": { "type": "string", "description": "Linked District Office for regional centers" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastLogin": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "name", "email", "role"]
+    },
+    "Organization": {
+      "title": "Organization",
+      "description": "Educational or Administrative center details.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["DistrictOffice", "TrainingCenter", "AssessmentCenter"] },
+        "email": { "type": "string", "format": "email" },
+        "location": { "type": "string" },
+        "assignedDistrictId": { "type": "string" },
+        "status": { "type": "string", "enum": ["Active", "Inactive"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "type", "email", "status"]
+    },
+    "BadgeTemplate": {
+      "title": "BadgeTemplate",
+      "description": "Standards for digital badges defined by QSO.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "programName": { "type": "string" },
+        "badgeType": { "type": "string", "enum": ["Proficient", "Expert", "Skilled", "Master"] },
+        "description": { "type": "string" },
+        "criteria": { "type": "string" },
+        "validityMonths": { "type": "integer" },
+        "alignment": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "issuableBy": { "type": "array", "items": { "type": "string" } },
+        "requiresApproval": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["Active", "Draft", "Archived"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["programName", "badgeType", "description", "status"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Tracking of administrative actions.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "action": { "type": "string" },
+        "userName": { "type": "string" },
+        "userId": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "details": { "type": "string" }
+      },
+      "required": ["action", "userName", "timestamp"]
+    },
+    "Learner": {
+      "title": "Learner",
+      "description": "Records of individuals enrolled in programs.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "contactNumber": { "type": "string" },
+        "qualification": { "type": "string" },
+        "enrollmentDate": { "type": "string", "format": "date" },
+        "trainingCenterId": { "type": "string" },
+        "trainingCenterName": { "type": "string" },
+        "districtOfficeId": { "type": "string", "description": "Assigned District Office for the learner" },
+        "status": { "type": "string", "enum": ["Enrolled", "Completed", "Dropped"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["firstName", "lastName", "email", "status"]
     },
     "Badge": {
       "title": "Badge",
@@ -27,14 +99,14 @@
         "programName": { "type": "string" },
         "badgeType": { "type": "string", "enum": ["Proficient", "Expert", "Skilled", "Master"] },
         "description": { "type": "string" },
-        "issuer": { "type": "string" },
         "criteria": { "type": "string" },
+        "validity": { "type": "string" },
         "alignment": { "type": "string" },
         "tags": { "type": "array", "items": { "type": "string" } },
         "standards": { "type": "array", "items": { "type": "string" } },
         "hierarchyLevel": { "type": "integer" }
       },
-      "required": ["id", "programName", "badgeType", "issuer"]
+      "required": ["id", "programName", "badgeType"]
     },
     "IssuedBadge": {
       "title": "IssuedBadge",
@@ -56,20 +128,76 @@
         "approvedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["badgeId", "learnerId", "issuerId", "status", "verificationId"]
+    },
+    "AssessmentRecord": {
+      "title": "AssessmentRecord",
+      "description": "Record of a National Certification Assessment or RPL evaluation.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "learnerId": { "type": "string" },
+        "learnerName": { "type": "string" },
+        "qualification": { "type": "string" },
+        "assessmentDate": { "type": "string", "format": "date" },
+        "pathway": { "type": "string", "enum": ["National Competency Assessment", "Recognition of Prior Learning (RPL)"] },
+        "result": { "type": "string", "enum": ["Passed / Competent", "Not Yet Competent", "Pending Review"] },
+        "assessorName": { "type": "string" },
+        "evidenceRef": { "type": "string" },
+        "remarks": { "type": "string" },
+        "organizationId": { "type": "string" },
+        "districtOfficeId": { "type": "string" },
+        "rplData": {
+          "type": "object",
+          "properties": {
+            "applicationNumber": { "type": "string" },
+            "yearsExperience": { "type": "integer" },
+            "workExperienceSummary": { "type": "string" },
+            "portfolioUrl": { "type": "string" },
+            "evidenceType": { "type": "string" },
+            "competencyMapping": { "type": "string" },
+            "evaluationNotes": { "type": "string" }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["learnerId", "qualification", "pathway", "result", "organizationId"]
+    },
+    "BadgeRequest": {
+      "title": "BadgeRequest",
+      "description": "Request submitted by an Assessment Center for a Skilled or Master badge.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "learnerId": { "type": "string" },
+        "learnerName": { "type": "string" },
+        "assessmentRecordId": { "type": "string" },
+        "badgeType": { "type": "string", "enum": ["Skilled Badge", "Master Badge"] },
+        "qualification": { "type": "string" },
+        "competency": { "type": "string" },
+        "pathway": { "type": "string" },
+        "evidenceUrl": { "type": "string" },
+        "remarks": { "type": "string" },
+        "status": { "type": "string", "enum": ["Pending Approval", "Approved", "Rejected"] },
+        "sourceAssessmentCenterId": { "type": "string" },
+        "districtOfficeId": { "type": "string" },
+        "submittedBy": { "type": "string" },
+        "submittedAt": { "type": "string", "format": "date-time" },
+        "rejectionRemarks": { "type": "string" },
+        "approvedBy": { "type": "string" },
+        "approvedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["learnerId", "assessmentRecordId", "badgeType", "status", "sourceAssessmentCenterId", "districtOfficeId"]
     }
   },
   "firestore": {
-    "/users/{uid}": {
-      "schema": "User",
-      "description": "User profiles"
-    },
-    "/badges/{badgeId}": {
-      "schema": "Badge",
-      "description": "Badge definitions"
-    },
-    "/issuedBadges/{issuedBadgeId}": {
-      "schema": "IssuedBadge",
-      "description": "Badges issued to learners"
-    }
+    "/users/{uid}": { "schema": "User", "description": "User profiles" },
+    "/organizations/{orgId}": { "schema": "Organization", "description": "Organizations" },
+    "/badgeTemplates/{templateId}": { "schema": "BadgeTemplate", "description": "Badge standards" },
+    "/auditLogs/{logId}": { "schema": "AuditLog", "description": "System activity logs" },
+    "/learners/{learnerId}": { "schema": "Learner", "description": "Learner records" },
+    "/badges/{badgeId}": { "schema": "Badge", "description": "Public badge definitions" },
+    "/issuedBadges/{issuedBadgeId}": { "schema": "IssuedBadge", "description": "Badges issued to learners" },
+    "/assessmentRecords/{recordId}": { "schema": "AssessmentRecord", "description": "Assessment and RPL results" },
+    "/badgeRequests/{requestId}": { "schema": "BadgeRequest", "description": "Requests for badge approval" }
   }
 }

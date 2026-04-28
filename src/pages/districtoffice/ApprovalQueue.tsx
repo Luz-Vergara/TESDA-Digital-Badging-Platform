@@ -9,7 +9,7 @@ import {
   Building2,
   User
 } from 'lucide-react';
-import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, doc, getDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -43,27 +43,50 @@ export default function ApprovalQueue() {
       return;
     }
 
-    const districtId = userProfile.organizationId;
-    const path = 'issuedBadges';
-    const q = query(
-      collection(db, path),
-      where('districtOfficeId', '==', districtId),
-      where('status', '==', 'Pending Approval'),
-      orderBy('submittedAt', 'desc')
-    );
+    const fetchQueue = async () => {
+      const districtId = userProfile.organizationId;
+      let districtName = "";
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as BadgeIssuanceRequest[];
-      setRequests(data);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, path);
-    });
+      try {
+        const ddoc = await getDoc(doc(db, 'organizations', districtId));
+        if (ddoc.exists()) {
+          districtName = ddoc.data().name;
+        }
+      } catch (err) {
+        console.error("Error fetching district name:", err);
+      }
 
-    return () => unsubscribe();
+      const districtIdentifiers = [districtId];
+      if (districtName && districtName !== districtId) {
+        districtIdentifiers.push(districtName);
+      }
+
+      const path = 'issuedBadges';
+      const q = query(
+        collection(db, path),
+        where('districtOfficeId', 'in', districtIdentifiers),
+        where('status', '==', 'Pending Approval'),
+        orderBy('submittedAt', 'desc')
+      );
+
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const data = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as any[];
+        setRequests(data as any);
+        setLoading(false);
+      }, (error) => {
+        handleFirestoreError(error, OperationType.GET, path);
+      });
+
+      return unsubscribe;
+    };
+
+    let unsubPromise = fetchQueue();
+    return () => {
+      unsubPromise.then(unsub => unsub && unsub());
+    };
   }, [userProfile, isAuthReady]);
 
   const filteredRequests = requests.filter(req => 

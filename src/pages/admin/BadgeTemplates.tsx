@@ -56,6 +56,15 @@ import {
   SelectTrigger, 
   SelectValue 
 } from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Textarea } from '@/components/ui/textarea';
 import { BadgeTemplate } from '@/src/types';
 
@@ -417,27 +426,34 @@ export default function BadgeTemplates() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-8 w-8 text-slate-400 hover:text-blue-600"
-                            onClick={() => handleEdit(template)}
-                          >
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-8 w-8 text-slate-400 hover:text-rose-600"
-                            onClick={() => {
-                              setTemplateToDelete(template);
-                              setIsDeleteModalOpen(true);
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger render={
+                            <Button variant="ghost" className="h-8 w-8 p-0">
+                              <span className="sr-only">Open menu</span>
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          } />
+                          <DropdownMenuContent align="end" className="w-[160px]">
+                            <DropdownMenuGroup>
+                              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => handleEdit(template)} className="cursor-pointer">
+                                <Edit2 className="mr-2 h-4 w-4" />
+                                <span>Edit Template</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onClick={() => {
+                                  setTemplateToDelete(template);
+                                  setIsDeleteModalOpen(true);
+                                }} 
+                                className="cursor-pointer text-rose-600 focus:text-rose-600 focus:bg-rose-50"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                <span>Delete Template</span>
+                              </DropdownMenuItem>
+                            </DropdownMenuGroup>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))

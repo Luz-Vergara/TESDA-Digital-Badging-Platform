@@ -11,8 +11,8 @@ import {
   Building2,
   CheckCircle2,
   XCircle,
-  Key,
-  Trash2
+  Trash2,
+  AlertCircle
 } from 'lucide-react';
 import { 
   collection, 
@@ -57,6 +57,15 @@ import {
   SelectTrigger, 
   SelectValue 
 } from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Organization } from '@/src/types';
 
 export default function Users() {
@@ -129,27 +138,63 @@ export default function Users() {
           details: `Role: ${formData.role}`
         });
       } else {
-        // Check if user already exists by email to prevent duplicates
-        const usersRef = collection(db, 'users');
-        const q = query(usersRef, where('email', '==', formData.email));
-        const querySnapshot = await getDocs(q);
-
-        if (!querySnapshot.empty) {
-          // Update existing user instead of creating new one
-          const existingDoc = querySnapshot.docs[0];
+        // Check local state first for case-insensitive match to be thorough
+        const localDuplicate = users.find(u => u.email.toLowerCase() === formData.email.toLowerCase());
+        
+        if (localDuplicate) {
           const updatedUser = {
             ...formData,
             updatedAt: serverTimestamp(),
             office: officeName,
             assignedDistrictId: districtId
           };
-          await updateDoc(doc(db, 'users', existingDoc.id), updatedUser);
+          await updateDoc(doc(db, 'users', localDuplicate.id), updatedUser);
           
           await addDoc(collection(db, 'auditLogs'), {
-            action: `Updated Existing User Account: ${formData.email}`,
+            action: `Updated Existing User account: ${formData.email}`,
             userName: 'Central Admin',
             timestamp: serverTimestamp(),
             details: `Role: ${formData.role}`
+          });
+          
+          setIsAddModalOpen(false);
+          setEditingUser(null);
+          setFormData({ name: '', email: '', role: 'TrainingCenter', organizationId: '' });
+          setIsSubmitting(false);
+          return;
+        }
+
+        // Original duplicate check by email (exact match in Firestore)
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('email', '==', formData.email));
+        const querySnapshot = await getDocs(q);
+
+        if (!querySnapshot.empty) {
+          // If multiple duplicates exist, we identify the best one to keep (one with UID)
+          const docs = querySnapshot.docs;
+          const bestDoc = docs.find(d => d.data().uid) || docs[0];
+          
+          const updatedUser = {
+            ...formData,
+            updatedAt: serverTimestamp(),
+            office: officeName,
+            assignedDistrictId: districtId
+          };
+          
+          await updateDoc(doc(db, 'users', bestDoc.id), updatedUser);
+          
+          // Delete other duplicates if any
+          for (const d of docs) {
+            if (d.id !== bestDoc.id) {
+              await deleteDoc(doc(db, 'users', d.id));
+            }
+          }
+          
+          await addDoc(collection(db, 'auditLogs'), {
+            action: `Deduplicated & Updated User Account: ${formData.email}`,
+            userName: 'Central Admin',
+            timestamp: serverTimestamp(),
+            details: `Removed ${docs.length - 1} duplicate records.`
           });
         } else {
           // Create new profile
@@ -232,8 +277,8 @@ export default function Users() {
     <div className="space-y-8">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">User Management</h1>
-          <p className="text-slate-500">Manage administrative accounts for all organizations.</p>
+          <h1 className="text-3xl font-bold text-slate-900">Super Admin - User Directory</h1>
+          <p className="text-slate-500">Manage administrative accounts for all TESDA offices and regional centers.</p>
         </div>
         
         <Dialog open={isAddModalOpen} onOpenChange={(open) => {
@@ -294,29 +339,51 @@ export default function Users() {
                       <SelectValue placeholder="Select role" />
                     </SelectTrigger>
                     <SelectContent>
+                      <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">TESDA Central Offices</div>
+                      <SelectItem value="Admin">Super Admin</SelectItem>
+                      <SelectItem value="qso_admin">QSO (Qualifications & Standards)</SelectItem>
+                      <SelectItem value="co_admin">CO (Certification Office)</SelectItem>
+                      <SelectItem value="icto_admin">ICTO (Information & Tech)</SelectItem>
+                      
+                      <div className="mt-2 px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-t border-slate-100">Regional & Local</div>
                       <SelectItem value="DistrictOffice">District Office Staff</SelectItem>
                       <SelectItem value="TrainingCenter">Training Center Staff</SelectItem>
                       <SelectItem value="AssessmentCenter">Assessment Center Staff</SelectItem>
-                      <SelectItem value="Admin">Central Admin</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="org">Linked Organization</Label>
-                  <Select 
-                    value={formData.organizationId} 
-                    onValueChange={(v) => setFormData({...formData, organizationId: v})}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select Organization" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {organizations.map(o => (
-                        <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {['DistrictOffice', 'TrainingCenter', 'AssessmentCenter'].includes(formData.role) && (
+                  <div className="grid gap-2">
+                    <Label htmlFor="org">Linked Organization</Label>
+                    <Select 
+                      value={formData.organizationId} 
+                      onValueChange={(v) => setFormData({...formData, organizationId: v})}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Organization" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {organizations
+                          .filter(o => {
+                            if (formData.role === 'DistrictOffice') return o.type === 'DistrictOffice';
+                            // Relax check: both TrainingCenter and AssessmentCenter staff can be linked to either center type
+                            const isCenterRole = ['TrainingCenter', 'AssessmentCenter'].includes(formData.role);
+                            const isCenterOrg = ['TrainingCenter', 'AssessmentCenter'].includes(o.type);
+                            if (isCenterRole) return isCenterOrg;
+                            return true;
+                          })
+                          .map(o => (
+                            <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    {formData.role !== 'Admin' && formData.organizationId && organizations.find(o => o.id === formData.organizationId)?.type !== formData.role && (
+                      <p className="text-[10px] text-amber-600 font-medium italic">
+                        ⚠️ Note: Selected organization type does not match staff role. 
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsAddModalOpen(false)}>Cancel</Button>
@@ -327,6 +394,7 @@ export default function Users() {
             </form>
           </DialogContent>
         </Dialog>
+
       </div>
 
       <Card className="border-slate-200">
@@ -359,9 +427,10 @@ export default function Users() {
             <Table>
               <TableHeader className="bg-slate-50">
                 <TableRow>
-                  <TableHead className="w-[250px]">User</TableHead>
+                  <TableHead className="w-[200px]">User</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Organization</TableHead>
+                  <TableHead>Target District</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -380,15 +449,53 @@ export default function Users() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-100">
+                        <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-100 whitespace-nowrap">
                           {u.role.replace(/([A-Z])/g, ' $1').trim()}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-2 text-sm text-slate-600">
-                          <Building2 className="h-3 w-3 text-slate-400" />
-                          {u.office || '-'}
+                        <div className="flex flex-col">
+                          <div className="flex items-center gap-2 text-sm text-slate-600">
+                            <Building2 className="h-3 w-3 text-slate-400" />
+                            {u.office || '-'}
+                          </div>
+                          {u.organizationId && (
+                            <span className="text-[10px] text-slate-400">
+                              {organizations.find(o => o.id === u.organizationId)?.type?.replace(/([A-Z])/g, ' $1').trim()}
+                            </span>
+                          )}
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-xs text-slate-600">
+                          {u.role === 'DistrictOffice' || u.role === 'Admin' ? '-' : (() => {
+                            const userOrg = organizations.find(o => o.id === u.organizationId);
+                            if (!userOrg) return (
+                              <span className="text-rose-500 font-medium flex items-center gap-1">
+                                <AlertCircle className="h-3 w-3" />
+                                No Org Linked
+                              </span>
+                            );
+                            
+                            // Check for type mismatch
+                            if (u.role === 'TrainingCenter' && userOrg.type === 'DistrictOffice') {
+                              return (
+                                <span className="text-amber-600 font-medium flex items-center gap-1" title="Training Staff cannot be linked directly to a District Office. Link them to a Training Center instead.">
+                                  <AlertCircle className="h-3 w-3" />
+                                  Invalid Org Type
+                                </span>
+                              );
+                            }
+
+                            const district = organizations.find(o => o.id === userOrg?.assignedDistrictId);
+                            return district ? district.name : (
+                              <span className="text-rose-500 font-medium flex items-center gap-1">
+                                <AlertCircle className="h-3 w-3" />
+                                Untied to District
+                              </span>
+                            );
+                          })()}
+                        </span>
                       </TableCell>
                       <TableCell>
                         <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-none">
@@ -396,35 +503,34 @@ export default function Users() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-blue-600" title="Reset Password">
-                            <Key className="h-4 w-4" />
-                          </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-8 w-8 text-slate-400 hover:text-blue-600"
-                            onClick={() => handleEdit(u)}
-                            title="Edit User"
-                          >
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-8 w-8 text-slate-400 hover:text-rose-600"
-                            onClick={() => {
-                              setUserToDelete(u);
-                              setIsDeleteModalOpen(true);
-                            }}
-                            title="Delete User"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger render={
+                            <Button variant="ghost" className="h-8 w-8 p-0">
+                              <span className="sr-only">Open menu</span>
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          } />
+                          <DropdownMenuContent align="end" className="w-[160px]">
+                            <DropdownMenuGroup>
+                              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => handleEdit(u)} className="cursor-pointer">
+                                <Edit2 className="mr-2 h-4 w-4" />
+                                <span>Edit User</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onClick={() => {
+                                  setUserToDelete(u);
+                                  setIsDeleteModalOpen(true);
+                                }} 
+                                className="cursor-pointer text-rose-600 focus:text-rose-600 focus:bg-rose-50"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                <span>Delete User</span>
+                              </DropdownMenuItem>
+                            </DropdownMenuGroup>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))

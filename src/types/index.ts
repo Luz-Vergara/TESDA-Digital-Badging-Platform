@@ -25,8 +25,9 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role: 'Learner' | 'Admin' | 'TrainingCenter' | 'AssessmentCenter' | 'DistrictOffice' | 'Employer';
+  role: 'Learner' | 'Admin' | 'TrainingCenter' | 'AssessmentCenter' | 'DistrictOffice' | 'Employer' | 'qso_admin' | 'co_admin' | 'icto_admin';
   office?: string;
+  assignedDistrictId?: string;
 }
 
 export interface Learner {
@@ -104,4 +105,50 @@ export interface BadgeIssuanceRequest {
   evidenceUrl?: string;
   remarks?: string;
   expiryDate?: any;
+}
+
+export interface AssessmentRecord {
+  id: string;
+  learnerId: string;
+  learnerName: string;
+  qualification: string;
+  assessmentDate: string;
+  pathway: 'National Competency Assessment' | 'Recognition of Prior Learning (RPL)';
+  result: 'Passed / Competent' | 'Not Yet Competent' | 'Pending Review';
+  assessorName: string;
+  evidenceRef: string;
+  remarks: string;
+  organizationId: string;
+  districtOfficeId: string;
+  rplData?: {
+    applicationNumber: string;
+    yearsExperience: number;
+    workExperienceSummary: string;
+    portfolioUrl: string;
+    evidenceType: string;
+    competencyMapping: string;
+    evaluationNotes: string;
+  };
+  createdAt: any;
+}
+
+export interface BadgeRequest {
+  id: string;
+  learnerId: string;
+  learnerName: string;
+  assessmentRecordId: string;
+  badgeType: 'Skilled Badge' | 'Master Badge';
+  qualification: string;
+  competency: string;
+  pathway: string;
+  evidenceUrl: string;
+  remarks: string;
+  status: 'Pending Approval' | 'Approved' | 'Rejected';
+  sourceAssessmentCenterId: string;
+  districtOfficeId: string;
+  submittedBy: string;
+  submittedAt: any;
+  rejectionRemarks?: string;
+  approvedBy?: string;
+  approvedAt?: any;
 }

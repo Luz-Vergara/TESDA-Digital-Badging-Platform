@@ -26,23 +26,36 @@ import {
 } from '@/components/ui/table';
 
 export default function CentralAdminDashboard() {
-  const { isAuthReady } = useFirebase();
+  const { isAuthReady, userProfile } = useFirebase();
   const [stats, setStats] = useState({
     totalLearners: 0,
     totalBadges: 0,
     pendingApprovals: 0,
-    totalOrgs: 0
+    totalOrgs: 0,
+    distribution: {
+      DistrictOffice: 0,
+      TrainingCenter: 0,
+      AssessmentCenter: 0
+    }
   });
   const [recentLogs, setRecentLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!isAuthReady) return;
+    if (!isAuthReady || !userProfile) return;
+    
+    // Only subscribe if user is actually an admin or specific office role
+    // This prevents internal assertion errors from permission denied events
+    const allowedRoles = ['Admin', 'qso_admin', 'co_admin', 'icto_admin'];
+    if (!allowedRoles.includes(userProfile.role)) {
+      setLoading(false);
+      return;
+    }
 
-    // In a real app, we'd use aggregation or cloud functions for these counts
-    // For demo, we'll listen to the collections
     const unsubLearners = onSnapshot(collection(db, 'learners'), (snap) => {
       setStats(prev => ({ ...prev, totalLearners: snap.size }));
+    }, (err) => {
+      console.warn('Silent permission error on learners:', err.message);
     });
 
     const unsubBadges = onSnapshot(collection(db, 'issuedBadges'), (snap) => {
@@ -51,10 +64,25 @@ export default function CentralAdminDashboard() {
         totalBadges: snap.size,
         pendingApprovals: snap.docs.filter(d => d.data().status === 'Pending Approval').length
       }));
+    }, (err) => {
+      console.warn('Silent permission error on badges:', err.message);
     });
 
     const unsubOrgs = onSnapshot(collection(db, 'organizations'), (snap) => {
-      setStats(prev => ({ ...prev, totalOrgs: snap.size }));
+      const dist = {
+        DistrictOffice: 0,
+        TrainingCenter: 0,
+        AssessmentCenter: 0
+      };
+      snap.docs.forEach(doc => {
+        const type = doc.data().type as keyof typeof dist;
+        if (dist[type] !== undefined) {
+          dist[type]++;
+        }
+      });
+      setStats(prev => ({ ...prev, totalOrgs: snap.size, distribution: dist }));
+    }, (err) => {
+      console.warn('Silent permission error on orgs:', err.message);
     });
 
     const logsQuery = query(
@@ -68,6 +96,7 @@ export default function CentralAdminDashboard() {
       setLoading(false);
     }, (err) => {
       handleFirestoreError(err, OperationType.GET, 'auditLogs');
+      setLoading(false);
     });
 
     return () => {
@@ -76,7 +105,7 @@ export default function CentralAdminDashboard() {
       unsubOrgs();
       unsubLogs();
     };
-  }, [isAuthReady]);
+  }, [isAuthReady, userProfile]);
 
   if (loading) {
     return (
@@ -89,8 +118,8 @@ export default function CentralAdminDashboard() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold text-slate-900">System Overview</h1>
-        <p className="text-slate-500">TESDA Central Administration Monitoring & Control</p>
+        <h1 className="text-3xl font-bold text-slate-900">Super Admin Dashboard</h1>
+        <p className="text-slate-500">Unified TESDA Portal Monitoring & System Oversight</p>
       </div>
 
       {/* Metrics Grid */}
@@ -153,6 +182,50 @@ export default function CentralAdminDashboard() {
       </div>
 
       <div className="grid lg:grid-cols-3 gap-8">
+        {/* District & Centers Overview */}
+        <Card className="lg:col-span-1 border-slate-200 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-blue-600" />
+              Office Distribution
+            </CardTitle>
+            <CardDescription>Breakdown of registered TESDA units.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/50">
+              <div className="flex justify-between items-center mb-3">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Operational Units</span>
+              </div>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2 text-sm text-slate-700 font-medium">
+                    <div className="w-2 h-2 rounded-full bg-purple-500" />
+                    District Offices
+                  </div>
+                  <span className="text-sm font-bold">{stats.distribution.DistrictOffice}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2 text-sm text-slate-700 font-medium">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                    Training Centers
+                  </div>
+                  <span className="text-sm font-bold">{stats.distribution.TrainingCenter}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2 text-sm text-slate-700 font-medium">
+                    <div className="w-2 h-2 rounded-full bg-blue-500" />
+                    Assessment Centers
+                  </div>
+                  <span className="text-sm font-bold">{stats.distribution.AssessmentCenter}</span>
+                </div>
+              </div>
+            </div>
+            <p className="text-[10px] text-slate-400 italic">
+              Data is automatically partitioned. Each office only accesses records within their jurisdiction.
+            </p>
+          </CardContent>
+        </Card>
+
         {/* Recent Activity */}
         <Card className="lg:col-span-2 border-slate-200 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between">

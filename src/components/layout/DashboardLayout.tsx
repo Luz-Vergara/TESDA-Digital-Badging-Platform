@@ -4,7 +4,7 @@ import Navbar from './Navbar';
 import Sidebar from './Sidebar';
 
 interface DashboardLayoutProps {
-  role: 'Learner' | 'Admin' | 'TrainingCenter' | 'AssessmentCenter' | 'DistrictOffice';
+  role: 'Learner' | 'Admin' | 'TrainingCenter' | 'AssessmentCenter' | 'DistrictOffice' | 'qso_admin' | 'co_admin' | 'icto_admin';
 }
 
 export default function DashboardLayout({ role }: DashboardLayoutProps) {

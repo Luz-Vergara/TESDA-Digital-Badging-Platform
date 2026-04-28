@@ -56,6 +56,15 @@ import {
   SelectTrigger, 
   SelectValue 
 } from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Organization } from '@/src/types';
 
 export default function Organizations() {
@@ -113,17 +122,30 @@ export default function Organizations() {
           details: `Type: ${formData.type}`
         });
       } else {
-        const newOrg = {
-          ...formData,
-          status: 'Active',
-          createdAt: serverTimestamp()
-        };
+        // Check for duplicate organization by name
+        const existingOrg = organizations.find(o => o.name.toLowerCase() === formData.name.toLowerCase());
         
-        await addDoc(collection(db, 'organizations'), newOrg);
+        if (existingOrg) {
+          // If it exists, just update it instead of creating duplicate
+          const updatedOrg = {
+            ...formData,
+            updatedAt: serverTimestamp()
+          };
+          await updateDoc(doc(db, 'organizations', existingOrg.id), updatedOrg);
+        } else {
+          // Create new organization
+          const newOrg = {
+            ...formData,
+            status: 'Active',
+            createdAt: serverTimestamp()
+          };
+          
+          await addDoc(collection(db, 'organizations'), newOrg);
+        }
         
         // Log action
         await addDoc(collection(db, 'auditLogs'), {
-          action: `Created Organization: ${formData.name}`,
+          action: `${existingOrg ? 'Updated Existing' : 'Created'} Organization: ${formData.name}`,
           userName: 'Central Admin',
           timestamp: serverTimestamp(),
           details: `Type: ${formData.type}`
@@ -404,41 +426,47 @@ export default function Organizations() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-8 w-8 text-slate-400 hover:text-blue-600"
-                            onClick={() => toggleStatus(org)}
-                            title={org.status === 'Active' ? 'Deactivate' : 'Activate'}
-                          >
-                            {org.status === 'Active' ? <XCircle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-                          </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-8 w-8 text-slate-400 hover:text-blue-600"
-                            onClick={() => handleEdit(org)}
-                            title="Edit Organization"
-                          >
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-8 w-8 text-slate-400 hover:text-rose-600"
-                            onClick={() => {
-                              setOrgToDelete(org);
-                              setIsDeleteModalOpen(true);
-                            }}
-                            title="Delete Organization"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger render={
+                            <Button variant="ghost" className="h-8 w-8 p-0">
+                               <span className="sr-only">Open menu</span>
+                               <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          } />
+                          <DropdownMenuContent align="end" className="w-[200px]">
+                            <DropdownMenuGroup>
+                              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => toggleStatus(org)} className="cursor-pointer">
+                                {org.status === 'Active' ? (
+                                  <>
+                                    <XCircle className="mr-2 h-4 w-4 text-amber-600" />
+                                    <span>Deactivate Organization</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-600" />
+                                    <span>Activate Organization</span>
+                                  </>
+                                )}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleEdit(org)} className="cursor-pointer">
+                                <Edit2 className="mr-2 h-4 w-4" />
+                                <span>Edit Details</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onClick={() => {
+                                  setOrgToDelete(org);
+                                  setIsDeleteModalOpen(true);
+                                }} 
+                                className="cursor-pointer text-rose-600 focus:text-rose-600 focus:bg-rose-50"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                <span>Delete Organization</span>
+                              </DropdownMenuItem>
+                            </DropdownMenuGroup>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))

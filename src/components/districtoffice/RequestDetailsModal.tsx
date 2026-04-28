@@ -183,6 +183,12 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
                   {new Date(request.submittedAt?.seconds * 1000).toLocaleString()}
                 </p>
               </div>
+              {(request as any).sourceAssessmentCenterName && (request as any).sourceAssessmentCenterName !== request.issuerName && (
+                <div className="col-span-2 pt-2">
+                  <p className="text-[10px] text-slate-500 uppercase font-bold">Source Assessment Center</p>
+                  <p className="text-sm text-slate-700 font-medium">{(request as any).sourceAssessmentCenterName}</p>
+                </div>
+              )}
             </div>
           </div>
 

@@ -15,13 +15,29 @@ import {
   FileText,
   Activity,
   ShieldCheck,
-  CheckCircle
+  CheckCircle,
+  FileCode,
+  Layers,
+  ShieldAlert,
+  Server,
+  Lock,
+  Globe,
+  Database,
+  Terminal,
+  Settings2,
+  GitMerge,
+  BadgeCheck,
+  ClipboardCheck,
+  Search,
+  Plus,
+  TrendingUp,
+  ClipboardList
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
 
 interface SidebarProps {
-  role: 'Learner' | 'Admin' | 'TrainingCenter' | 'AssessmentCenter' | 'DistrictOffice';
+  role: 'Learner' | 'Admin' | 'TrainingCenter' | 'AssessmentCenter' | 'DistrictOffice' | 'qso_admin' | 'co_admin' | 'icto_admin';
 }
 
 export default function Sidebar({ role }: SidebarProps) {
@@ -36,7 +52,7 @@ export default function Sidebar({ role }: SidebarProps) {
 
   const getLinks = () => {
     const common = [
-      { name: 'Dashboard', href: `/${role.toLowerCase()}`, icon: LayoutDashboard },
+      { name: 'Dashboard', href: role === 'qso_admin' ? '/qso' : role === 'co_admin' ? '/co' : role === 'icto_admin' ? '/icto' : `/${role.toLowerCase()}`, icon: LayoutDashboard },
       { name: 'Notifications', href: `/${role.toLowerCase()}/notifications`, icon: Bell },
     ];
 
@@ -54,20 +70,54 @@ export default function Sidebar({ role }: SidebarProps) {
         ...common,
         { name: 'Organizations', href: '/admin/organizations', icon: Building2 },
         { name: 'User Accounts', href: '/admin/users', icon: Users },
-        { name: 'Badge Templates', href: '/admin/templates', icon: FileText },
-        { name: 'Approval Oversight', href: '/admin/oversight', icon: ShieldCheck },
+        { name: 'District Assignments', href: '/admin/assignments', icon: GitMerge },
+        { name: 'Reports', href: '/admin/reports', icon: FileText },
         { name: 'Audit Logs', href: '/admin/logs', icon: Activity },
+        { name: 'Platform Settings', href: '/admin/settings', icon: Settings },
+      ];
+    }
+
+    if (role === 'qso_admin') {
+      return [
+        ...common,
+        { name: 'Badge Templates', href: '/qso/templates', icon: Award },
+        { name: 'Metadata Standards', href: '/qso/metadata', icon: FileCode },
+        { name: 'Badge Hierarchy', href: '/qso/hierarchy', icon: Layers },
+        { name: 'Qualification Alignment', href: '/qso/alignment', icon: BadgeCheck },
+        { name: 'Naming Conventions', href: '/qso/conventions', icon: FileText },
+      ];
+    }
+
+    if (role === 'co_admin') {
+      return [
+        ...common,
+        { name: 'Skilled & Master Oversight', href: '/co/oversight', icon: ShieldCheck },
+        { name: 'Validity & Renewal Rules', href: '/co/renewal', icon: ClipboardCheck },
+        { name: 'Revocation / Suspension', href: '/co/revocation', icon: ShieldAlert },
+        { name: 'Certification Monitoring', href: '/co/monitoring', icon: Activity },
+      ];
+    }
+
+    if (role === 'icto_admin') {
+      return [
+        ...common,
+        { name: 'Authentication Settings', href: '/icto/auth', icon: Lock },
+        { name: 'Verification System', href: '/icto/verification', icon: CheckCircle },
+        { name: 'Security & Encryption', href: '/icto/security', icon: Server },
+        { name: 'Integrations', href: '/icto/integrations', icon: Globe },
+        { name: 'System Logs', href: '/icto/logs', icon: Terminal },
+        { name: 'Platform Config', href: '/icto/config', icon: Settings2 },
       ];
     }
 
     if (role === 'DistrictOffice') {
       return [
         ...common,
-        { name: 'Approval Queue', href: '/districtoffice/queue', icon: CheckCircle },
-        { name: 'Approved Badges', href: '/districtoffice/approved', icon: Award },
-        { name: 'Rejected Requests', href: '/districtoffice/rejected', icon: HistoryIcon },
+        { name: 'Approval Queue', href: '/districtoffice/queue', icon: ClipboardCheck },
+        { name: 'Badge Request Status', href: '/districtoffice/status', icon: TrendingUp },
         { name: 'Renewal Management', href: '/districtoffice/renewal', icon: FileText },
-        { name: 'Center Monitoring', href: '/districtoffice/centers', icon: Building2 },
+        { name: 'Training Centers', href: '/districtoffice/training-centers', icon: Building2 },
+        { name: 'Assessment Centers', href: '/districtoffice/assessment-centers', icon: Building2 },
       ];
     }
 
@@ -84,8 +134,12 @@ export default function Sidebar({ role }: SidebarProps) {
     if (role === 'AssessmentCenter') {
       return [
         ...common,
-        { name: 'Issue Badges', href: '/assessmentcenter/issue', icon: Award },
-        { name: 'Pending Approvals', href: '/assessmentcenter/pending', icon: HistoryIcon },
+        { name: 'Learner Search', href: '/assessmentcenter/search', icon: Search },
+        { name: 'Learner Profiles', href: '/assessmentcenter/profiles', icon: Users },
+        { name: 'Assessment Records', href: '/assessmentcenter/records', icon: FileText },
+        { name: 'RPL Records', href: '/assessmentcenter/rpl', icon: ClipboardList },
+        { name: 'Submit Badge Request', href: '/assessmentcenter/submit', icon: Plus },
+        { name: 'Submission Tracking', href: '/assessmentcenter/tracking', icon: TrendingUp },
       ];
     }
 

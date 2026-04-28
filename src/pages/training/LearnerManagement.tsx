@@ -11,7 +11,8 @@ import {
   Calendar,
   BookOpen,
   X,
-  Check
+  Check,
+  Trash2
 } from 'lucide-react';
 import { 
   collection, 
@@ -20,8 +21,10 @@ import {
   onSnapshot, 
   addDoc, 
   updateDoc, 
+  deleteDoc,
   doc, 
-  serverTimestamp 
+  serverTimestamp,
+  getDocs
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
@@ -45,6 +48,15 @@ import {
   DialogHeader, 
   DialogTitle 
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Label } from '@/components/ui/label';
 import { Learner } from '@/src/types';
 
@@ -53,7 +65,12 @@ export default function LearnerManagement() {
   const [learners, setLearners] = useState<Learner[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editingLearner, setEditingLearner] = useState<Learner | null>(null);
+  const [learnerToDelete, setLearnerToDelete] = useState<Learner | null>(null);
+  
+  const [organization, setOrganization] = useState<any>(null);
   
   // Form State
   const [formData, setFormData] = useState({
@@ -64,6 +81,40 @@ export default function LearnerManagement() {
     qualification: '',
     enrollmentDate: new Date().toISOString().split('T')[0]
   });
+
+  useEffect(() => {
+    if (!isAuthReady || !userProfile?.office) return;
+    const fetchOrg = async () => {
+      try {
+        const orgName = userProfile.office.trim();
+        const orgsRef = collection(db, 'organizations');
+        const q = query(orgsRef, where('name', '==', orgName));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          setOrganization({ id: snap.docs[0].id, ...snap.docs[0].data() });
+        } else {
+          const qid = query(orgsRef, where('id', '==', orgName));
+          const snapid = await getDocs(qid);
+          if (!snapid.empty) {
+            setOrganization({ id: snapid.docs[0].id, ...snapid.docs[0].data() });
+          } else {
+            // Last resort: search for a district office that matches the assignedDistrictId if it's a name
+            if (userProfile.assignedDistrictId) {
+              const qDist = query(orgsRef, where('name', '==', userProfile.assignedDistrictId), where('type', '==', 'DistrictOffice'));
+              const snapDist = await getDocs(qDist);
+              if (!snapDist.empty) {
+                // We found the actual district doc, we can use its ID
+                console.log("Found district by name fallback during enrollment setup");
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching organization in Training Center:", err);
+      }
+    };
+    fetchOrg();
+  }, [userProfile, isAuthReady]);
 
   useEffect(() => {
     if (!isAuthReady || !user) return;
@@ -93,22 +144,88 @@ export default function LearnerManagement() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  const handleEdit = (learner: Learner) => {
+    setEditingLearner(learner);
+    setFormData({
+      firstName: learner.firstName,
+      lastName: learner.lastName,
+      email: learner.email,
+      contactNumber: learner.contactNumber,
+      qualification: learner.qualification,
+      enrollmentDate: learner.enrollmentDate
+    });
+    setIsAddModalOpen(true);
+  };
+
+  const handleDelete = async () => {
+    if (!learnerToDelete) return;
+    setIsSubmitting(true);
+    try {
+      await deleteDoc(doc(db, 'learners', learnerToDelete.id));
+      await addDoc(collection(db, 'auditLogs'), {
+        userId: user!.uid,
+        userName: userProfile!.name,
+        action: `Deleted Learner: ${learnerToDelete.firstName} ${learnerToDelete.lastName}`,
+        timestamp: serverTimestamp()
+      });
+      setIsDeleteModalOpen(false);
+      setLearnerToDelete(null);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'learners');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !userProfile) return;
+    if (!organization) {
+      alert("Organization data is still loading. Please wait a moment.");
+      return;
+    }
     
     setIsSubmitting(true);
     try {
-      const newLearner = {
-        ...formData,
-        trainingCenterId: user.uid,
-        trainingCenterName: userProfile.office || userProfile.name,
-        status: 'Enrolled',
-        createdAt: serverTimestamp()
-      };
-      
-      await addDoc(collection(db, 'learners'), newLearner);
+      if (editingLearner) {
+        const updatedLearner = {
+          ...formData,
+          updatedAt: serverTimestamp()
+        };
+        await updateDoc(doc(db, 'learners', editingLearner.id), updatedLearner);
+      } else {
+        // Check if learner already exists by email
+        const learnersRef = collection(db, 'learners');
+        const q = query(learnersRef, where('email', '==', formData.email));
+        const querySnapshot = await getDocs(q);
+
+        if (!querySnapshot.empty) {
+          // Update existing learner instead of creating new one
+          const existingDoc = querySnapshot.docs[0];
+          const updatedLearner = {
+            ...formData,
+            trainingCenterId: user.uid,
+            trainingCenterName: userProfile.office || userProfile.name,
+            districtOfficeId: organization?.assignedDistrictId || userProfile.assignedDistrictId || '',
+            updatedAt: serverTimestamp()
+          };
+          await updateDoc(doc(db, 'learners', existingDoc.id), updatedLearner);
+        } else {
+          // Create new learner
+          const newLearner = {
+            ...formData,
+            trainingCenterId: user.uid,
+            trainingCenterName: userProfile.office || userProfile.name,
+            districtOfficeId: organization?.assignedDistrictId || userProfile.assignedDistrictId || '',
+            status: 'Enrolled',
+            createdAt: serverTimestamp()
+          };
+          await addDoc(collection(db, 'learners'), newLearner);
+        }
+      }
+
       setIsAddModalOpen(false);
+      setEditingLearner(null);
       setFormData({
         firstName: '',
         lastName: '',
@@ -118,7 +235,7 @@ export default function LearnerManagement() {
         enrollmentDate: new Date().toISOString().split('T')[0]
       });
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'learners');
+      handleFirestoreError(error, editingLearner ? OperationType.UPDATE : OperationType.CREATE, 'learners');
     } finally {
       setIsSubmitting(false);
     }
@@ -320,14 +437,34 @@ export default function LearnerManagement() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-blue-600">
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger render={
+                            <Button variant="ghost" className="h-8 w-8 p-0">
+                              <span className="sr-only">Open menu</span>
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          } />
+                          <DropdownMenuContent align="end" className="w-[160px]">
+                            <DropdownMenuGroup>
+                              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => handleEdit(learner)} className="cursor-pointer">
+                                <Edit2 className="mr-2 h-4 w-4" />
+                                <span>Edit Learner</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onClick={() => {
+                                  setLearnerToDelete(learner);
+                                  setIsDeleteModalOpen(true);
+                                }} 
+                                className="cursor-pointer text-rose-600 focus:text-rose-600 focus:bg-rose-50"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                <span>Delete Record</span>
+                              </DropdownMenuItem>
+                            </DropdownMenuGroup>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))
@@ -343,6 +480,26 @@ export default function LearnerManagement() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Delete Confirmation Modal */}
+      <Dialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Delete Learner Record</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete the record for <span className="font-bold text-slate-900">"{learnerToDelete?.firstName} {learnerToDelete?.lastName}"</span>? This will permanently remove their profile and all associated data.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setIsDeleteModalOpen(false)} disabled={isSubmitting}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={isSubmitting}>
+              {isSubmitting ? 'Deleting...' : 'Delete Record'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

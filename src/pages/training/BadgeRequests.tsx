@@ -10,14 +10,17 @@ import {
   Eye,
   FileText,
   Upload,
-  AlertCircle
+  AlertCircle,
+  Edit2
 } from 'lucide-react';
 import { 
   collection, 
   query, 
   where, 
   onSnapshot, 
+  getDocs,
   addDoc, 
+  updateDoc,
   serverTimestamp,
   doc,
   getDoc
@@ -53,7 +56,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from '@/components/ui/textarea';
-import { BadgeIssuanceRequest, Learner, BadgeTemplate } from '@/src/types';
+import { BadgeIssuanceRequest, Learner, BadgeTemplate, Organization } from '@/src/types';
 
 export default function BadgeRequests() {
   const { user, userProfile, isAuthReady } = useFirebase();
@@ -65,14 +68,17 @@ export default function BadgeRequests() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<BadgeIssuanceRequest | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [assessmentCenters, setAssessmentCenters] = useState<Organization[]>([]);
 
   // Form State
   const [formData, setFormData] = useState({
     learnerId: '',
     badgeTemplateId: '',
+    sourceAssessmentCenterId: '',
     evidenceUrl: '',
     remarks: ''
   });
+  const [editingRequestId, setEditingRequestId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAuthReady || !user) return;
@@ -109,12 +115,31 @@ export default function BadgeRequests() {
       setTemplates(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as BadgeTemplate[]);
     });
 
+    // Fetch Assessment Centers
+    const acQuery = query(collection(db, 'organizations'), where('type', '==', 'AssessmentCenter'));
+    const unsubscribeACs = onSnapshot(acQuery, (snapshot) => {
+      setAssessmentCenters(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Organization[]);
+    });
+
     return () => {
       unsubscribe();
       unsubscribeLearners();
       unsubscribeTemplates();
+      unsubscribeACs();
     };
   }, [user, isAuthReady]);
+
+  const handleEditRequest = (request: BadgeIssuanceRequest) => {
+    setEditingRequestId(request.id);
+    setFormData({
+      learnerId: request.learnerId,
+      badgeTemplateId: request.badgeId,
+      sourceAssessmentCenterId: (request as any).sourceAssessmentCenterId || '',
+      evidenceUrl: request.evidenceUrl || '',
+      remarks: request.remarks || ''
+    });
+    setIsSubmitModalOpen(true);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -130,10 +155,11 @@ export default function BadgeRequests() {
 
       const learner = learners.find(l => l.id === formData.learnerId);
       const template = templates.find(t => t.id === formData.badgeTemplateId);
+      const ac = assessmentCenters.find(a => a.id === formData.sourceAssessmentCenterId);
 
       if (!learner || !template) throw new Error('Invalid selection');
 
-      const newRequest: Partial<BadgeIssuanceRequest> = {
+      const payload: any = {
         learnerId: learner.id,
         learnerName: `${learner.firstName} ${learner.lastName}`,
         learnerEmail: learner.email,
@@ -144,31 +170,46 @@ export default function BadgeRequests() {
         issuerId: user.uid,
         issuerName: userProfile.office || userProfile.name,
         issuerType: 'TrainingCenter',
+        sourceAssessmentCenterId: formData.sourceAssessmentCenterId,
+        sourceAssessmentCenterName: ac?.name || 'External / RPL',
         districtOfficeId: userProfile.assignedDistrictId,
         status: 'Pending Approval',
         submittedBy: user.uid,
         submittedByName: userProfile.name,
-        submittedAt: serverTimestamp() as any,
+        updatedAt: serverTimestamp(),
         evidenceUrl: formData.evidenceUrl,
         remarks: formData.remarks,
-        criteria: template.criteria
+        criteria: template.criteria,
+        rejectionComment: null // Clear previous rejection feedback
       };
 
-      await addDoc(collection(db, 'issuedBadges'), newRequest);
-      
-      // Log Activity
-      await addDoc(collection(db, 'auditLogs'), {
-        userId: user.uid,
-        userName: userProfile.name,
-        action: `Submitted badge request for ${newRequest.learnerName}`,
-        details: `Badge: ${newRequest.badgeName}`,
-        timestamp: serverTimestamp()
-      });
+      if (editingRequestId) {
+        await updateDoc(doc(db, 'issuedBadges', editingRequestId), payload);
+        await addDoc(collection(db, 'auditLogs'), {
+          userId: user.uid,
+          userName: userProfile.name,
+          action: `Resubmitted badge request for ${payload.learnerName}`,
+          details: `Request ID: ${editingRequestId}`,
+          timestamp: serverTimestamp()
+        });
+      } else {
+        payload.createdAt = serverTimestamp();
+        payload.submittedAt = serverTimestamp();
+        await addDoc(collection(db, 'issuedBadges'), payload);
+        await addDoc(collection(db, 'auditLogs'), {
+          userId: user.uid,
+          userName: userProfile.name,
+          action: `Submitted badge request for ${payload.learnerName}`,
+          details: `Badge: ${payload.badgeName}`,
+          timestamp: serverTimestamp()
+        });
+      }
 
       setIsSubmitModalOpen(false);
-      setFormData({ learnerId: '', badgeTemplateId: '', evidenceUrl: '', remarks: '' });
+      setEditingRequestId(null);
+      setFormData({ learnerId: '', badgeTemplateId: '', sourceAssessmentCenterId: '', evidenceUrl: '', remarks: '' });
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'issuedBadges');
+      handleFirestoreError(error, editingRequestId ? OperationType.UPDATE : OperationType.CREATE, 'issuedBadges');
     } finally {
       setIsSubmitting(false);
     }
@@ -197,7 +238,7 @@ export default function BadgeRequests() {
           <Plus className="h-4 w-4" />
           Submit Badge Request
         </Button>
-
+ 
         <Dialog open={isSubmitModalOpen} onOpenChange={setIsSubmitModalOpen}>
           <DialogContent className="sm:max-w-[600px]">
             <form onSubmit={handleSubmit}>
@@ -244,6 +285,27 @@ export default function BadgeRequests() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                <div className="grid gap-2">
+                  <Label>Source Assessment Center</Label>
+                  <Select 
+                    value={formData.sourceAssessmentCenterId} 
+                    onValueChange={(v) => setFormData(prev => ({ ...prev, sourceAssessmentCenterId: v }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Where was the assessment taken?" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {assessmentCenters.map(ac => (
+                        <SelectItem key={ac.id} value={ac.id}>
+                          {ac.name}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="Other/Manual">Other / RPL Evaluation</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <div className="grid gap-2">
                   <Label htmlFor="evidenceUrl">Evidence URL (Optional)</Label>
                   <Input 
@@ -376,18 +438,31 @@ export default function BadgeRequests() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="h-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                          onClick={() => {
-                            setSelectedRequest(request);
-                            setIsDetailsModalOpen(true);
-                          }}
-                        >
-                          <Eye className="h-4 w-4 mr-1" />
-                          Details
-                        </Button>
+                        <div className="flex justify-end gap-2">
+                          {request.status === 'Rejected' && (
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              className="h-8 text-rose-600 border-rose-200 hover:bg-rose-50"
+                              onClick={() => handleEditRequest(request)}
+                            >
+                              <Edit2 className="h-4 w-4 mr-1" />
+                              Fix & Resubmit
+                            </Button>
+                          )}
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                            onClick={() => {
+                              setSelectedRequest(request);
+                              setIsDetailsModalOpen(true);
+                            }}
+                          >
+                            <Eye className="h-4 w-4 mr-1" />
+                            Details
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))

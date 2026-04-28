@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Shield, User, Building2, Briefcase, Lock, FileCheck, LayoutDashboard } from 'lucide-react';
 import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { auth, db } from '@/src/lib/firebase';
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp, collection, query, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import Navbar from '@/src/components/layout/Navbar';
@@ -18,6 +18,9 @@ export default function Login() {
     if (!userProfile) return '/login';
     switch (userProfile.role) {
       case 'Admin': return '/admin';
+      case 'qso_admin': return '/qso';
+      case 'co_admin': return '/co';
+      case 'icto_admin': return '/icto';
       case 'TrainingCenter': return '/trainingcenter';
       case 'AssessmentCenter': return '/assessmentcenter';
       case 'DistrictOffice': return '/districtoffice';
@@ -25,48 +28,116 @@ export default function Login() {
     }
   };
 
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
+
   const handleGoogleLogin = async (targetRole: string) => {
+    if (isLoggingIn) return;
+    
+    setIsLoggingIn(true);
+    setLoginError(null);
     const provider = new GoogleAuthProvider();
+    
     try {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
 
-      // Update or create user profile
-      const userDocRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userDocRef);
+      // Master Admin emails that can bypass the "pre-registered" check
+      const masterAdmins = ["lmvergara@tesda.gov.ph", "domsrock123@gmail.com"];
+      const isMasterAdmin = masterAdmins.includes(user.email || '');
 
+      // Check if user profile exists in Firestore by UID
+      const userDocRef = doc(db, 'users', user.uid);
+      let userDoc = await getDoc(userDocRef);
       let finalRole = targetRole;
 
-      if (userDoc.exists()) {
-        const existingData = userDoc.data();
-        // If the user is currently a 'Learner', allow them to switch to the target role
-        // (This handles cases where an admin assigned them a new role)
-        if (existingData.role === 'Learner') {
-          finalRole = targetRole;
+      if (!userDoc.exists()) {
+        // Not found by UID, let's search by email in 'users' collection
+        const usersRef = collection(db, 'users');
+        const qUsers = query(usersRef, where('email', '==', user.email));
+        const userQuerySnap = await getDocs(qUsers);
+
+        if (!userQuerySnap.empty) {
+          // User was pre-registered by email, let's migrate/link the document
+          const existingDoc = userQuerySnap.docs[0];
+          const existingData = existingDoc.data();
+          
+          // Copy data to the UID-based document and delete the old one (or just use it)
+          // For simplicity and consistency with our auth provider hook, we migrate to UID-based document
+          await setDoc(userDocRef, {
+            ...existingData,
+            uid: user.uid,
+            lastLogin: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
+          
+          // If the IDs are different, delete the old random ID document
+          if (existingDoc.id !== user.uid) {
+            await deleteDoc(doc(db, 'users', existingDoc.id));
+          }
+          
+          userDoc = await getDoc(userDocRef);
+          finalRole = existingData.role;
         } else {
-          // Respect existing administrative roles
-          finalRole = existingData.role || targetRole;
+          // Not found in 'users', check in 'learners' if they are logging in as a learner
+          const learnersRef = collection(db, 'learners');
+          const qLearners = query(learnersRef, where('email', '==', user.email));
+          const learnerQuerySnap = await getDocs(qLearners);
+
+          if (!learnerQuerySnap.empty) {
+            // Found in learners, create a user profile for them
+            finalRole = 'Learner';
+            await setDoc(userDocRef, {
+              uid: user.uid,
+              name: user.displayName || 'Learner',
+              email: user.email,
+              role: 'Learner',
+              createdAt: serverTimestamp(),
+              lastLogin: serverTimestamp()
+            });
+            userDoc = await getDoc(userDocRef);
+          } else if (isMasterAdmin) {
+            // Bootstrap master admin if it's their first time
+            finalRole = 'Admin';
+            await setDoc(userDocRef, {
+              uid: user.uid,
+              name: user.displayName || 'Master Admin',
+              email: user.email,
+              role: finalRole,
+              createdAt: serverTimestamp(),
+              lastLogin: serverTimestamp()
+            });
+            userDoc = await getDoc(userDocRef);
+          } else {
+            // Log out immediately if not found anywhere and not a master admin
+            await auth.signOut();
+            setLoginError('Your email is not registered for any access portal. Please contact a TESDA Super Admin to gain access.');
+            setIsLoggingIn(false);
+            return;
+          }
         }
-        
-        await updateDoc(userDocRef, {
-          role: finalRole,
-          lastLogin: serverTimestamp()
-        });
       } else {
-        // Create new profile with the selected role
-        await setDoc(userDocRef, {
-          uid: user.uid,
-          name: user.displayName || 'New User',
-          email: user.email,
-          role: targetRole,
-          createdAt: serverTimestamp(),
+        // Doc exists by UID
+        const existingData = userDoc.data();
+        finalRole = existingData.role;
+        await updateDoc(userDocRef, {
           lastLogin: serverTimestamp()
         });
       }
 
-      navigate(`/${finalRole.toLowerCase()}`);
-    } catch (error) {
+      const redirectPath = finalRole === 'qso_admin' ? '/qso' : finalRole === 'co_admin' ? '/co' : finalRole === 'icto_admin' ? '/icto' : `/${finalRole.toLowerCase()}`;
+      navigate(redirectPath);
+    } catch (error: any) {
       console.error('Login failed:', error);
+      if (error.code === 'auth/cancelled-popup-request') {
+        setLoginError('Login was cancelled. Please try again.');
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        setLoginError('Login window was closed. Please try again.');
+      } else {
+        setLoginError('An unexpected error occurred during login.');
+      }
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -78,6 +149,12 @@ export default function Login() {
           <h1 className="text-3xl font-bold text-slate-900 mb-4">Sign In to TESDA Badging</h1>
           <p className="text-slate-600">Select your portal to continue. Access is restricted to authorized users.</p>
           
+          {loginError && (
+            <div className="mt-8 p-4 bg-rose-50 border border-rose-200 text-rose-700 text-sm rounded-lg animate-in fade-in slide-in-from-top-2 duration-300 max-w-md mx-auto">
+              {loginError}
+            </div>
+          )}
+
           {user && (
             <div className="mt-8 p-6 bg-white rounded-2xl border border-blue-100 shadow-sm max-w-md mx-auto">
               <p className="text-sm text-slate-500 mb-4">You are currently signed in as <span className="font-bold text-slate-900">{user.email}</span></p>
@@ -93,11 +170,16 @@ export default function Login() {
           )}
         </div>
 
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className={`grid md:grid-cols-2 gap-6 transition-opacity duration-300 ${isLoggingIn ? 'opacity-50 pointer-events-none' : ''}`}>
           <Card 
-            className="hover:border-blue-500 cursor-pointer transition-all hover:shadow-md group"
+            className="hover:border-blue-500 cursor-pointer transition-all hover:shadow-md group relative overflow-hidden"
             onClick={() => handleGoogleLogin('Learner')}
           >
+            {isLoggingIn && (
+              <div className="absolute inset-0 bg-white/20 backdrop-blur-[1px] flex items-center justify-center z-10">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            )}
             <CardHeader>
               <div className="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center mb-4 group-hover:bg-blue-600 group-hover:text-white transition-colors">
                 <User className="h-6 w-6" />
@@ -108,22 +190,32 @@ export default function Login() {
           </Card>
 
           <Card 
-            className="hover:border-blue-500 cursor-pointer transition-all hover:shadow-md group"
+            className="hover:border-blue-500 cursor-pointer transition-all hover:shadow-md group relative overflow-hidden"
             onClick={() => handleGoogleLogin('Admin')}
           >
+            {isLoggingIn && (
+              <div className="absolute inset-0 bg-white/20 backdrop-blur-[1px] flex items-center justify-center z-10">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            )}
             <CardHeader>
               <div className="w-12 h-12 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center mb-4 group-hover:bg-blue-600 group-hover:text-white transition-colors">
                 <Shield className="h-6 w-6" />
               </div>
-              <CardTitle>TESDA Central Admin</CardTitle>
-              <CardDescription>System-wide management, organizations, and standards.</CardDescription>
+              <CardTitle>TESDA Admin Portal</CardTitle>
+              <CardDescription>Unified access for Super Admin, QSO, CO, and ICTO modules.</CardDescription>
             </CardHeader>
           </Card>
 
           <Card 
-            className="hover:border-blue-500 cursor-pointer transition-all hover:shadow-md group"
+            className="hover:border-blue-500 cursor-pointer transition-all hover:shadow-md group relative overflow-hidden"
             onClick={() => handleGoogleLogin('DistrictOffice')}
           >
+            {isLoggingIn && (
+              <div className="absolute inset-0 bg-white/20 backdrop-blur-[1px] flex items-center justify-center z-10">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            )}
             <CardHeader>
               <div className="w-12 h-12 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center mb-4 group-hover:bg-blue-600 group-hover:text-white transition-colors">
                 <FileCheck className="h-6 w-6" />
@@ -134,9 +226,14 @@ export default function Login() {
           </Card>
 
           <Card 
-            className="hover:border-blue-500 cursor-pointer transition-all hover:shadow-md group"
+            className="hover:border-blue-500 cursor-pointer transition-all hover:shadow-md group relative overflow-hidden"
             onClick={() => handleGoogleLogin('TrainingCenter')}
           >
+            {isLoggingIn && (
+              <div className="absolute inset-0 bg-white/20 backdrop-blur-[1px] flex items-center justify-center z-10">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            )}
             <CardHeader>
               <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center mb-4 group-hover:bg-blue-600 group-hover:text-white transition-colors">
                 <Building2 className="h-6 w-6" />
@@ -147,9 +244,14 @@ export default function Login() {
           </Card>
 
           <Card 
-            className="hover:border-blue-500 cursor-pointer transition-all hover:shadow-md group"
+            className="hover:border-blue-500 cursor-pointer transition-all hover:shadow-md group relative overflow-hidden"
             onClick={() => handleGoogleLogin('AssessmentCenter')}
           >
+            {isLoggingIn && (
+              <div className="absolute inset-0 bg-white/20 backdrop-blur-[1px] flex items-center justify-center z-10">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            )}
             <CardHeader>
               <div className="w-12 h-12 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center mb-4 group-hover:bg-blue-600 group-hover:text-white transition-colors">
                 <Shield className="h-6 w-6" />
