@@ -11,7 +11,8 @@ import {
   FileText,
   Upload,
   AlertCircle,
-  Edit2
+  Edit2,
+  RotateCcw
 } from 'lucide-react';
 import { 
   collection, 
@@ -23,7 +24,8 @@ import {
   updateDoc,
   serverTimestamp,
   doc,
-  getDoc
+  getDoc,
+  writeBatch
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
@@ -65,6 +67,7 @@ export default function BadgeRequests() {
   const [templates, setTemplates] = useState<BadgeTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<BadgeIssuanceRequest | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
@@ -164,16 +167,19 @@ export default function BadgeRequests() {
         learnerName: `${learner.firstName} ${learner.lastName}`,
         learnerEmail: learner.email,
         badgeId: template.id,
-        badgeName: template.programName,
+        badgeName: template.badgeName,
         badgeType: template.badgeType,
-        programName: template.programName,
+        programName: template.badgeName,
+        qualificationName: template.qualificationName || template.badgeName,
         issuerId: user.uid,
+        trainingCenterId: user.uid,
         issuerName: userProfile.office || userProfile.name,
         issuerType: 'TrainingCenter',
         sourceAssessmentCenterId: formData.sourceAssessmentCenterId,
         sourceAssessmentCenterName: ac?.name || 'External / RPL',
         districtOfficeId: userProfile.assignedDistrictId,
         status: 'Pending Approval',
+        publishedToLearner: false,
         submittedBy: user.uid,
         submittedByName: userProfile.name,
         updatedAt: serverTimestamp(),
@@ -215,6 +221,44 @@ export default function BadgeRequests() {
     }
   };
 
+  const handleResetRequests = async () => {
+    if (!user) return;
+    setIsSubmitting(true);
+    try {
+      const q = query(
+        collection(db, 'issuedBadges'),
+        where('issuerId', '==', user.uid)
+      );
+      const snapshot = await getDocs(q);
+      
+      if (snapshot.empty) {
+        setIsResetModalOpen(false);
+        setIsSubmitting(false);
+        return;
+      }
+
+      const batch = writeBatch(db);
+      snapshot.docs.forEach((docSnap) => {
+        batch.delete(docSnap.ref);
+      });
+      
+      await batch.commit();
+
+      await addDoc(collection(db, 'auditLogs'), {
+        userId: user.uid,
+        userName: userProfile?.name || 'Unknown',
+        action: `Reset all badge requests`,
+        timestamp: serverTimestamp()
+      });
+
+      setIsResetModalOpen(false);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'issuedBadges');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
@@ -231,13 +275,53 @@ export default function BadgeRequests() {
           <p className="text-slate-500">Submit and track badge issuance requests for your learners.</p>
         </div>
         
-        <Button 
-          className="bg-blue-600 hover:bg-blue-700 gap-2"
-          onClick={() => setIsSubmitModalOpen(true)}
-        >
-          <Plus className="h-4 w-4" />
-          Submit Badge Request
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline"
+            className="text-rose-600 border-rose-200 hover:bg-rose-50 gap-2"
+            onClick={() => setIsResetModalOpen(true)}
+            disabled={requests.length === 0}
+          >
+            <RotateCcw className="h-4 w-4" />
+            Reset Requests
+          </Button>
+
+          <Button 
+            className="bg-blue-600 hover:bg-blue-700 gap-2"
+            onClick={() => setIsSubmitModalOpen(true)}
+          >
+            <Plus className="h-4 w-4" />
+            Submit Badge Request
+          </Button>
+        </div>
+
+        {/* Reset Confirmation Dialog */}
+        <Dialog open={isResetModalOpen} onOpenChange={setIsResetModalOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="text-rose-600 flex items-center gap-2">
+                <AlertCircle className="h-5 w-5" />
+                Reset Badge Requests
+              </DialogTitle>
+              <DialogDescription className="pt-2">
+                Are you sure you want to delete all <span className="font-bold">{requests.length}</span> badge requests? This action cannot be undone and will permanently remove all records submitted by this Training Center.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="mt-4">
+              <Button variant="outline" onClick={() => setIsResetModalOpen(false)} disabled={isSubmitting}>
+                Cancel
+              </Button>
+              <Button 
+                variant="destructive" 
+                className="bg-rose-600 hover:bg-rose-700"
+                onClick={handleResetRequests}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? 'Resetting...' : 'Yes, Delete All'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
  
         <Dialog open={isSubmitModalOpen} onOpenChange={setIsSubmitModalOpen}>
           <DialogContent className="sm:max-w-[600px]">
@@ -469,7 +553,7 @@ export default function BadgeRequests() {
                 ) : (
                   <TableRow>
                     <TableCell colSpan={7} className="h-32 text-center text-slate-500">
-                      No badge requests found.
+                      No badge requests submitted yet.
                     </TableCell>
                   </TableRow>
                 )}

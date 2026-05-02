@@ -329,7 +329,7 @@ export default function LearnerManagement() {
                     name="qualification" 
                     value={formData.qualification} 
                     onChange={handleInputChange} 
-                    placeholder="Web Development NC III" 
+                    placeholder="Computer Systems Servicing NC II" 
                     required 
                   />
                 </div>

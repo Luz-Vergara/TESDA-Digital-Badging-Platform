@@ -35,7 +35,7 @@ export default function QSODashboard() {
       setStats(prev => ({ 
         ...prev, 
         totalTemplates: snap.size,
-        activeStandards: snap.docs.filter(d => d.data().status === 'Active').length,
+        activeStandards: snap.docs.filter(d => d.data().status === 'Approved').length,
         alignmentScore: 94
       }));
       setLoading(false);

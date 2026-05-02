@@ -47,6 +47,7 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
     try {
       await updateDoc(doc(db, 'issuedBadges', request.id), {
         status: 'Approved',
+        publishedToLearner: true,
         approvedBy: user.uid,
         approvedAt: serverTimestamp(),
         expiryDate: request.expiryDate || null // Could calculate based on template
@@ -73,6 +74,7 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
     try {
       await updateDoc(doc(db, 'issuedBadges', request.id), {
         status: 'Rejected',
+        publishedToLearner: true, // Show to learner so they know it was rejected
         rejectionComment,
         approvedBy: user.uid,
         approvedAt: serverTimestamp()

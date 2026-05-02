@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Award, Wallet, TrendingUp, ArrowRight, Bell, Plus } from 'lucide-react';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+import { Award, Wallet, ArrowRight, Bell, BookOpen, Clock } from 'lucide-react';
+import { collection, query, where, onSnapshot, getDocs, limit } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -8,46 +8,18 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import BadgeCard from '@/src/components/BadgeCard';
-import { BadgeMetadata } from '@/src/types';
+import { BadgeMetadata, BadgeTemplate } from '@/src/types';
+import { Link, useNavigate } from 'react-router-dom';
 
 export default function LearnerDashboard() {
+  const navigate = useNavigate();
   const { user, userProfile, isAuthReady } = useFirebase();
   const [earnedBadges, setEarnedBadges] = useState<BadgeMetadata[]>([]);
+  const [recommendations, setRecommendations] = useState<BadgeTemplate[]>([]);
+  const [learnerData, setLearnerData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
 
-  const createTestBadge = async () => {
-    if (!user) return;
-    setCreating(true);
-    try {
-      const testBadge = {
-        learnerId: user.uid,
-        programName: 'Web Development NC III',
-        badgeType: 'Master',
-        description: 'Demonstrated advanced proficiency in full-stack web development, including React, Node.js, and Cloud Infrastructure.',
-        issuer: 'TESDA National Assessment Center',
-        badgeHolder: user.displayName || 'Learner',
-        criteria: 'Successful completion of national assessment for Web Development NC III.',
-        issuanceDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-        verificationId: `TESDA-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
-        validity: 'Permanent',
-        alignment: 'Philippine Qualifications Framework (PQF) Level 5',
-        tags: ['Web Development', 'React', 'Full Stack'],
-        standards: ['TESDA-WD-2023-001'],
-        status: 'Active',
-        termsOfUse: 'This badge is the property of TESDA and is issued to the named individual upon successful assessment.',
-        hierarchyLevel: 4,
-        createdAt: serverTimestamp()
-      };
-      
-      await addDoc(collection(db, 'issuedBadges'), testBadge);
-      alert('Test badge created successfully! You can now use the Verification ID to test the Verify Badge page.');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'issuedBadges');
-    } finally {
-      setCreating(false);
-    }
-  };
+  const [showComingSoon, setShowComingSoon] = useState(false);
 
   useEffect(() => {
     if (!isAuthReady || !user) {
@@ -58,23 +30,107 @@ export default function LearnerDashboard() {
     const path = 'issuedBadges';
     const q = query(
       collection(db, path),
-      where('learnerId', '==', user.uid),
-      where('status', '==', 'Active')
+      where('learnerEmail', '==', user.email)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const badges = snapshot.docs.map(doc => ({
+      const allBadges = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
-      })) as unknown as BadgeMetadata[];
+      })) as any[];
+      
+      // Filter for published badges in memory to avoid query complexity issues during setup
+      const badges = allBadges.filter(b => b.publishedToLearner === true) as unknown as BadgeMetadata[];
+      
       setEarnedBadges(badges);
       setLoading(false);
     }, (error) => {
+      console.error("Dashboard Snapshot Error:", error);
+      setLoading(false); // Stop loading even on error to show empty state/error message
       handleFirestoreError(error, OperationType.GET, path);
     });
 
     return () => unsubscribe();
-  }, [user, isAuthReady]);
+  }, [user?.email, isAuthReady]);
+
+  // Fetch learner specific data and recommendations
+  useEffect(() => {
+    if (!isAuthReady || !user?.email) return;
+
+    const fetchLearnerData = async () => {
+      try {
+        const lq = query(collection(db, 'learners'), where('email', '==', user.email));
+        const lSnap = await getDocs(lq);
+        if (!lSnap.empty) {
+          const lData = lSnap.docs[0].data();
+          setLearnerData(lData);
+          
+          // Fetch recommendations based on qualification
+          const qual = lData.qualification || '';
+          const hasAnimationInterest = qual.toLowerCase().includes('animation') || 
+                                      earnedBadges.some(b => (b.badgeName || '').toLowerCase().includes('animation'));
+
+          const templatesQuery = query(
+            collection(db, 'badgeTemplates'),
+            limit(50)
+          );
+          
+          const tSnap = await getDocs(templatesQuery);
+          let allTemplates = tSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as BadgeTemplate[];
+          
+          // Filter out already earned badges
+          const earnedIds = earnedBadges.map(b => b.badgeId);
+          
+          // Custom Recommendation Logic
+          let recs: BadgeTemplate[] = [];
+
+          // 1. Specifically look for 2D Animation NC III if interested
+          if (hasAnimationInterest) {
+            const animationExpert = allTemplates.find(t => 
+              t.badgeName?.includes('2D Animation NC III') || 
+              (t.qualificationName?.includes('2D Animation') && t.badgeType === 'Expert')
+            );
+            if (animationExpert && !earnedIds.includes(animationExpert.id)) {
+              recs.push(animationExpert);
+            }
+          }
+
+          // 2. Fill with other expert badges from same qualification
+          const sameQualExpert = allTemplates.filter(t => 
+            !earnedIds.includes(t.id) && 
+            t.qualificationName === qual && 
+            t.badgeType === 'Expert' &&
+            !recs.find(r => r.id === t.id)
+          );
+          recs = [...recs, ...sameQualExpert];
+
+          // 3. Fill with other badges from same qualification
+          const sameQualOther = allTemplates.filter(t => 
+            !earnedIds.includes(t.id) && 
+            t.qualificationName === qual && 
+            !recs.find(r => r.id === t.id)
+          );
+          recs = [...recs, ...sameQualOther];
+
+          // 4. Fill with any expert badges
+          if (recs.length < 3) {
+            const otherExperts = allTemplates.filter(t => 
+              !earnedIds.includes(t.id) && 
+              t.badgeType === 'Expert' && 
+              !recs.find(r => r.id === t.id)
+            );
+            recs = [...recs, ...otherExperts];
+          }
+
+          setRecommendations(recs.slice(0, 3));
+        }
+      } catch (err) {
+        console.error("Error fetching recommendations:", err);
+      }
+    };
+
+    fetchLearnerData();
+  }, [user?.email, isAuthReady, earnedBadges.length]);
 
   if (loading) {
     return (
@@ -106,58 +162,95 @@ export default function LearnerDashboard() {
         <div className="flex gap-3">
           <Button 
             variant="outline" 
-            className="gap-2 border-blue-200 text-blue-600 hover:bg-blue-50"
-            onClick={createTestBadge}
-            disabled={creating}
+            className="gap-2 min-w-[140px]"
+            onClick={() => {
+              setShowComingSoon(true);
+              setTimeout(() => setShowComingSoon(false), 2000);
+            }}
           >
-            <Plus className="h-4 w-4" />
-            {creating ? 'Creating...' : 'Create Test Badge'}
-          </Button>
-          <Button variant="outline" className="gap-2">
             <Bell className="h-4 w-4" />
-            Notifications
+            {showComingSoon ? 'Coming Soon!' : 'Notifications'}
           </Button>
-          <Button className="bg-blue-600 hover:bg-blue-700 gap-2">
-            <Award className="h-4 w-4" />
-            View All Badges
-          </Button>
+          <Link to="/learner/wallet">
+            <Button className="bg-blue-600 hover:bg-blue-700 gap-2">
+              <Award className="h-4 w-4" />
+              View All Badges
+            </Button>
+          </Link>
         </div>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        {/* Total Badges */}
         <Card className="border-slate-200">
-          <CardContent className="p-6 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
-              <Wallet className="h-6 w-6" />
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+              <Wallet className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-sm font-medium text-slate-500">Total Badges</p>
-              <p className="text-2xl font-bold text-slate-900">{earnedBadges.length}</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Total</p>
+              <p className="text-xl font-bold text-slate-900">{earnedBadges.length}</p>
             </div>
           </CardContent>
         </Card>
+
+        {/* Proficient */}
         <Card className="border-slate-200">
-          <CardContent className="p-6 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center">
-              <Award className="h-6 w-6" />
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+              <Award className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-sm font-medium text-slate-500">Master Badges</p>
-              <p className="text-2xl font-bold text-slate-900">
-                {earnedBadges.filter(b => b.badgeType === 'Master').length}
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Proficient</p>
+              <p className="text-xl font-bold text-slate-900">
+                {earnedBadges.filter(b => b.badgeType === 'Proficient').length}
               </p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-slate-200">
-          <CardContent className="p-6 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center">
-              <TrendingUp className="h-6 w-6" />
+
+        {/* Expert */}
+        <Card className="border-slate-200 border-l-4 border-l-green-500">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-green-50 text-green-600 flex items-center justify-center shrink-0">
+              <Award className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-sm font-medium text-slate-500">Completion Rate</p>
-              <p className="text-2xl font-bold text-slate-900">85%</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Expert</p>
+              <p className="text-xl font-bold text-slate-900">
+                {earnedBadges.filter(b => b.badgeType === 'Expert').length}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Skilled */}
+        <Card className="border-slate-200 border-l-4 border-l-amber-500">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+              <Award className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Skilled</p>
+              <p className="text-xl font-bold text-slate-900">
+                {earnedBadges.filter(b => b.badgeType === 'Skilled').length}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Master */}
+        <Card className="border-slate-200 border-l-4 border-l-purple-500">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+              <Award className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Master</p>
+              <p className="text-xl font-bold text-slate-900">
+                {earnedBadges.filter(b => b.badgeType === 'Master').length}
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -168,7 +261,9 @@ export default function LearnerDashboard() {
         <div className="lg:col-span-2 space-y-6">
           <div className="flex justify-between items-center">
             <h2 className="text-xl font-bold text-slate-900">Recent Badges</h2>
-            <Button variant="link" className="text-blue-600 p-0 h-auto">View Wallet</Button>
+            <Link to="/learner/wallet">
+              <Button variant="link" className="text-blue-600 p-0 h-auto">View Wallet</Button>
+            </Link>
           </div>
           
           {earnedBadges.length > 0 ? (
@@ -188,75 +283,47 @@ export default function LearnerDashboard() {
             </Card>
           )}
 
-          <div className="space-y-4">
-            <h2 className="text-xl font-bold text-slate-900">In-Progress Programs</h2>
-            <Card className="border-slate-200">
-              <CardContent className="p-6 space-y-4">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="font-bold text-slate-900">Network Administration NC III</h3>
-                    <p className="text-sm text-slate-500">Targeting Master Badge</p>
-                  </div>
-                  <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">65% Complete</Badge>
-                </div>
-                <Progress value={65} className="h-2" />
-                <div className="flex justify-between text-xs text-slate-500">
-                  <span>4 of 6 Units Completed</span>
-                  <span>Est. Completion: Dec 2023</span>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          {/* In-Progress Programs would go here - removing hardcoded placeholder as requested */}
         </div>
 
-        {/* Sidebar - Recommendations & Hierarchy */}
+        {/* Sidebar - Recommendations */}
         <div className="space-y-8">
-          <Card className="border-slate-200">
-            <CardHeader>
-              <CardTitle className="text-lg">Badge Hierarchy</CardTitle>
-              <CardDescription>Your progress across tiers</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {[
-                { label: 'Proficient', type: 'Proficient', total: 10, color: 'bg-blue-600' },
-                { label: 'Expert', type: 'Expert', total: 5, color: 'bg-green-600' },
-                { label: 'Skilled', type: 'Skilled', total: 3, color: 'bg-amber-600' },
-                { label: 'Master', type: 'Master', total: 2, color: 'bg-purple-600' },
-              ].map((tier) => {
-                const count = earnedBadges.filter(b => b.badgeType === tier.type).length;
-                return (
-                  <div key={tier.label} className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="font-medium text-slate-700">{tier.label}</span>
-                      <span className="text-slate-500">{count}/{tier.total}</span>
+          <Card className="border-slate-200 bg-blue-600 text-white overflow-hidden">
+            <div className="p-6 pb-4">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <BookOpen className="h-5 w-5 text-blue-200" />
+                Recommended for You
+              </CardTitle>
+              <CardDescription className="text-blue-100">Based on your {learnerData?.qualification || 'current'} progress</CardDescription>
+            </div>
+            <CardContent className="px-6 pb-6 space-y-4">
+              {recommendations.length > 0 ? (
+                recommendations.map((rec) => (
+                  <div key={rec.id} className="p-3 bg-white/10 rounded-xl border border-white/20 hover:bg-white/15 transition-colors group cursor-pointer" onClick={() => navigate('/learner/programs')}>
+                    <div className="flex justify-between items-start mb-1">
+                      <p className="font-bold text-sm leading-tight pr-4">{rec.badgeName}</p>
+                      <Badge className="bg-blue-400/30 text-blue-50 text-[9px] border-none font-bold uppercase py-0 px-1.5 shrink-0">
+                        {rec.badgeType}
+                      </Badge>
                     </div>
-                    <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                      <div 
-                        className={`h-full ${tier.color}`} 
-                        style={{ width: `${Math.min((count / tier.total) * 100, 100)}%` }} 
-                      />
+                    <div className="flex items-center gap-1 text-[10px] text-blue-100">
+                      <Clock className="h-3 w-3" />
+                      Next logical step
                     </div>
                   </div>
-                );
-              })}
-            </CardContent>
-          </Card>
-
-          <Card className="border-slate-200 bg-blue-600 text-white">
-            <CardHeader>
-              <CardTitle className="text-lg">Recommended for You</CardTitle>
-              <CardDescription className="text-blue-100">Based on your background</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="p-3 bg-white/10 rounded-lg border border-white/20">
-                <p className="font-bold text-sm mb-1">Cybersecurity Fundamentals</p>
-                <p className="text-xs text-blue-100">Earn a Skilled Badge</p>
-              </div>
-              <div className="p-3 bg-white/10 rounded-lg border border-white/20">
-                <p className="font-bold text-sm mb-1">Cloud Computing Essentials</p>
-                <p className="text-xs text-blue-100">Earn an Expert Badge</p>
-              </div>
-              <Button variant="secondary" className="w-full mt-2 text-blue-700 font-bold">
+                ))
+              ) : (
+                <div className="py-4 text-center">
+                  <Award className="h-8 w-8 text-blue-300 mx-auto mb-2 opacity-50" />
+                  <p className="text-xs text-blue-100">Explore new pathways to find recommendations</p>
+                </div>
+              )}
+              
+              <Button 
+                variant="secondary" 
+                className="w-full mt-2 text-blue-700 font-bold bg-white hover:bg-blue-50 shadow-sm"
+                onClick={() => navigate('/learner/programs')}
+              >
                 Explore Programs
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>

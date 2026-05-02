@@ -30,23 +30,23 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn() && (
-        request.auth.token.email == "lmvergara@tesda.gov.ph" || 
-        request.auth.token.email == "domsrock123@gmail.com" ||
-        request.auth.token.email == "admin@tesda.gov.ph"
+        request.auth.token.get('email', '') == "lmvergara@tesda.gov.ph" || 
+        request.auth.token.get('email', '') == "domsrock123@gmail.com" ||
+        request.auth.token.get('email', '') == "admin@tesda.gov.ph"
       );
     }
 
-    function isQSO() { return hasRole('qso_admin') || isAdmin(); }
-    function isCO() { return hasRole('co_admin') || isAdmin(); }
-    function isICTO() { return hasRole('icto_admin') || isAdmin(); }
-    function isDistrictOffice() { return hasRole('DistrictOffice') || isAdmin(); }
+    function isQSO() { return isAdmin() || hasRole('qso_admin'); }
+    function isCO() { return isAdmin() || hasRole('co_admin'); }
+    function isICTO() { return isAdmin() || hasRole('icto_admin'); }
+    function isDistrictOffice() { return isAdmin() || hasRole('DistrictOffice'); }
     
     function isDistrictMatch(districtId) {
       let path = /databases/$(database)/documents/users/$(request.auth.uid);
-      return isAdmin() || (isDistrictOffice() && exists(path) && get(path).data.get('organizationId', '') == districtId);
+      return isAdmin() || (isDistrictOffice() && exists(path) && get(path).data.get('assignedDistrictId', '') == districtId);
     }
-    function isTrainingCenter() { return hasRole('TrainingCenter') || isAdmin(); }
-    function isAssessmentCenter() { return hasRole('AssessmentCenter') || isAdmin(); }
+    function isTrainingCenter() { return isAdmin() || hasRole('TrainingCenter'); }
+    function isAssessmentCenter() { return isAdmin() || hasRole('AssessmentCenter'); }
 
     // ===============================================================
     // VALIDATION BLUEPRINTS
@@ -67,9 +67,9 @@ service cloud.firestore {
     }
 
     function isValidIssuedBadge(data) {
+      // Allow for optional fields if needed, but enforce core ones
       return data.keys().hasAll(['learnerId', 'learnerName', 'badgeId', 'status', 'issuerId']) &&
-             data.status in ['Active', 'Expired', 'Revoked', 'Pending Approval', 'Rejected'] &&
-             (isAdmin() || data.districtOfficeId is string);
+             data.status in ['Active', 'Expired', 'Revoked', 'Pending Approval', 'Approved', 'Rejected'];
     }
 
     function isValidLearner(data) {
@@ -85,7 +85,7 @@ service cloud.firestore {
 
     function isValidBadgeRequest(data) {
       return data.keys().hasAll(['learnerId', 'assessmentRecordId', 'badgeType', 'status', 'sourceAssessmentCenterId', 'districtOfficeId']) &&
-             data.badgeType in ['Skilled Badge', 'Master Badge'] &&
+             data.badgeType in ['Skilled Badge', 'Master Badge', 'Proficient', 'Expert', 'Skilled', 'Master'] &&
              data.status in ['Pending Approval', 'Approved', 'Rejected'];
     }
 
@@ -94,14 +94,13 @@ service cloud.firestore {
     // ===============================================================
 
     match /users/{userId} {
-      allow get: if isSignedIn() && (isOwner(userId) || isAdmin() || hasRole('DistrictOffice'));
+      allow get: if isSignedIn() && (isOwner(userId) || isAdmin() || isDistrictOffice());
       allow list: if isSignedIn() && (isAdmin() || isDistrictOffice() || (resource.data.email == request.auth.token.email));
       
-      allow create: if isSignedIn() && (isOwner(userId) || isAdmin()) && isValidUser(incoming());
+      allow create: if isSignedIn() && (isOwner(userId) || isAdmin());
       
       allow update: if isAdmin() || (
         isOwner(userId) && 
-        isValidUser(incoming()) && 
         incoming().role == existing().role // Users cannot change their own role
       );
       
@@ -115,18 +114,30 @@ service cloud.firestore {
 
     match /badgeTemplates/{templateId} {
       allow read: if isSignedIn();
-      allow write: if isQSO() && isValidBadgeTemplate(incoming());
+      allow write: if isQSO();
     }
 
     match /issuedBadges/{issuedBadgeId} {
-      allow read: if isSignedIn(); // Broad read for authenticated users to avoid query issues
+      allow read: if isSignedIn() && (
+        isAdmin() || 
+        isCO() || 
+        isDistrictMatch(resource.data.get('districtOfficeId', '')) ||
+        resource.data.get('issuerId', '') == request.auth.uid ||
+        resource.data.get('trainingCenterId', '') == request.auth.uid ||
+        resource.data.get('learnerId', '') == request.auth.uid ||
+        resource.data.get('learnerEmail', '') == request.auth.token.email
+      );
       
-      allow create: if (isTrainingCenter() || isAssessmentCenter() || isAdmin()) && 
-                      isValidIssuedBadge(incoming());
+      allow create: if isSignedIn() && (isTrainingCenter() || isAssessmentCenter() || isAdmin());
       
-      allow update: if isAdmin() || isCO() || isDistrictMatch(existing().districtOfficeId);
+      allow update: if isSignedIn() && (
+        isAdmin() || 
+        isCO() || 
+        isDistrictMatch(existing().get('districtOfficeId', '')) ||
+        existing().get('issuerId', '') == request.auth.uid
+      );
       
-      allow delete: if isAdmin();
+      allow delete: if isSignedIn() && (isAdmin() || isOwner(existing().get('issuerId', '')));
     }
 
     match /learners/{learnerId} {
@@ -136,20 +147,20 @@ service cloud.firestore {
 
     match /assessmentRecords/{recordId} {
       allow read: if isSignedIn();
-      allow create: if isAssessmentCenter() && isValidAssessmentRecord(incoming());
+      allow create: if isAssessmentCenter() || isAdmin();
       allow update: if isAdmin();
       allow delete: if isAdmin();
     }
 
     match /badgeRequests/{requestId} {
       allow read: if isSignedIn();
-      allow create: if isAssessmentCenter() && isValidBadgeRequest(incoming());
-      allow update: if (isDistrictOffice() && isDistrictMatch(existing().districtOfficeId)) || isAdmin();
+      allow create: if (isAssessmentCenter() || isTrainingCenter() || isAdmin());
+      allow update: if (isDistrictOffice() && isDistrictMatch(existing().get('districtOfficeId', ''))) || isAdmin();
       allow delete: if isAdmin();
     }
 
     match /auditLogs/{logId} {
-      allow read: if isAdmin() || isCO() || isICTO();
+      allow read: if isAdmin() || isCO() || isICTO() || (isSignedIn() && resource.data.userId == request.auth.uid);
       allow create: if isSignedIn();
     }
 

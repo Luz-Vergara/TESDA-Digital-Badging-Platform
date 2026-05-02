@@ -79,15 +79,22 @@ export default function BadgeTemplates() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const [formData, setFormData] = useState({
-    programName: '',
+    badgeName: '',
+    qualificationName: '',
+    qualificationCode: '',
     badgeType: 'Proficient' as BadgeTemplate['badgeType'],
+    credentialLevel: 'Unit of Competency' as BadgeTemplate['credentialLevel'],
+    relatedCompetency: '',
     description: '',
     criteria: '',
     validityMonths: 36,
     alignment: 'TESDA Training Standard',
     tags: '',
-    issuableBy: 'TrainingCenter' as 'TrainingCenter' | 'AssessmentCenter',
-    requiresApproval: true
+    issuableBy: ['TrainingCenter'] as BadgeTemplate['issuableBy'],
+    requiresApproval: true,
+    displayOrder: 1,
+    hierarchyVisible: true,
+    status: 'Approved' as BadgeTemplate['status']
   });
 
   useEffect(() => {
@@ -107,15 +114,56 @@ export default function BadgeTemplates() {
     return () => unsubTemplates();
   }, [isAuthReady]);
 
+  // Handle badge type changes to auto-set credential level and issuing logic
+  const handleBadgeTypeChange = (type: BadgeTemplate['badgeType']) => {
+    let level: BadgeTemplate['credentialLevel'] = 'Unit of Competency';
+    let issuers: BadgeTemplate['issuableBy'] = ['TrainingCenter'];
+    let order = 1;
+
+    switch(type) {
+      case 'Proficient':
+        level = 'Unit of Competency';
+        issuers = ['TrainingCenter'];
+        order = 1;
+        break;
+      case 'Expert':
+        level = 'Full Qualification / Certificate of Training';
+        issuers = ['TrainingCenter'];
+        order = 2;
+        break;
+      case 'Skilled':
+        level = 'Certificate of Competency';
+        issuers = ['AssessmentCenter', 'CertificationOffice'];
+        order = 3;
+        break;
+      case 'Master':
+        level = 'National Certificate';
+        issuers = ['AssessmentCenter', 'CertificationOffice'];
+        order = 4;
+        break;
+    }
+
+    setFormData(prev => ({
+      ...prev,
+      badgeType: type,
+      credentialLevel: level,
+      issuableBy: issuers,
+      displayOrder: order
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.qualificationName || !formData.badgeType || !formData.credentialLevel || !formData.status) {
+       alert("Please fill in all required fields.");
+       return;
+    }
+
     setIsSubmitting(true);
     try {
       const templateData = {
         ...formData,
-        tags: formData.tags.split(',').map(t => t.trim()),
-        issuableBy: [formData.issuableBy],
-        status: 'Active',
+        tags: formData.tags.split(',').map(t => t.trim()).filter(t => t !== ''),
         updatedAt: serverTimestamp()
       };
       
@@ -123,10 +171,10 @@ export default function BadgeTemplates() {
         await updateDoc(doc(db, 'badgeTemplates', editingTemplate.id!), templateData);
         
         await addDoc(collection(db, 'auditLogs'), {
-          action: `Updated Badge Template: ${formData.programName}`,
-          userName: 'Central Admin',
+          action: `Updated Badge Template: ${formData.badgeName}`,
+          userName: 'QSO Admin',
           timestamp: serverTimestamp(),
-          details: `Type: ${formData.badgeType}`
+          details: `Qualification: ${formData.qualificationName} | Type: ${formData.badgeType}`
         });
       } else {
         const newTemplate = {
@@ -136,10 +184,10 @@ export default function BadgeTemplates() {
         await addDoc(collection(db, 'badgeTemplates'), newTemplate);
         
         await addDoc(collection(db, 'auditLogs'), {
-          action: `Created Badge Template: ${formData.programName}`,
-          userName: 'Central Admin',
+          action: `Created Badge Template: ${formData.badgeName}`,
+          userName: 'QSO Admin',
           timestamp: serverTimestamp(),
-          details: `Type: ${formData.badgeType}`
+          details: `Qualification: ${formData.qualificationName} | Type: ${formData.badgeType}`
         });
       }
 
@@ -155,30 +203,44 @@ export default function BadgeTemplates() {
 
   const resetForm = () => {
     setFormData({
-      programName: '',
+      badgeName: '',
+      qualificationName: '',
+      qualificationCode: '',
       badgeType: 'Proficient',
+      credentialLevel: 'Unit of Competency',
+      relatedCompetency: '',
       description: '',
       criteria: '',
       validityMonths: 36,
       alignment: 'TESDA Training Standard',
       tags: '',
-      issuableBy: 'TrainingCenter',
-      requiresApproval: true
+      issuableBy: ['TrainingCenter'],
+      requiresApproval: true,
+      displayOrder: 1,
+      hierarchyVisible: true,
+      status: 'Approved'
     });
   };
 
   const handleEdit = (template: BadgeTemplate) => {
     setEditingTemplate(template);
     setFormData({
-      programName: template.programName,
+      badgeName: template.badgeName || '',
+      qualificationName: template.qualificationName || '',
+      qualificationCode: template.qualificationCode || '',
       badgeType: template.badgeType,
+      credentialLevel: template.credentialLevel || 'Unit of Competency',
+      relatedCompetency: template.relatedCompetency || '',
       description: template.description,
       criteria: template.criteria,
       validityMonths: template.validityMonths,
       alignment: template.alignment || 'TESDA Training Standard',
       tags: template.tags.join(', '),
-      issuableBy: template.issuableBy[0] as any,
-      requiresApproval: template.requiresApproval
+      issuableBy: template.issuableBy,
+      requiresApproval: template.requiresApproval,
+      displayOrder: template.displayOrder || 1,
+      hierarchyVisible: template.hierarchyVisible !== undefined ? template.hierarchyVisible : true,
+      status: template.status
     });
     setIsModalOpen(true);
   };
@@ -190,10 +252,10 @@ export default function BadgeTemplates() {
       await deleteDoc(doc(db, 'badgeTemplates', templateToDelete.id!));
       
       await addDoc(collection(db, 'auditLogs'), {
-        action: `Deleted Badge Template: ${templateToDelete.programName}`,
-        userName: 'Central Admin',
+        action: `Deleted Badge Template: ${templateToDelete.badgeName || templateToDelete.programName}`,
+        userName: 'QSO Admin',
         timestamp: serverTimestamp(),
-        details: `Type: ${templateToDelete.badgeType}`
+        details: `Qualification: ${templateToDelete.qualificationName} | Type: ${templateToDelete.badgeType}`
       });
 
       setIsDeleteModalOpen(false);
@@ -249,12 +311,12 @@ export default function BadgeTemplates() {
               <div className="grid gap-4 py-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
-                    <Label htmlFor="programName">Program Name</Label>
+                    <Label htmlFor="badgeName">Badge Name</Label>
                     <Input 
-                      id="programName" 
-                      value={formData.programName} 
-                      onChange={(e) => setFormData({...formData, programName: e.target.value})} 
-                      placeholder="e.g. Web Development NC III" 
+                      id="badgeName" 
+                      value={formData.badgeName} 
+                      onChange={(e) => setFormData({...formData, badgeName: e.target.value})} 
+                      placeholder="e.g. Associate Web Developer" 
                       required 
                     />
                   </div>
@@ -262,22 +324,74 @@ export default function BadgeTemplates() {
                     <Label htmlFor="badgeType">Badge Type</Label>
                     <Select 
                       value={formData.badgeType} 
-                      onValueChange={(v: any) => setFormData({...formData, badgeType: v})}
+                      onValueChange={(v: any) => handleBadgeTypeChange(v)}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select type" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Proficient">Proficient (Unit)</SelectItem>
-                        <SelectItem value="Expert">Expert (Program)</SelectItem>
-                        <SelectItem value="Skilled">Skilled (NC)</SelectItem>
-                        <SelectItem value="Master">Master (Advanced)</SelectItem>
+                        <SelectItem value="Proficient">Proficient</SelectItem>
+                        <SelectItem value="Expert">Expert</SelectItem>
+                        <SelectItem value="Skilled">Skilled</SelectItem>
+                        <SelectItem value="Master">Master</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="qualificationName">Qualification Name</Label>
+                    <Input 
+                      id="qualificationName" 
+                      value={formData.qualificationName} 
+                      onChange={(e) => setFormData({...formData, qualificationName: e.target.value})} 
+                      placeholder="e.g. 2D Animation NC III" 
+                      required 
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="qualificationCode">Qualification Code</Label>
+                    <Input 
+                      id="qualificationCode" 
+                      value={formData.qualificationCode} 
+                      onChange={(e) => setFormData({...formData, qualificationCode: e.target.value})} 
+                      placeholder="e.g. ICT-2D-2023" 
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="credentialLevel">Related Credential Level</Label>
+                    <Select 
+                      value={formData.credentialLevel} 
+                      onValueChange={(v: any) => setFormData({...formData, credentialLevel: v})}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select level" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Unit of Competency">Unit of Competency</SelectItem>
+                        <SelectItem value="Full Qualification / Certificate of Training">Full Qualification / Certificate of Training</SelectItem>
+                        <SelectItem value="Certificate of Competency">Certificate of Competency</SelectItem>
+                        <SelectItem value="National Certificate">National Certificate</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="relatedCompetency">Related Unit / COC / NC</Label>
+                    <Input 
+                      id="relatedCompetency" 
+                      value={formData.relatedCompetency} 
+                      onChange={(e) => setFormData({...formData, relatedCompetency: e.target.value})} 
+                      placeholder="e.g. UC1: Perform Computer Operations" 
+                    />
+                  </div>
+                </div>
+
                 <div className="grid gap-2">
-                  <Label htmlFor="description">Description</Label>
+                  <Label htmlFor="description">Badge Description</Label>
                   <Textarea 
                     id="description" 
                     value={formData.description} 
@@ -287,7 +401,7 @@ export default function BadgeTemplates() {
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="criteria">Competency / Criteria</Label>
+                  <Label htmlFor="criteria">Criteria for Earning the Badge</Label>
                   <Textarea 
                     id="criteria" 
                     value={formData.criteria} 
@@ -296,33 +410,91 @@ export default function BadgeTemplates() {
                     required 
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+
+                <div className="grid grid-cols-3 gap-4">
                   <div className="grid gap-2">
                     <Label htmlFor="validity">Validity (Months)</Label>
                     <Input 
                       id="validity" 
                       type="number"
                       value={formData.validityMonths} 
-                      onChange={(e) => setFormData({...formData, validityMonths: parseInt(e.target.value)})} 
+                      onChange={(e) => setFormData({...formData, validityMonths: parseInt(e.target.value) || 0})} 
                       required 
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="issuableBy">Issuing Entity</Label>
+                    <Label htmlFor="displayOrder">Display Order</Label>
+                    <Input 
+                      id="displayOrder" 
+                      type="number"
+                      value={formData.displayOrder} 
+                      onChange={(e) => setFormData({...formData, displayOrder: parseInt(e.target.value) || 0})} 
+                      required 
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="hierarchyVisible">Hierarchy Visible</Label>
                     <Select 
-                      value={formData.issuableBy} 
-                      onValueChange={(v: any) => setFormData({...formData, issuableBy: v})}
+                      value={formData.hierarchyVisible ? 'yes' : 'no'} 
+                      onValueChange={(v) => setFormData({...formData, hierarchyVisible: v === 'yes'})}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Select issuer" />
+                        <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="TrainingCenter">Training Center</SelectItem>
-                        <SelectItem value="AssessmentCenter">Assessment Center</SelectItem>
+                        <SelectItem value="yes">Yes</SelectItem>
+                        <SelectItem value="no">No</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label>Issuable By</Label>
+                    <div className="border rounded-md p-2 bg-slate-50 space-y-1">
+                      {['TrainingCenter', 'AssessmentCenter', 'CertificationOffice'].map((role) => (
+                        <div key={role} className="flex items-center gap-2">
+                          <input 
+                            type="checkbox" 
+                            id={`issuable-${role}`}
+                            checked={formData.issuableBy.includes(role as any)}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setFormData(prev => ({
+                                ...prev,
+                                issuableBy: checked 
+                                  ? [...prev.issuableBy, role as any]
+                                  : prev.issuableBy.filter(r => r !== role)
+                              }));
+                            }}
+                          />
+                          <Label htmlFor={`issuable-${role}`} className="text-xs font-normal cursor-pointer">
+                            {role === 'TrainingCenter' ? 'Training Center' : role === 'AssessmentCenter' ? 'Assessment Center' : 'Certification Office'}
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="status">Status</Label>
+                    <Select 
+                      value={formData.status} 
+                      onValueChange={(v: any) => setFormData({...formData, status: v})}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Approved">Approved</SelectItem>
+                        <SelectItem value="Active">Active</SelectItem>
+                        <SelectItem value="Draft">Draft</SelectItem>
+                        <SelectItem value="Archived">Archived</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
                 <div className="grid gap-2">
                   <Label htmlFor="tags">Tags (comma separated)</Label>
                   <Input 
@@ -380,10 +552,13 @@ export default function BadgeTemplates() {
             <Table>
               <TableHeader className="bg-slate-50">
                 <TableRow>
-                  <TableHead className="w-[300px]">Program / Badge</TableHead>
+                  <TableHead className="w-[200px]">Badge Name</TableHead>
+                  <TableHead>Qualification</TableHead>
                   <TableHead>Type</TableHead>
+                  <TableHead>Credential Level</TableHead>
                   <TableHead>Issuable By</TableHead>
                   <TableHead>Validity</TableHead>
+                  <TableHead>Hierarchy</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -394,9 +569,12 @@ export default function BadgeTemplates() {
                     <TableRow key={template.id} className="hover:bg-slate-50/50 transition-colors">
                       <TableCell>
                         <div className="flex flex-col">
-                          <span className="font-bold text-slate-900">{template.programName}</span>
+                          <span className="font-bold text-slate-900">{template.badgeName || template.programName}</span>
                           <span className="text-xs text-slate-500 line-clamp-1">{template.description}</span>
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm text-slate-600">{template.qualificationName || template.programName}</span>
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className={
@@ -409,19 +587,37 @@ export default function BadgeTemplates() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-2 text-sm text-slate-600">
-                          <Settings className="h-3 w-3" />
-                          {template.issuableBy.join(', ')}
+                        <span className="text-xs text-slate-500">{template.credentialLevel || 'N/A'}</span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1">
+                          {template.issuableBy.map(role => (
+                            <div key={role} className="flex items-center gap-1 text-[10px] text-slate-600">
+                              <Settings className="h-2 w-2" />
+                              {role === 'TrainingCenter' ? 'Training Center' : role === 'AssessmentCenter' ? 'Assessment Center' : 'Certification Office'}
+                            </div>
+                          ))}
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2 text-sm text-slate-600">
                           <Calendar className="h-3 w-3" />
-                          {template.validityMonths} Months
+                          {template.validityMonths} m
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-none">
+                        {template.hierarchyVisible ? (
+                           <Badge variant="outline" className="bg-emerald-50 text-emerald-600 border-emerald-100 text-[10px]">Visible</Badge>
+                        ) : (
+                           <Badge variant="outline" className="bg-slate-50 text-slate-400 border-slate-100 text-[10px]">Hidden</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={
+                          template.status === 'Approved' || template.status === 'Active' ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 border-none' :
+                          template.status === 'Draft' ? 'bg-slate-100 text-slate-700 hover:bg-slate-200 border-none' :
+                          'bg-rose-100 text-rose-700 hover:bg-rose-200 border-none'
+                        }>
                           {template.status}
                         </Badge>
                       </TableCell>

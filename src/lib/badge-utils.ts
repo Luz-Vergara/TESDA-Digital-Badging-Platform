@@ -12,10 +12,13 @@ export const getBadgeColor = (type: string) => {
 
 export const getStatusColor = (status: string) => {
   switch (status) {
-    case 'Active': return 'bg-emerald-500';
-    case 'Expired': return 'bg-rose-500';
+    case 'Active':
+    case 'Approved': return 'bg-emerald-500';
+    case 'Pending':
+    case 'Pending Approval': return 'bg-orange-500';
+    case 'Rejected': return 'bg-rose-500';
+    case 'Expired': return 'bg-slate-500';
     case 'Revoked': return 'bg-gray-500';
-    case 'Pending Approval': return 'bg-amber-500';
     default: return 'bg-slate-400';
   }
 };

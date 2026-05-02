@@ -1040,6 +1040,17 @@ function SubmitRequestView({ organization, districtOffice, initialLearner }: any
   const [allLearnerRecords, setAllLearnerRecords] = useState<AssessmentRecord[]>([]);
   const [selectedRecord, setSelectedRecord] = useState<string>('');
 
+  const [templates, setTemplates] = useState<BadgeTemplate[]>([]);
+
+  // Fetch Badge Templates to link badgeId
+  useEffect(() => {
+    const q = query(collection(db, 'badgeTemplates'));
+    const unsub = onSnapshot(q, (snapshot) => {
+      setTemplates(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BadgeTemplate)));
+    });
+    return unsub;
+  }, []);
+
   // Sync with prop if it changes
   useEffect(() => {
     if (initialLearner) setSelectedLearner(initialLearner);
@@ -1135,13 +1146,21 @@ function SubmitRequestView({ organization, districtOffice, initialLearner }: any
     
     setLoading(true);
     try {
+      // Try to find a matching template by qualification and badge type
+      const matchedTemplate = templates.find(t => 
+        (t.qualificationName === (record?.qualification || formData.qualification)) && 
+        (t.badgeType.includes(formData.badgeType?.split(' ')[0] || ''))
+      );
+
       const requestData = {
         ...formData,
         learnerId: selectedLearner.id,
         learnerName: `${selectedLearner.firstName} ${selectedLearner.lastName}`,
         learnerEmail: selectedLearner.email || '',
-        assessmentRecordId: selectedRecord,
+        badgeId: matchedTemplate?.id || '',
         badgeName: record?.qualification || '',
+        programName: record?.qualification || '',
+        assessmentRecordId: selectedRecord,
         qualification: record?.qualification || '',
         pathway: record?.pathway || '',
         issuerId: organization.id,

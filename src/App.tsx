@@ -5,6 +5,7 @@ import Home from './pages/public/Home';
 import Login from './pages/public/Login';
 import Verification from './pages/employer/Verification';
 import LearnerDashboard from './pages/learner/LearnerDashboard';
+import MyBadgeWallet from './pages/learner/MyBadgeWallet';
 import DistrictOfficeDashboard from './pages/districtoffice/DistrictOfficeDashboard';
 import ApprovalQueue from './pages/districtoffice/ApprovalQueue';
 import RenewalManagement from './pages/districtoffice/RenewalManagement';
@@ -18,6 +19,7 @@ import BadgeTemplates from './pages/admin/BadgeTemplates';
 
 // Office Modules
 import QSODashboard from './pages/qso/QSODashboard';
+import BadgeHierarchy from './pages/qso/BadgeHierarchy';
 import CODashboard from './pages/co/CODashboard';
 import ICTODashboard from './pages/icto/ICTODashboard';
 
@@ -42,8 +44,8 @@ export default function App() {
           {/* Learner Portal */}
           <Route path="/learner" element={<DashboardLayout role="Learner" />}>
             <Route index element={<LearnerDashboard />} />
-            <Route path="wallet" element={<LearnerDashboard />} />
-            <Route path="hierarchy" element={<div className="p-8 text-center text-slate-500 font-medium">Badge Hierarchy (QSO Module Syncing...)</div>} />
+            <Route path="wallet" element={<MyBadgeWallet />} />
+            <Route path="hierarchy" element={<BadgeHierarchy />} />
             <Route path="programs" element={<div className="p-8 text-center text-slate-500 font-medium">Recommended Programs (Coming Soon)</div>} />
           </Route>
 
@@ -63,7 +65,7 @@ export default function App() {
             <Route index element={<QSODashboard />} />
             <Route path="templates" element={<BadgeTemplates />} />
             <Route path="metadata" element={<div className="p-8 text-center text-slate-500">Metadata Standards Management</div>} />
-            <Route path="hierarchy" element={<div className="p-8 text-center text-slate-500">Badge Hierarchy View</div>} />
+            <Route path="hierarchy" element={<BadgeHierarchy />} />
             <Route path="alignment" element={<div className="p-8 text-center text-slate-500">Qualification Alignment Tool</div>} />
             <Route path="conventions" element={<div className="p-8 text-center text-slate-500">Naming Conventions Policy</div>} />
           </Route>

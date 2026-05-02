@@ -59,16 +59,22 @@ export interface Organization {
 
 export interface BadgeTemplate {
   id: string;
-  programName: string;
+  badgeName: string;
+  qualificationName: string;
+  qualificationCode: string;
   badgeType: 'Proficient' | 'Expert' | 'Skilled' | 'Master';
+  credentialLevel: 'Unit of Competency' | 'Full Qualification / Certificate of Training' | 'Certificate of Competency' | 'National Certificate';
+  relatedCompetency: string;
   description: string;
   criteria: string;
   validityMonths: number;
   alignment: string;
   tags: string[];
-  issuableBy: ('TrainingCenter' | 'AssessmentCenter')[];
+  issuableBy: ('TrainingCenter' | 'AssessmentCenter' | 'CertificationOffice')[];
   requiresApproval: boolean;
-  status: 'Active' | 'Draft' | 'Archived';
+  displayOrder: number;
+  hierarchyVisible: boolean;
+  status: 'Approved' | 'Draft' | 'Archived' | 'Active';
 }
 
 export interface AuditLog {
