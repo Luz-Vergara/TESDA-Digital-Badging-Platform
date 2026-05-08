@@ -95,7 +95,7 @@ export default function DistrictOfficeDashboard() {
       const docs = snapshot.docs.map(doc => doc.data());
       setStats(prev => ({
         ...prev,
-        pending: docs.filter(d => d.status === 'Pending Approval').length,
+        pending: docs.filter(d => d.status === 'Pending Approval' || d.status === 'Pending District Approval').length,
         approved: docs.filter(d => d.status === 'Approved' || d.status === 'Published').length,
         rejected: docs.filter(d => d.status === 'Rejected').length,
         expiring: docs.filter(d => d.status === 'Expiring').length // Assuming such status exists or would be calculated

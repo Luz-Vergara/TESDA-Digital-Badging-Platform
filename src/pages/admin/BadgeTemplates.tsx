@@ -69,7 +69,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { BadgeTemplate } from '@/src/types';
 
 export default function BadgeTemplates() {
-  const { isAuthReady } = useFirebase();
+  const { user, isAuthReady } = useFirebase();
   const [templates, setTemplates] = useState<BadgeTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -77,6 +77,9 @@ export default function BadgeTemplates() {
   const [editingTemplate, setEditingTemplate] = useState<BadgeTemplate | null>(null);
   const [templateToDelete, setTemplateToDelete] = useState<BadgeTemplate | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  const [searchQuery, setSearchQuery] = useState('');
+  const [qualificationFilter, setQualificationFilter] = useState('all');
   
   const [formData, setFormData] = useState({
     badgeName: '',
@@ -98,7 +101,7 @@ export default function BadgeTemplates() {
   });
 
   useEffect(() => {
-    if (!isAuthReady) return;
+    if (!isAuthReady || !user) return;
 
     const unsubTemplates = onSnapshot(collection(db, 'badgeTemplates'), (snapshot) => {
       const templateData = snapshot.docs.map(doc => ({
@@ -113,6 +116,18 @@ export default function BadgeTemplates() {
 
     return () => unsubTemplates();
   }, [isAuthReady]);
+
+  const uniqueQualifications = Array.from(new Set(templates.map(t => t.qualificationName).filter(Boolean)));
+
+  const filteredTemplates = templates.filter(template => {
+    const matchesSearch = 
+      (template.badgeName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (template.qualificationName || '').toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesQual = qualificationFilter === 'all' || template.qualificationName === qualificationFilter;
+    
+    return matchesSearch && matchesQual;
+  });
 
   // Handle badge type changes to auto-set credential level and issuing logic
   const handleBadgeTypeChange = (type: BadgeTemplate['badgeType']) => {
@@ -154,6 +169,10 @@ export default function BadgeTemplates() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) {
+      alert("Auth session not ready. Please refresh or log in again.");
+      return;
+    }
     if (!formData.qualificationName || !formData.badgeType || !formData.credentialLevel || !formData.status) {
        alert("Please fill in all required fields.");
        return;
@@ -545,10 +564,38 @@ export default function BadgeTemplates() {
             <FileText className="h-5 w-5 text-blue-600" />
             Badge Template Library
           </CardTitle>
-          <CardDescription>System-wide standards for all digital credentials.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-md border border-slate-100">
+        <CardDescription>System-wide standards for all digital credentials.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-col md:flex-row gap-4 mb-6">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Input 
+              placeholder="Search by badge name or qualification..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <div className="w-full md:w-[250px]">
+            <Select value={qualificationFilter} onValueChange={setQualificationFilter}>
+              <SelectTrigger>
+                <div className="flex items-center gap-2">
+                  <Filter className="h-4 w-4 text-slate-400" />
+                  <SelectValue placeholder="All Qualifications" />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Qualifications</SelectItem>
+                {uniqueQualifications.map(qual => (
+                  <SelectItem key={qual} value={qual}>{qual}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="rounded-md border border-slate-100">
             <Table>
               <TableHeader className="bg-slate-50">
                 <TableRow>
@@ -564,8 +611,8 @@ export default function BadgeTemplates() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {templates.length > 0 ? (
-                  templates.map((template) => (
+                {filteredTemplates.length > 0 ? (
+                  filteredTemplates.map((template) => (
                     <TableRow key={template.id} className="hover:bg-slate-50/50 transition-colors">
                       <TableCell>
                         <div className="flex flex-col">
@@ -655,8 +702,8 @@ export default function BadgeTemplates() {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-32 text-center text-slate-500">
-                      No templates found.
+                    <TableCell colSpan={9} className="h-32 text-center text-slate-500">
+                      {templates.length === 0 ? "No templates found." : "No templates match your search filters."}
                     </TableCell>
                   </TableRow>
                 )}

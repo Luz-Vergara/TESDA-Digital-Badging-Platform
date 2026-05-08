@@ -11,14 +11,23 @@ export const getBadgeColor = (type: string) => {
 };
 
 export const getStatusColor = (status: string) => {
-  switch (status) {
-    case 'Active':
-    case 'Approved': return 'bg-emerald-500';
-    case 'Pending':
-    case 'Pending Approval': return 'bg-orange-500';
-    case 'Rejected': return 'bg-rose-500';
-    case 'Expired': return 'bg-slate-500';
-    case 'Revoked': return 'bg-gray-500';
-    default: return 'bg-slate-400';
+  const s = status?.toLowerCase() || '';
+  
+  if (s.includes('published') || s === 'active' || s === 'approved') {
+    return 'bg-emerald-500';
   }
+  
+  if (s.includes('forwarded') || s.includes('submitted') || s.includes('review') || s.includes('generation') || s.includes('pending')) {
+    return 'bg-orange-500';
+  }
+  
+  if (s.includes('rejected') || s.includes('returned') || s.includes('revoked') || s.includes('suspended')) {
+    return 'bg-rose-500';
+  }
+  
+  if (s === 'expired') {
+    return 'bg-slate-500';
+  }
+  
+  return 'bg-slate-400';
 };

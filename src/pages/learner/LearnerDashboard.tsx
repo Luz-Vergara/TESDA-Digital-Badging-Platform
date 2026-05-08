@@ -39,8 +39,11 @@ export default function LearnerDashboard() {
         ...doc.data()
       })) as any[];
       
-      // Filter for published badges in memory to avoid query complexity issues during setup
-      const badges = allBadges.filter(b => b.publishedToLearner === true) as unknown as BadgeMetadata[];
+      // Filter for published or pending badges
+      const badges = allBadges.filter(b => 
+        b.publishedToLearner === true || 
+        ['Pending Approval', 'Submitted to CO', 'Under CO Review', 'Badge ID Generated', 'Forwarded to District Office'].includes(b.status)
+      ) as unknown as BadgeMetadata[];
       
       setEarnedBadges(badges);
       setLoading(false);
@@ -156,7 +159,12 @@ export default function LearnerDashboard() {
       {/* Welcome Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Welcome back, {userProfile?.name?.split(' ')[0]}!</h1>
+          <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-2">
+            Welcome back, {userProfile?.name?.split(' ')[0]}!
+            {earnedBadges.some(b => b.pathway === 'Recognition of Prior Learning (RPL)') && (
+              <Badge className="bg-purple-600 text-white text-[10px] uppercase tracking-wider py-0.5 px-2">RPL Pathway</Badge>
+            )}
+          </h1>
           <p className="text-slate-500">You have earned {earnedBadges.length} badges. Keep it up!</p>
         </div>
         <div className="flex gap-3">

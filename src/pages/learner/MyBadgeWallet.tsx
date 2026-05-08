@@ -34,7 +34,11 @@ export default function MyBadgeWallet() {
         ...doc.data()
       })) as any[];
       
-      const b = allBadges.filter(badge => badge.publishedToLearner === true) as unknown as BadgeMetadata[];
+      // Filter out rejected badges if we only want to show earned and pending
+      const b = allBadges.filter(badge => 
+        badge.publishedToLearner === true || 
+        ['Pending Approval', 'Submitted to CO', 'Under CO Review', 'Badge ID Generated', 'Forwarded to District Office'].includes(badge.status)
+      ) as unknown as BadgeMetadata[];
       
       setBadges(b);
       setLoading(false);
@@ -122,8 +126,10 @@ export default function MyBadgeWallet() {
                     <Award className="h-5 w-5" />
                   </div>
                   <div className="flex items-center gap-1.5 px-2 py-0.5 bg-slate-50 rounded-full border border-slate-100">
-                    <div className={`w-1.5 h-1.5 rounded-full ${getStatusColor(badge.status)}`} />
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{badge.status}</span>
+                    <div className={`w-1.5 h-1.5 rounded-full ${badge.publishedToLearner ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                      {badge.publishedToLearner ? 'Published' : (badge.status === 'Submitted to CO' ? 'CO Review' : 'Pending')}
+                    </span>
                   </div>
                 </div>
                 
@@ -137,15 +143,15 @@ export default function MyBadgeWallet() {
                 <div className="space-y-2 pt-2 border-t border-slate-100">
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-slate-400 flex items-center gap-1.5">
-                      <Calendar className="h-3 w-3" /> Issued
+                      <Calendar className="h-3 w-3" /> Status
                     </span>
-                    <span className="text-slate-700 font-medium">{badge.issuanceDate}</span>
+                    <span className="text-slate-700 font-medium truncate max-w-[120px]">{badge.status}</span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-slate-400 flex items-center gap-1.5">
                       <ShieldCheck className="h-3 w-3" /> Badge ID
                     </span>
-                    <span className="text-slate-700 font-mono bg-slate-50 px-1 rounded">{badge.verificationId}</span>
+                    <span className="text-slate-700 font-mono bg-slate-50 px-1 rounded">{badge.verificationId || (badge as any).certificationId || 'PENDING'}</span>
                   </div>
                 </div>
               </CardContent>

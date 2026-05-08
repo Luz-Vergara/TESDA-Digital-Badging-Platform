@@ -79,7 +79,8 @@ export default function BadgeRequests() {
     badgeTemplateId: '',
     sourceAssessmentCenterId: '',
     evidenceUrl: '',
-    remarks: ''
+    remarks: '',
+    pathway: 'Standard' as 'Standard' | 'Recognition of Prior Learning (RPL)'
   });
   const [editingRequestId, setEditingRequestId] = useState<string | null>(null);
 
@@ -139,7 +140,8 @@ export default function BadgeRequests() {
       badgeTemplateId: request.badgeId,
       sourceAssessmentCenterId: (request as any).sourceAssessmentCenterId || '',
       evidenceUrl: request.evidenceUrl || '',
-      remarks: request.remarks || ''
+      remarks: request.remarks || '',
+      pathway: (request as any).pathway || 'Standard'
     });
     setIsSubmitModalOpen(true);
   };
@@ -185,6 +187,7 @@ export default function BadgeRequests() {
         updatedAt: serverTimestamp(),
         evidenceUrl: formData.evidenceUrl,
         remarks: formData.remarks,
+        pathway: formData.pathway,
         criteria: template.criteria,
         rejectionComment: null // Clear previous rejection feedback
       };
@@ -213,7 +216,7 @@ export default function BadgeRequests() {
 
       setIsSubmitModalOpen(false);
       setEditingRequestId(null);
-      setFormData({ learnerId: '', badgeTemplateId: '', sourceAssessmentCenterId: '', evidenceUrl: '', remarks: '' });
+      setFormData({ learnerId: '', badgeTemplateId: '', sourceAssessmentCenterId: '', evidenceUrl: '', remarks: '', pathway: 'Standard' });
     } catch (error) {
       handleFirestoreError(error, editingRequestId ? OperationType.UPDATE : OperationType.CREATE, 'issuedBadges');
     } finally {
@@ -371,43 +374,66 @@ export default function BadgeRequests() {
                 </div>
 
                 <div className="grid gap-2">
-                  <Label>Source Assessment Center</Label>
+                  <Label>Issuance Pathway</Label>
                   <Select 
-                    value={formData.sourceAssessmentCenterId} 
-                    onValueChange={(v) => setFormData(prev => ({ ...prev, sourceAssessmentCenterId: v }))}
+                    value={formData.pathway} 
+                    onValueChange={(v: any) => setFormData(prev => ({ ...prev, pathway: v }))}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Where was the assessment taken?" />
+                      <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {assessmentCenters.map(ac => (
-                        <SelectItem key={ac.id} value={ac.id}>
-                          {ac.name}
-                        </SelectItem>
-                      ))}
-                      <SelectItem value="Other/Manual">Other / RPL Evaluation</SelectItem>
+                      <SelectItem value="Standard">Standard (Training-based)</SelectItem>
+                      <SelectItem value="Recognition of Prior Learning (RPL)">Recognition of Prior Learning (RPL)</SelectItem>
                     </SelectContent>
                   </Select>
+                  <p className="text-[10px] text-slate-500 italic">
+                    * RPL pathway allows issuing higher-level badges without prerequisite foundational units.
+                  </p>
                 </div>
 
-                <div className="grid gap-2">
-                  <Label htmlFor="evidenceUrl">Evidence URL (Optional)</Label>
-                  <Input 
-                    id="evidenceUrl" 
-                    placeholder="https://link-to-portfolio-or-certificate.com"
-                    value={formData.evidenceUrl}
-                    onChange={(e) => setFormData(prev => ({ ...prev, evidenceUrl: e.target.value }))}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="remarks">Remarks / Notes</Label>
-                  <Textarea 
-                    id="remarks" 
-                    placeholder="Add any additional context for the reviewer..."
-                    value={formData.remarks}
-                    onChange={(e) => setFormData(prev => ({ ...prev, remarks: e.target.value }))}
-                  />
-                </div>
+                {formData.pathway === 'Recognition of Prior Learning (RPL)' && (
+                  <>
+                    <div className="grid gap-2">
+                      <Label>Source Assessment Center</Label>
+                      <Select 
+                        value={formData.sourceAssessmentCenterId} 
+                        onValueChange={(v) => setFormData(prev => ({ ...prev, sourceAssessmentCenterId: v }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Where was the assessment taken?" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {assessmentCenters.map(ac => (
+                            <SelectItem key={ac.id} value={ac.id}>
+                              {ac.name}
+                            </SelectItem>
+                          ))}
+                          <SelectItem value="Other/Manual">Other / RPL Evaluation</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label htmlFor="evidenceUrl">Evidence URL (Optional)</Label>
+                      <Input 
+                        id="evidenceUrl" 
+                        placeholder="https://link-to-portfolio-or-certificate.com"
+                        value={formData.evidenceUrl}
+                        onChange={(e) => setFormData(prev => ({ ...prev, evidenceUrl: e.target.value }))}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="remarks">Remarks / Notes</Label>
+                      <Textarea 
+                        id="remarks" 
+                        placeholder="Add any additional context for the reviewer..."
+                        value={formData.remarks}
+                        onChange={(e) => setFormData(prev => ({ ...prev, remarks: e.target.value }))}
+                      />
+                    </div>
+                  </>
+                )}
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsSubmitModalOpen(false)}>Cancel</Button>

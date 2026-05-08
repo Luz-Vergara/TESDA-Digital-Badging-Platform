@@ -46,11 +46,13 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
     setIsSubmitting(true);
     try {
       await updateDoc(doc(db, 'issuedBadges', request.id), {
-        status: 'Approved',
+        status: 'Published to Learner Wallet',
         publishedToLearner: true,
+        districtApprovalStatus: 'Approved',
+        publicationStatus: 'Published',
         approvedBy: user.uid,
         approvedAt: serverTimestamp(),
-        expiryDate: request.expiryDate || null // Could calculate based on template
+        expiryDate: request.expiryDate || null 
       });
 
       await addDoc(collection(db, 'auditLogs'), {
@@ -73,9 +75,10 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
     setIsSubmitting(true);
     try {
       await updateDoc(doc(db, 'issuedBadges', request.id), {
-        status: 'Rejected',
-        publishedToLearner: true, // Show to learner so they know it was rejected
+        status: 'Returned by District Office',
+        publishedToLearner: true, 
         rejectionComment,
+        districtApprovalStatus: 'Rejected',
         approvedBy: user.uid,
         approvedAt: serverTimestamp()
       });
@@ -142,6 +145,14 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
                 <p className="text-[10px] text-slate-500 uppercase font-bold">Badge Type</p>
                 <Badge variant="outline" className="mt-1">
                   {request.badgeType}
+                </Badge>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-[10px] text-slate-500 uppercase font-bold">Issuance Pathway</p>
+                <Badge className={request.pathway === 'Recognition of Prior Learning (RPL)' ? 'bg-purple-100 text-purple-700 border-purple-200' : 'bg-blue-100 text-blue-700 border-blue-200'}>
+                  {request.pathway || 'Standard'}
                 </Badge>
               </div>
             </div>
@@ -212,7 +223,7 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
-          {request.status === 'Pending Approval' && (
+          {(request.status === 'Pending Approval' || request.status === 'Forwarded to District Office') && (
             <>
               {!showRejectForm ? (
                 <>
@@ -222,15 +233,15 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
                     onClick={() => setShowRejectForm(true)}
                   >
                     <XCircle className="h-4 w-4 mr-2" />
-                    Reject
+                    Return for Correction
                   </Button>
                   <Button 
-                    className="bg-emerald-600 hover:bg-emerald-700"
+                    className="bg-emerald-600 hover:bg-emerald-700 font-bold"
                     onClick={handleApprove}
                     disabled={isSubmitting}
                   >
                     <CheckCircle2 className="h-4 w-4 mr-2" />
-                    Approve & Publish
+                    Approve for Publication
                   </Button>
                 </>
               ) : (
@@ -241,13 +252,13 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
                     onClick={handleReject}
                     disabled={isSubmitting || !rejectionComment}
                   >
-                    Confirm Rejection
+                    Confirm Return
                   </Button>
                 </>
               )}
             </>
           )}
-          {request.status !== 'Pending' && (
+          {request.status !== 'Pending Approval' && request.status !== 'Forwarded to District Office' && (
             <Button variant="outline" onClick={onClose}>Close</Button>
           )}
         </DialogFooter>

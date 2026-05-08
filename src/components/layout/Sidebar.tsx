@@ -31,7 +31,11 @@ import {
   Search,
   Plus,
   TrendingUp,
-  ClipboardList
+  ClipboardList,
+  Clock,
+  Hash,
+  ArrowRight,
+  RefreshCw
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
@@ -102,11 +106,15 @@ export default function Sidebar({ role }: SidebarProps) {
 
     if (role === 'co_admin') {
       return [
-        ...common,
-        { name: 'Skilled & Master Oversight', href: '/co/oversight', icon: ShieldCheck },
-        { name: 'Validity & Renewal Rules', href: '/co/renewal', icon: ClipboardCheck },
-        { name: 'Revocation / Suspension', href: '/co/revocation', icon: ShieldAlert },
-        { name: 'Certification Monitoring', href: '/co/monitoring', icon: Activity },
+        { name: 'Dashboard', href: '/co', icon: LayoutDashboard },
+        { name: 'Notifications', href: '/co?view=notifications', icon: Bell },
+        { name: 'Skilled & Master Requests', href: '/co?view=requests', icon: Clock },
+        { name: 'Badge ID Generation', href: '/co?view=id-generation', icon: Hash },
+        { name: 'Forward to District Office', href: '/co?view=forwarding', icon: ArrowRight },
+        { name: 'Validity Monitoring', href: '/co?view=validity', icon: ShieldCheck },
+        { name: 'Renewal Management', href: '/co?view=renewal', icon: RefreshCw },
+        { name: 'Revocation / Suspension', href: '/co?view=revocation', icon: ShieldAlert },
+        { name: 'Certification Reports', href: '/co?view=reports', icon: TrendingUp },
       ];
     }
 
@@ -161,14 +169,27 @@ export default function Sidebar({ role }: SidebarProps) {
   const links = getLinks();
 
   return (
-    <aside className="w-64 bg-white border-r border-slate-200 flex flex-col h-[calc(100vh-64px)] sticky top-16">
+    <aside className={cn(
+      "w-64 border-r border-slate-200 flex flex-col h-[calc(100vh-64px)] sticky top-16 transition-all",
+      role === 'co_admin' ? "bg-white" : "bg-white"
+    )}>
       <div className="p-4">
-        <div className="px-3 py-2 mb-6 bg-slate-50 rounded-lg border border-slate-100">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Current Role</p>
-          <p className="text-sm font-semibold text-slate-900">{role.replace(/([A-Z])/g, ' $1').trim()}</p>
-        </div>
+        {role === 'co_admin' ? (
+          <div className="p-5 bg-blue-600 rounded-2xl shadow-lg shadow-blue-100/50 mb-6 uppercase">
+            <p className="text-[10px] font-bold text-blue-100 uppercase tracking-widest mb-1 opacity-80">Certification Authority</p>
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-white" />
+              <p className="font-bold text-white text-sm">Central Office</p>
+            </div>
+          </div>
+        ) : (
+          <div className="px-3 py-2 mb-6 bg-slate-50 rounded-lg border border-slate-100">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Current Role</p>
+            <p className="text-sm font-semibold text-slate-900">{role.replace(/([A-Z])/g, ' $1').trim()}</p>
+          </div>
+        )}
         
-        <nav className="space-y-1">
+        <nav className="space-y-1.5">
           {links.map((link) => {
             if (link.type === 'dropdown') {
               return (
@@ -217,23 +238,28 @@ export default function Sidebar({ role }: SidebarProps) {
               );
             }
 
-            const isActive = location.pathname === link.href;
+            const isActive = link.href === '/co' 
+              ? (location.pathname === '/co' && !location.search)
+              : (link.href?.includes('?view=') 
+                  ? location.search === '?' + link.href.split('?')[1]
+                  : location.pathname === link.href);
+
             return (
               <Link
                 key={link.name}
                 to={link.href!}
                 className={cn(
-                  "flex items-center justify-between px-3 py-2 rounded-md text-sm font-medium transition-all group",
+                  "flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all group",
                   isActive 
-                    ? "bg-blue-50 text-blue-700" 
-                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                    ? "bg-blue-600 text-white shadow-md shadow-blue-100 font-bold" 
+                    : "text-slate-600 hover:bg-slate-100/80 hover:text-slate-900"
                 )}
               >
                 <div className="flex items-center gap-3">
-                  <link.icon className={cn("h-4 w-4", isActive ? "text-blue-600" : "text-slate-400 group-hover:text-slate-600")} />
+                  <link.icon className={cn("h-4 w-4", isActive ? "text-white" : "text-slate-400 group-hover:text-slate-600")} />
                   {link.name}
                 </div>
-                {isActive && <ChevronRight className="h-3 w-3" />}
+                {isActive && <div className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />}
               </Link>
             );
           })}

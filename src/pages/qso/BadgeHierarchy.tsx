@@ -15,7 +15,8 @@ import {
   Clock,
   XCircle,
   HelpCircle,
-  Info
+  Info,
+  TrendingUp
 } from 'lucide-react';
 import { collection, query, onSnapshot, where, getDocs } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
@@ -74,7 +75,7 @@ export default function BadgeHierarchy() {
   const isLearner = userProfile?.role === 'Learner';
 
   useEffect(() => {
-    if (!isAuthReady) return;
+    if (!isAuthReady || !user) return;
 
     // Fetch Approved or Active templates that are set to be visible in hierarchy
     const qTemplates = query(
@@ -112,7 +113,7 @@ export default function BadgeHierarchy() {
         const badges = snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
-        })).filter((b: any) => b.publishedToLearner === true);
+        }));
         setUserBadges(badges);
         setLoading(false);
       }, (error) => {
@@ -285,14 +286,24 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, userBad
   const totalBadges = badges.length;
   
   // Detailed status counts for learner
+  const isRPLCandidate = userBadges.some(ub => ub.pathway === 'Recognition of Prior Learning (RPL)');
+
   const stats = badges.reduce((acc, t) => {
     const record = userBadges.find(ub => ub.badgeId === t.id);
     const hasAnyInQual = userBadges.some(ub => ub.qualificationName === qual || ub.badgeName?.includes(qual));
 
+    const earnedStatuses = ['Active', 'Approved', 'Published to Learner Wallet', 'Approved for Publication'];
+    const pendingStatuses = [
+      'Pending', 'Pending Approval', 'Submitted to CO', 'Under CO Review', 
+      'Badge ID Generated', 'Forwarded to District Office', 
+      'Pending District Office Approval', 'Approved for Badge ID Generation'
+    ];
+    const rejectedStatuses = ['Rejected', 'Returned by CO', 'Returned by District Office'];
+
     if (record) {
-      if (record.status === 'Active' || record.status === 'Approved') acc.earned++;
-      else if (record.status === 'Pending' || record.status === 'Pending Approval') acc.pending++;
-      else if (record.status === 'Rejected') acc.rejected++;
+      if (earnedStatuses.includes(record.status)) acc.earned++;
+      else if (pendingStatuses.includes(record.status)) acc.pending++;
+      else if (rejectedStatuses.includes(record.status)) acc.rejected++;
       else acc.locked++;
     } else if (isLearner && (t.qualificationName === learnerQualification || hasAnyInQual)) {
       acc.available++;
@@ -322,7 +333,15 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, userBad
             <BookOpen className="h-7 w-7 text-white" />
           </div>
           <div className="flex-1">
-            <h3 className="font-bold text-xl text-slate-900 tracking-tight">{qual}</h3>
+            <div className="flex items-center gap-3">
+              <h3 className="font-bold text-xl text-slate-900 tracking-tight">{qual}</h3>
+              {isLearner && isRPLCandidate && (
+                <Badge className="bg-purple-100 text-purple-700 border-purple-200 hover:bg-purple-100 text-[10px] gap-1">
+                  <TrendingUp className="h-3 w-3" />
+                  RPL Fast-Track
+                </Badge>
+              )}
+            </div>
             
             {isLearner && (
               <div className="mt-3 space-y-2">
@@ -587,10 +606,18 @@ function HierarchyGroup({ title, level, items, colorClass, maxSlots, compact, us
           const record = userBadges.find(ub => ub.badgeId === badge.id);
           
           if (isLearner) {
+            const earnedStatuses = ['Active', 'Approved', 'Published to Learner Wallet', 'Approved for Publication'];
+            const pendingStatuses = [
+              'Pending', 'Pending Approval', 'Submitted to CO', 'Under CO Review', 
+              'Badge ID Generated', 'Forwarded to District Office', 
+              'Pending District Office Approval', 'Approved for Badge ID Generation'
+            ];
+            const rejectedStatuses = ['Rejected', 'Returned by CO', 'Returned by District Office'];
+
             if (record) {
-              if (record.status === 'Active' || record.status === 'Approved') status = 'Earned';
-              else if (record.status === 'Pending' || record.status === 'Pending Approval') status = 'Pending';
-              else if (record.status === 'Rejected') status = 'Rejected';
+              if (earnedStatuses.includes(record.status)) status = 'Earned';
+              else if (pendingStatuses.includes(record.status)) status = 'Pending';
+              else if (rejectedStatuses.includes(record.status)) status = 'Rejected';
             } else if (badge.qualificationName === learnerQualification || userBadges.some(ub => ub.qualificationName === badge.qualificationName)) {
               status = 'Eligible';
             }

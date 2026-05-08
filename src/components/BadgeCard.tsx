@@ -36,11 +36,11 @@ export default function BadgeCard({ badge, onViewDetails }: BadgeCardProps) {
         <div className="space-y-2 mt-4">
           <div className="flex items-center gap-2 text-xs text-slate-500">
             <Calendar className="h-3.5 w-3.5" />
-            Issued: {badge.issuanceDate}
+            Issued: {badge.issuanceDate || 'Pending Registration'}
           </div>
           <div className="flex items-center gap-2 text-xs text-slate-500">
             <ShieldCheck className="h-3.5 w-3.5" />
-            ID: {badge.verificationId}
+            ID: {badge.verificationId || (badge as any).certificationId || 'PENDING'}
           </div>
         </div>
       </CardContent>

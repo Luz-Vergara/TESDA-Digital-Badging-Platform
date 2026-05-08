@@ -7,7 +7,8 @@ import {
   XCircle,
   Clock,
   Building2,
-  User
+  User,
+  Hash
 } from 'lucide-react';
 import { collection, query, where, onSnapshot, orderBy, doc, getDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
@@ -62,18 +63,24 @@ export default function ApprovalQueue() {
       }
 
       const path = 'issuedBadges';
+      // Fetch all requests for this district to filter client-side
       const q = query(
         collection(db, path),
         where('districtOfficeId', 'in', districtIdentifiers),
-        where('status', '==', 'Pending Approval'),
         orderBy('submittedAt', 'desc')
       );
 
       const unsubscribe = onSnapshot(q, (snapshot) => {
-        const data = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as any[];
+        const data = snapshot.docs
+          .map(doc => ({ id: doc.id, ...doc.data() }))
+          .filter((req: any) => {
+            // Proficient badges (or normal items) that are directly routed here
+            const isStandardPending = req.status === 'Pending Approval';
+            // Skilled/Master badges that have been processed by CO
+            const isForwardedFromCO = req.status === 'Forwarded to District Office';
+            
+            return isStandardPending || isForwardedFromCO;
+          }) as any[];
         setRequests(data as any);
         setLoading(false);
       }, (error) => {
@@ -197,6 +204,12 @@ export default function ApprovalQueue() {
                         <div className="flex flex-col">
                           <span className="text-sm font-bold text-blue-700">{req.badgeName}</span>
                           <span className="text-[10px] text-slate-500 uppercase font-medium">{req.badgeType}</span>
+                          {req.certificationId && (
+                            <div className="mt-1 flex items-center gap-1.5 px-2 py-0.5 rounded bg-blue-50 border border-blue-100 w-fit">
+                              <Hash className="h-2.5 w-2.5 text-blue-600" />
+                              <span className="text-[9px] font-bold text-blue-600">ID: {req.certificationId}</span>
+                            </div>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>

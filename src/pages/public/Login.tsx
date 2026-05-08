@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, User, Building2, Briefcase, Lock, FileCheck, LayoutDashboard } from 'lucide-react';
-import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { Shield, User, Building2, Briefcase, Lock, FileCheck, LayoutDashboard, LogOut } from 'lucide-react';
+import { signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 import { auth, db } from '@/src/lib/firebase';
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp, collection, query, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,7 @@ import { useFirebase } from '@/src/lib/FirebaseProvider';
 export default function Login() {
   const navigate = useNavigate();
 
-  const { user, userProfile } = useFirebase();
+  const { user, userProfile, logout } = useFirebase();
 
   const getDashboardLink = () => {
     if (!userProfile) return '/login';
@@ -37,6 +37,7 @@ export default function Login() {
     setIsLoggingIn(true);
     setLoginError(null);
     const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
     
     try {
       const result = await signInWithPopup(auth, provider);
@@ -165,15 +166,23 @@ export default function Login() {
                 <LayoutDashboard className="h-5 w-5" />
                 Continue to {userProfile?.role || 'Learner'} Dashboard
               </Button>
+              <Button 
+                variant="outline"
+                className="w-full mt-3 h-11 border-slate-200 text-slate-600 gap-2 font-bold"
+                onClick={() => logout()}
+              >
+                <LogOut className="h-4 w-4" />
+                Sign Out to Switch Account
+              </Button>
               <p className="text-xs text-slate-400 mt-4 italic">Or select a different portal below to switch roles (for testing)</p>
             </div>
           )}
         </div>
 
-        <div className={`grid md:grid-cols-2 gap-6 transition-opacity duration-300 ${isLoggingIn ? 'opacity-50 pointer-events-none' : ''}`}>
+        <div className={`grid md:grid-cols-2 gap-6 transition-opacity duration-300 ${isLoggingIn || user ? 'opacity-50 pointer-events-none' : ''}`}>
           <Card 
-            className="hover:border-blue-500 cursor-pointer transition-all hover:shadow-md group relative overflow-hidden"
-            onClick={() => handleGoogleLogin('Learner')}
+            className={`hover:border-blue-500 cursor-pointer transition-all hover:shadow-md group relative overflow-hidden ${user ? 'grayscale opacity-50' : ''}`}
+            onClick={() => !user && handleGoogleLogin('Learner')}
           >
             {isLoggingIn && (
               <div className="absolute inset-0 bg-white/20 backdrop-blur-[1px] flex items-center justify-center z-10">
@@ -190,8 +199,8 @@ export default function Login() {
           </Card>
 
           <Card 
-            className="hover:border-blue-500 cursor-pointer transition-all hover:shadow-md group relative overflow-hidden"
-            onClick={() => handleGoogleLogin('Admin')}
+            className={`hover:border-blue-500 cursor-pointer transition-all hover:shadow-md group relative overflow-hidden ${user ? 'grayscale opacity-50' : ''}`}
+            onClick={() => !user && handleGoogleLogin('Admin')}
           >
             {isLoggingIn && (
               <div className="absolute inset-0 bg-white/20 backdrop-blur-[1px] flex items-center justify-center z-10">
@@ -208,8 +217,8 @@ export default function Login() {
           </Card>
 
           <Card 
-            className="hover:border-blue-500 cursor-pointer transition-all hover:shadow-md group relative overflow-hidden"
-            onClick={() => handleGoogleLogin('DistrictOffice')}
+            className={`hover:border-blue-500 cursor-pointer transition-all hover:shadow-md group relative overflow-hidden ${user ? 'grayscale opacity-50' : ''}`}
+            onClick={() => !user && handleGoogleLogin('DistrictOffice')}
           >
             {isLoggingIn && (
               <div className="absolute inset-0 bg-white/20 backdrop-blur-[1px] flex items-center justify-center z-10">
@@ -226,8 +235,8 @@ export default function Login() {
           </Card>
 
           <Card 
-            className="hover:border-blue-500 cursor-pointer transition-all hover:shadow-md group relative overflow-hidden"
-            onClick={() => handleGoogleLogin('TrainingCenter')}
+            className={`hover:border-blue-500 cursor-pointer transition-all hover:shadow-md group relative overflow-hidden ${user ? 'grayscale opacity-50' : ''}`}
+            onClick={() => !user && handleGoogleLogin('TrainingCenter')}
           >
             {isLoggingIn && (
               <div className="absolute inset-0 bg-white/20 backdrop-blur-[1px] flex items-center justify-center z-10">
@@ -244,8 +253,8 @@ export default function Login() {
           </Card>
 
           <Card 
-            className="hover:border-blue-500 cursor-pointer transition-all hover:shadow-md group relative overflow-hidden"
-            onClick={() => handleGoogleLogin('AssessmentCenter')}
+            className={`hover:border-blue-500 cursor-pointer transition-all hover:shadow-md group relative overflow-hidden ${user ? 'grayscale opacity-50' : ''}`}
+            onClick={() => !user && handleGoogleLogin('AssessmentCenter')}
           >
             {isLoggingIn && (
               <div className="absolute inset-0 bg-white/20 backdrop-blur-[1px] flex items-center justify-center z-10">

@@ -35,7 +35,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-type RequestStatus = 'Pending Approval' | 'Approved' | 'Rejected' | 'Returned for Correction' | 'Published' | 'Expired' | 'Revoked' | 'All';
+type RequestStatus = 'Pending Approval' | 'Pending Certification' | 'Pending District Approval' | 'Approved' | 'Rejected' | 'Returned for Correction' | 'Published' | 'Expired' | 'Revoked' | 'All';
 
 export default function BadgeRequestStatus() {
   const { userProfile } = useFirebase();
@@ -158,7 +158,9 @@ export default function BadgeRequestStatus() {
                   <DropdownMenuLabel>Filter by Status</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => setStatusFilter('All')}>All Requests</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setStatusFilter('Pending Approval')}>Pending Approval</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setStatusFilter('Pending Approval')}>Pending Approval (Normal)</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setStatusFilter('Pending Certification')}>Pending Certification (CO)</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setStatusFilter('Pending District Approval')}>Pending District Approval</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setStatusFilter('Approved')}>Approved</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setStatusFilter('Rejected')}>Rejected</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setStatusFilter('Returned for Correction')}>Returned for Correction</DropdownMenuItem>

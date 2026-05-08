@@ -1,5 +1,17 @@
 export type BadgeType = 'Proficient' | 'Expert' | 'Skilled' | 'Master';
-export type BadgeStatus = 'Active' | 'Expired' | 'Revoked' | 'Pending Approval';
+export type BadgeStatus = 
+  | 'Active' 
+  | 'Expired' 
+  | 'Revoked' 
+  | 'Pending Approval'
+  | 'Submitted to CO'
+  | 'Under CO Review'
+  | 'Approved for Badge ID Generation'
+  | 'Badge ID Generated'
+  | 'Forwarded to District Office'
+  | 'Published to Learner Wallet'
+  | 'Returned by CO'
+  | 'Returned by District Office';
 
 export interface BadgeMetadata {
   id: string;
@@ -19,6 +31,8 @@ export interface BadgeMetadata {
   status: BadgeStatus;
   termsOfUse: string;
   hierarchyLevel: number; // 1: Proficient, 2: Expert, 3: Skilled, 4: Master
+  badgeId?: string; // ID of the template it originated from
+  pathway?: string; // Added to distinguish RPL vs Standard
 }
 
 export interface User {
@@ -103,7 +117,7 @@ export interface BadgeIssuanceRequest {
   submittedByName: string;
   submittedAt: any;
   districtOfficeId: string;
-  status: 'Pending' | 'Approved' | 'Rejected' | 'Pending Approval';
+  status: BadgeStatus | 'Pending' | 'Approved' | 'Rejected';
   rejectionComment?: string;
   approvedBy?: string;
   approvedAt?: any;
@@ -111,6 +125,8 @@ export interface BadgeIssuanceRequest {
   evidenceUrl?: string;
   remarks?: string;
   expiryDate?: any;
+  pathway?: string;
+  qualificationName?: string;
 }
 
 export interface AssessmentRecord {
@@ -142,16 +158,25 @@ export interface BadgeRequest {
   id: string;
   learnerId: string;
   learnerName: string;
+  learnerEmail?: string;
+  badgeId?: string;
+  badgeName?: string;
+  programName?: string;
+  issuerId?: string;
+  issuerName?: string;
+  issuerType?: string;
   assessmentRecordId: string;
   badgeType: 'Skilled Badge' | 'Master Badge';
   qualification: string;
-  competency: string;
+  competency?: string;
   pathway: string;
   evidenceUrl: string;
   remarks: string;
-  status: 'Pending Approval' | 'Approved' | 'Rejected';
+  status: BadgeStatus | 'Approved' | 'Rejected';
   sourceAssessmentCenterId: string;
   districtOfficeId: string;
+  routingTier?: 'DistrictOffice' | 'CertificationOffice';
+  targetApproverId?: string;
   submittedBy: string;
   submittedAt: any;
   rejectionRemarks?: string;

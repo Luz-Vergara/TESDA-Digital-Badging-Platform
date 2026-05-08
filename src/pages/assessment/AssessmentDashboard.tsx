@@ -10,6 +10,7 @@ import {
   ArrowRight,
   UserPlus,
   History,
+  Award,
   LayoutDashboard,
   ClipboardList,
   FileCheck,
@@ -68,7 +69,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { AssessmentRecord, BadgeRequest, Learner, Organization } from '@/src/types';
+import { AssessmentRecord, BadgeRequest, Learner, Organization, BadgeTemplate } from '@/src/types';
 import { motion, AnimatePresence } from 'motion/react';
 
 type DashboardView = 'overview' | 'search' | 'profiles' | 'assessment-records' | 'rpl-records' | 'submit-request' | 'tracking' | 'notifications';
@@ -82,6 +83,20 @@ export default function AssessmentDashboard() {
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [districtOffice, setDistrictOffice] = useState<Organization | null>(null);
   const [selectedLearner, setSelectedLearner] = useState<Learner | null>(null);
+  const [templates, setTemplates] = useState<BadgeTemplate[]>([]);
+
+  // Fetch Badge Templates
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, 'badgeTemplates'));
+    const unsub = onSnapshot(q, (snapshot) => {
+      setTemplates(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BadgeTemplate)));
+    }, (error) => {
+      console.error("Badge Templates Snapshot Error:", error);
+      handleFirestoreError(error, OperationType.GET, 'badgeTemplates');
+    });
+    return unsub;
+  }, [user]);
 
   // Sync view with URL
   useEffect(() => {
@@ -170,7 +185,7 @@ export default function AssessmentDashboard() {
 
   // Real-time stats and recent activity
   useEffect(() => {
-    if (!organization?.id) return;
+    if (!organization?.id || !user) return;
 
     const reqPath = 'issuedBadges';
     const qRequests = query(
@@ -221,7 +236,7 @@ export default function AssessmentDashboard() {
       unsubRequests();
       unsubRecords();
     };
-  }, [organization]);
+  }, [organization, user]);
 
   if (loading || !isAuthReady) {
     return (
@@ -247,6 +262,7 @@ export default function AssessmentDashboard() {
               organization={organization} 
               districtOffice={districtOffice}
               loading={loading}
+              templates={templates}
               onSelectLearner={(l) => {
                 setSelectedLearner(l);
                 navigate('/assessmentcenter/profiles');
@@ -258,6 +274,7 @@ export default function AssessmentDashboard() {
               organization={organization} 
               districtOffice={districtOffice} 
               selectedLearner={selectedLearner}
+              templates={templates}
             />
           )}
           {currentView === 'assessment-records' && <RecordsView organization={organization} type="assessment" />}
@@ -267,6 +284,7 @@ export default function AssessmentDashboard() {
               organization={organization} 
               districtOffice={districtOffice} 
               initialLearner={selectedLearner}
+              templates={templates}
             />
           )}
           {currentView === 'tracking' && <TrackingView organization={organization} />}
@@ -424,17 +442,20 @@ function LearnerSearchView({
   organization, 
   districtOffice,
   loading,
+  templates,
   onSelectLearner 
 }: { 
   organization: any, 
   districtOffice: any,
   loading: boolean,
+  templates: BadgeTemplate[],
   onSelectLearner: (l: Learner) => void 
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<Learner[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [formData, setFormData] = useState({
     firstName: '',
@@ -486,32 +507,66 @@ function LearnerSearchView({
   };
 
   const handleCreateLearner = async () => {
-    // Duplicate check
-    const q = query(collection(db, 'learners'), where('email', '==', formData.email));
-    const snap = await getDocs(q);
-    if (!snap.empty) {
-      alert("A learner with this email already exists.");
+    if (!formData.firstName || !formData.lastName || !formData.email) {
+      alert("Please fill in the required fields (First Name, Last Name, Email).");
       return;
     }
 
-    const newLearner = {
-      ...formData,
-      status: 'Enrolled',
-      trainingCenterId: 'Direct-AC', // Marker for direct assessment
-      trainingCenterName: organization.name,
-      districtOfficeId: districtOffice.id,
-      createdAt: serverTimestamp()
-    };
-    
-    await addDoc(collection(db, 'learners'), newLearner);
-    await addDoc(collection(db, 'auditLogs'), {
-      action: `Created Learner Profile for Direct Assessment: ${formData.email}`,
-      userName: 'Assessment Center Staff',
-      timestamp: serverTimestamp()
-    });
-    
-    setIsCreateModalOpen(false);
-    handleSearch();
+    if (!organization) {
+      alert("Assessment Center profile not loaded. Please wait or refresh.");
+      return;
+    }
+
+    if (!districtOffice) {
+      alert("No linked District Office found. A District Office must be assigned to your center to create learner profiles.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      // Duplicate check
+      const q = query(collection(db, 'learners'), where('email', '==', formData.email));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        alert("A learner with this email already exists.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      const newLearner = {
+        ...formData,
+        status: 'Enrolled',
+        trainingCenterId: 'Direct-AC', // Marker for direct assessment
+        trainingCenterName: organization.name,
+        districtOfficeId: districtOffice.id,
+        districtOfficeName: districtOffice.name || '',
+        createdAt: serverTimestamp()
+      };
+      
+      await addDoc(collection(db, 'learners'), newLearner);
+      await addDoc(collection(db, 'auditLogs'), {
+        action: `Created Learner Profile for Direct Assessment: ${formData.email}`,
+        userName: 'Assessment Center Staff',
+        timestamp: serverTimestamp()
+      });
+      
+      setIsCreateModalOpen(false);
+      setFormData({
+        firstName: '',
+        lastName: '',
+        email: '',
+        contactNumber: '',
+        qualification: '',
+        learnerId: `L-${Math.floor(100000 + Math.random() * 900000)}`
+      });
+      handleSearch();
+      alert("Learner profile created successfully.");
+    } catch (error) {
+      console.error("Error creating learner:", error);
+      handleFirestoreError(error, OperationType.CREATE, 'learners');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -566,12 +621,30 @@ function LearnerSearchView({
               </div>
               <div className="space-y-2 col-span-2">
                 <Label>Target Qualification</Label>
-                <Input value={formData.qualification} onChange={e => setFormData({...formData, qualification: e.target.value})} />
+                <Select 
+                  value={formData.qualification} 
+                  onValueChange={val => setFormData({...formData, qualification: val})}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select from QSO Qualifications" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from(new Set(templates.map(t => t.qualificationName))).filter(Boolean).map(qual => (
+                      <SelectItem key={qual} value={qual!}>{qual}</SelectItem>
+                    ))}
+                    {templates.length === 0 && <SelectItem value="loading" disabled>Loading qualifications...</SelectItem>}
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-slate-500 italic mt-1">
+                  * Only qualifications registered in the QSO standard library can be selected.
+                </p>
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsCreateModalOpen(false)}>Cancel</Button>
-              <Button onClick={handleCreateLearner}>Create & Activate Account</Button>
+              <Button variant="outline" onClick={() => setIsCreateModalOpen(false)} disabled={isSubmitting}>Cancel</Button>
+              <Button onClick={handleCreateLearner} disabled={isSubmitting}>
+                {isSubmitting ? 'Creating...' : 'Create & Activate Account'}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -647,10 +720,12 @@ function LearnerSearchView({
 function LearnerProfileView({ 
   organization, 
   districtOffice,
+  templates,
   selectedLearner: initialLearner 
 }: { 
   organization: any, 
   districtOffice: any,
+  templates: BadgeTemplate[],
   selectedLearner?: Learner | null
 }) {
   const { userProfile } = useFirebase();
@@ -770,6 +845,12 @@ function LearnerProfileView({
             <div className="flex gap-2 mt-3">
               <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-100">Verified Profile</Badge>
               <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-100">Active Account</Badge>
+              {records.some(r => r.pathway === 'Recognition of Prior Learning (RPL)') && (
+                <Badge className="bg-purple-600 text-white gap-1">
+                  <Award className="h-3 w-3" />
+                  RPL Candidate
+                </Badge>
+              )}
             </div>
           </div>
         </div>
@@ -791,7 +872,19 @@ function LearnerProfileView({
                 <div className="grid grid-cols-2 gap-4 py-6">
                   <div className="space-y-2 col-span-2">
                     <Label>Qualification / Competency</Label>
-                    <Input value={recordForm.qualification} onChange={e => setRecordForm({...recordForm, qualification: e.target.value})} />
+                    <Select 
+                      value={recordForm.qualification} 
+                      onValueChange={v => setRecordForm({...recordForm, qualification: v})}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select from QSO Qualifications" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from(new Set(templates.map(t => t.qualificationName))).filter(Boolean).map(qual => (
+                          <SelectItem key={qual} value={qual!}>{qual}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   
                   <div className="space-y-2">
@@ -907,14 +1000,14 @@ function LearnerProfileView({
                 variant="outline" 
                 className="h-24 flex-col gap-2 hover:bg-emerald-50 hover:border-emerald-200 transition-all text-wrap"
                 onClick={() => {
-                  setRecordType('National Competency Assessment');
+                  setRecordType('Unit Stacking (National Assessment)');
                   setIsAddRecordOpen(true);
                 }}
               >
                 <FileText className="h-6 w-6 text-emerald-600" />
                 <div className="text-center">
-                  <p className="font-bold text-slate-900">National Assessment</p>
-                  <p className="text-[10px] text-slate-500">Record standard exam results</p>
+                  <p className="font-bold text-slate-900">Unit Stacking</p>
+                  <p className="text-[10px] text-slate-500">National Assessment result</p>
                 </div>
               </Button>
               <Button 
@@ -925,10 +1018,10 @@ function LearnerProfileView({
                   setIsAddRecordOpen(true);
                 }}
               >
-                <ClipboardList className="h-6 w-6 text-blue-600" />
+                <Award className="h-6 w-6 text-blue-600" />
                 <div className="text-center">
-                  <p className="font-bold text-slate-900">RPL Evaluation</p>
-                  <p className="text-[10px] text-slate-500">Recognition of Prior Learning</p>
+                  <p className="font-bold text-slate-900">RPL Pathway</p>
+                  <p className="text-[10px] text-slate-500">Prior Learning evaluation</p>
                 </div>
               </Button>
             </CardContent>
@@ -1024,7 +1117,7 @@ function RecordsView({ organization, type }: { organization: any, type: 'assessm
   );
 }
 
-function SubmitRequestView({ organization, districtOffice, initialLearner }: any) {
+function SubmitRequestView({ organization, districtOffice, initialLearner, templates }: any) {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { user } = useFirebase();
@@ -1039,17 +1132,6 @@ function SubmitRequestView({ organization, districtOffice, initialLearner }: any
   const [assessmentRecords, setAssessmentRecords] = useState<AssessmentRecord[]>([]);
   const [allLearnerRecords, setAllLearnerRecords] = useState<AssessmentRecord[]>([]);
   const [selectedRecord, setSelectedRecord] = useState<string>('');
-
-  const [templates, setTemplates] = useState<BadgeTemplate[]>([]);
-
-  // Fetch Badge Templates to link badgeId
-  useEffect(() => {
-    const q = query(collection(db, 'badgeTemplates'));
-    const unsub = onSnapshot(q, (snapshot) => {
-      setTemplates(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BadgeTemplate)));
-    });
-    return unsub;
-  }, []);
 
   // Sync with prop if it changes
   useEffect(() => {
@@ -1152,6 +1234,11 @@ function SubmitRequestView({ organization, districtOffice, initialLearner }: any
         (t.badgeType.includes(formData.badgeType?.split(' ')[0] || ''))
       );
 
+      // Routing logic: Skilled and Master badges go to CO, others to District Office
+      const isHighLevelBadge = formData.badgeType === 'Skilled Badge' || formData.badgeType === 'Master Badge';
+      const targetApproverId = isHighLevelBadge ? 'CertificationOffice' : (districtOffice.id);
+      const targetApproverName = isHighLevelBadge ? 'Certification Office' : districtOffice.name;
+
       const requestData = {
         ...formData,
         learnerId: selectedLearner.id,
@@ -1162,20 +1249,26 @@ function SubmitRequestView({ organization, districtOffice, initialLearner }: any
         programName: record?.qualification || '',
         assessmentRecordId: selectedRecord,
         qualification: record?.qualification || '',
-        pathway: record?.pathway || '',
+        pathway: record?.pathway?.includes('Prior Learning') ? 'RPL' : 'Unit Stacking',
         issuerId: organization.id,
         issuerName: organization.name,
         issuerType: 'AssessmentCenter',
         sourceAssessmentCenterId: organization.id,
-        districtOfficeId: districtOffice.id,
+        districtOfficeId: districtOffice.id, // Keep the link for context
+        routingTier: isHighLevelBadge ? 'CertificationOffice' : 'DistrictOffice',
+        targetApproverId: targetApproverId,
         submittedBy: user?.uid || '',
         submittedByName: user?.displayName || user?.email || '',
         submittedAt: serverTimestamp(),
-        status: 'Pending Approval'
+        status: isHighLevelBadge ? 'Submitted to CO' : 'Pending Approval'
       };
 
       await addDoc(collection(db, 'issuedBadges'), requestData);
-      alert("Certificate Request Submitted Successfully!\nYour request has been forwarded to " + (districtOffice?.name || "the District Office") + " for approval.");
+      const successMessage = isHighLevelBadge 
+        ? "Certificate Request Submitted! Your request is now for CO Review."
+        : `Certificate Request Submitted! Forwarded to ${districtOffice?.name || "the District Office"} for approval.`;
+      
+      alert(successMessage);
       
       setFormData({ badgeType: 'Skilled Badge' as any, remarks: '', status: 'Pending Approval' as any, evidenceUrl: '' });
       setSelectedLearner(null);
