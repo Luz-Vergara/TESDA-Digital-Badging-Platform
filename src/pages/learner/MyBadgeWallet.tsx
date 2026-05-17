@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Award, Search, Filter, ArrowLeft, Download, ExternalLink, Calendar, ShieldCheck } from 'lucide-react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
@@ -6,16 +6,107 @@ import { useFirebase } from '@/src/lib/FirebaseProvider';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { BadgeMetadata } from '@/src/types';
+import { BadgeMetadata, BadgeTemplate } from '@/src/types';
 import { getBadgeColor, getStatusColor } from '@/src/lib/badge-utils';
 import { Link } from 'react-router-dom';
 
 export default function MyBadgeWallet() {
   const { user, isAuthReady } = useFirebase();
-  const [badges, setBadges] = useState<BadgeMetadata[]>([]);
+  const [badgesEmail, setBadgesEmail] = useState<any[]>([]);
+  const [badgesId, setBadgesId] = useState<any[]>([]);
+  const [badgesRequests, setBadgesRequests] = useState<any[]>([]);
+  const [templates, setTemplates] = useState<BadgeTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<string>('All');
+ 
+  // Combine sources and filter by recognized templates
+  const badges = useMemo(() => {
+    const combined = [...badgesEmail];
+    
+    badgesId.forEach(item => {
+      if (!combined.find(c => c.id === item.id)) {
+        combined.push(item);
+      }
+    });
+
+    // Add approved requests to the list
+    badgesRequests.forEach(req => {
+      if (!combined.find(c => c.id === req.id || (c.badgeId && c.badgeId === req.id))) {
+        combined.push({
+          ...req,
+          badgeName: req.badgeTemplateName || req.badgeName || req.programTitle,
+          status: 'Approved' // Treat as earned for wallet
+        });
+      }
+    });
+
+    // Valid statuses for wallet display
+    const filtered = combined.filter(item => 
+      item.publishedToLearner === true || 
+      ['Active', 'Approved', 'Published', 'Earned', 'Badge ID Generated'].includes(item.status)
+    );
+
+    // Filter to only include badges that match a known template
+    return filtered.filter(badge => {
+      const bId = badge.badgeTemplateId || badge.badgeId;
+      const matchedTemplate = templates.find(t => t.id === bId);
+      
+      // Fallback: title match with aggressive normalization
+      const normalize = (s: string) => {
+        return s.toLowerCase()
+          .replace(/[^a-z0-9]/g, ' ')
+          .replace(/\(proficient\)|\(expert\)|\(skilled\)|\(master\)/g, '')
+          .replace(/level|animation|competency/g, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+      };
+      
+      const bTitleNorm = normalize(badge.programTitle || badge.badgeName || badge.badgeTemplateName || '');
+      
+      let finalMatch = null;
+      if (bId && matchedTemplate) {
+        finalMatch = matchedTemplate;
+      } else {
+        if (!bTitleNorm) return false;
+        
+        // Exact normalized match
+        finalMatch = templates.find(t => normalize(t.badgeName || '') === bTitleNorm);
+
+        if (!finalMatch) {
+          // Fuzzy Match: Significant overlap
+          finalMatch = templates.find(t => {
+            const tTitleNorm = normalize(t.badgeName || '');
+            if (!tTitleNorm) return false;
+            const bWords = bTitleNorm.split(' ').filter(w => w.length >= 2);
+            const tWords = tTitleNorm.split(' ').filter(w => w.length >= 2);
+            const intersection = bWords.filter(w => tWords.includes(w));
+            return intersection.length >= 2 || bTitleNorm.includes(tTitleNorm) || tTitleNorm.includes(bTitleNorm);
+          });
+        }
+      }
+
+      if (finalMatch) {
+         // Attach template metadata if missing
+         if (!badge.badgeType) badge.badgeType = finalMatch.badgeType;
+         if (!badge.badgeName) badge.badgeName = finalMatch.badgeName;
+         
+         // Strict Type Check for COC/NC
+         const bType = badge.badgeType;
+         const tType = finalMatch.badgeType;
+         if (tType === 'Skilled' || tType === 'Master') {
+           return bType === tType || (bType === 'COC' && tType === 'Skilled') || (bType === 'Qualification' && tType === 'Master');
+         }
+         return true;
+      }
+      
+      return false;
+    }).sort((a, b) => {
+      const dateA = a.issueDate?.seconds || a.submittedAt?.seconds || 0;
+      const dateB = b.issueDate?.seconds || b.submittedAt?.seconds || 0;
+      return dateB - dateA;
+    });
+  }, [badgesEmail, badgesId, badgesRequests, templates]);
 
   useEffect(() => {
     if (!isAuthReady || !user) {
@@ -23,36 +114,59 @@ export default function MyBadgeWallet() {
       return;
     }
 
-    const q = query(
-      collection(db, 'issuedBadges'),
+    // Fetch official templates for verification
+    const unsubTemplates = onSnapshot(collection(db, 'badgeTemplates'), (snapshot) => {
+      setTemplates(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BadgeTemplate)));
+    });
+
+    const path = 'issuedBadges';
+    const qEmail = query(
+      collection(db, path),
       where('learnerEmail', '==', user.email)
     );
+    const qId = query(
+      collection(db, path),
+      where('learnerId', '==', user.uid)
+    );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const allBadges = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as any[];
-      
-      // Filter out rejected badges if we only want to show earned and pending
-      const b = allBadges.filter(badge => 
-        badge.publishedToLearner === true || 
-        ['Pending Approval', 'Submitted to CO', 'Under CO Review', 'Badge ID Generated', 'Forwarded to District Office'].includes(badge.status)
-      ) as unknown as BadgeMetadata[];
-      
-      setBadges(b);
+    const unsubEmail = onSnapshot(qEmail, (snapshot) => {
+      setBadgesEmail(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setLoading(false);
     }, (error) => {
-      console.error("Wallet Snapshot Error:", error);
-      handleFirestoreError(error, OperationType.GET, 'issuedBadges');
+      console.error("Wallet Email Error:", error);
+      handleFirestoreError(error, OperationType.GET, path);
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    const unsubId = onSnapshot(qId, (snapshot) => {
+      setBadgesId(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setLoading(false);
+    }, (error) => {
+      console.error("Wallet UID Error:", error);
+    });
+
+    const qRequests = query(
+      collection(db, 'badgeRequests'),
+      where('learnerIds', 'array-contains', user.uid),
+      where('status', 'in', ['Approved', 'Badge ID Generated'])
+    );
+
+    const unsubRequests = onSnapshot(qRequests, (snapshot) => {
+      setBadgesRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      console.error("Wallet Requests Error:", error);
+    });
+
+    return () => {
+      unsubEmail();
+      unsubId();
+      unsubRequests();
+      unsubTemplates();
+    };
   }, [user, isAuthReady]);
 
   const filteredBadges = badges.filter(badge => {
-    const bName = badge.programName || (badge as any).badgeName || "Unnamed Badge";
+    const bName = badge.programName || (badge as any).programTitle || (badge as any).badgeName || (badge as any).badgeTemplateName || "Unnamed Badge";
     const vId = badge.verificationId || "Pending Verification";
     const matchesSearch = bName.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           vId.toLowerCase().includes(searchQuery.toLowerCase());
@@ -79,7 +193,7 @@ export default function MyBadgeWallet() {
           </Link>
           <div>
             <h1 className="text-3xl font-bold text-slate-900">My Badge Wallet</h1>
-            <p className="text-slate-500 text-sm">Manage and share your earned credentials</p>
+            <p className="text-slate-500 text-sm">Manage and share your active credentials</p>
           </div>
         </div>
         <Button variant="outline" className="gap-2">
@@ -134,7 +248,7 @@ export default function MyBadgeWallet() {
                 </div>
                 
                 <h3 className="font-bold text-slate-900 mb-1 group-hover:text-blue-600 transition-colors line-clamp-2 min-h-[3rem]">
-                  {badge.programName || (badge as any).badgeName}
+                  {badge.programName || (badge as any).programTitle || (badge as any).badgeName || (badge as any).badgeTemplateName || "Unnamed Badge"}
                 </h3>
                 <p className="text-[10px] text-slate-500 mb-4 font-bold uppercase tracking-widest bg-slate-100 w-fit px-2 py-0.5 rounded">
                   {badge.badgeType}

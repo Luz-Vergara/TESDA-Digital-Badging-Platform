@@ -19,7 +19,7 @@ import {
   Plus
 } from 'lucide-react';
 import { collection, query, where, onSnapshot, limit, orderBy, getDocs, doc, getDoc } from 'firebase/firestore';
-import { db } from '@/src/lib/firebase';
+import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -66,26 +66,33 @@ export default function DistrictOfficeDashboard() {
         console.error("Error fetching district name:", err);
       }
 
-      const districtIdentifiers = [districtId];
+      const districtIdentifiers = [districtId].filter(Boolean);
       if (districtName && districtName !== districtId) {
         districtIdentifiers.push(districtName);
       }
 
+      if (districtIdentifiers.length === 0) {
+        setLoading(false);
+        return;
+      }
+
       // Requests stats
+      const pathIssued = 'issuedBadges';
       const qRequests = query(
-        collection(db, 'issuedBadges'),
+        collection(db, pathIssued),
         where('districtOfficeId', 'in', districtIdentifiers)
       );
 
       // Monitoring stats (Centers)
+      const pathOrgs = 'organizations';
       const qCenters = query(
-        collection(db, 'organizations'),
+        collection(db, pathOrgs),
         where('assignedDistrictId', 'in', districtIdentifiers)
       );
 
       // Recent requests for table
       const qRecent = query(
-        collection(db, 'issuedBadges'),
+        collection(db, pathIssued),
         where('districtOfficeId', 'in', districtIdentifiers),
         orderBy('submittedAt', 'desc'),
         limit(5)
@@ -100,6 +107,8 @@ export default function DistrictOfficeDashboard() {
         rejected: docs.filter(d => d.status === 'Rejected').length,
         expiring: docs.filter(d => d.status === 'Expiring').length // Assuming such status exists or would be calculated
       }));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, pathIssued);
     });
 
     const unsubCenters = onSnapshot(qCenters, (snapshot) => {
@@ -109,10 +118,15 @@ export default function DistrictOfficeDashboard() {
         trainingCenters: docs.filter(d => d.type === 'TrainingCenter').length,
         assessmentCenters: docs.filter(d => d.type === 'AssessmentCenter').length
       }));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, pathOrgs);
     });
 
     const unsubRecent = onSnapshot(qRecent, (snapshot) => {
       setRecentRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, pathIssued);
       setLoading(false);
     });
 
@@ -147,7 +161,6 @@ export default function DistrictOfficeDashboard() {
     { label: 'Assessment Centers', value: stats.assessmentCenters, icon: ClipboardCheck, color: 'text-indigo-600', bg: 'bg-indigo-50', link: '/districtoffice/assessment-centers' },
     { label: 'Approved Requests', value: stats.approved, icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50', link: '/districtoffice/status' },
     { label: 'Rejected Requests', value: stats.rejected, icon: XCircle, color: 'text-rose-600', bg: 'bg-rose-50', link: '/districtoffice/status' },
-    { label: 'Expiring Badges', value: stats.expiring, icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-50', link: '/districtoffice/renewal' },
   ];
 
   return (
@@ -201,7 +214,7 @@ export default function DistrictOfficeDashboard() {
       </Card>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         {statCards.map((stat) => (
           <Link key={stat.label} to={stat.link}>
             <Card className="hover:shadow-md transition-all h-full border-slate-200 group">

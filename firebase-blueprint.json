@@ -164,29 +164,116 @@
     },
     "BadgeRequest": {
       "title": "BadgeRequest",
-      "description": "Request submitted by an Assessment Center for a Skilled or Master badge.",
+      "description": "Approval request for digital badges.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "requestType": { "type": "string", "enum": ["Individual", "Batch", "UC"] },
+        "trainingCenterId": { "type": "string" },
+        "programOfferingId": { "type": "string" },
+        "programBatchId": { "type": "string" },
+        "ucCompletionId": { "type": "string" },
+        "learnerIds": { "type": "array", "items": { "type": "string" } },
+        "badgeTemplateId": { "type": "string" },
+        "badgeType": { "type": "string" },
+        "districtOfficeId": { "type": "string" },
+        "evidenceUrl": { "type": "string" },
+        "remarks": { "type": "string" },
+        "status": { "type": "string", "enum": ["Pending Review", "Approved", "Rejected"] },
+        "submittedBy": { "type": "string" },
+        "submittedAt": { "type": "string", "format": "date-time" },
+        "reviewedBy": { "type": "string" },
+        "reviewedAt": { "type": "string", "format": "date-time" },
+        "reviewRemarks": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["requestType", "trainingCenterId", "programOfferingId", "learnerIds", "badgeTemplateId", "status", "districtOfficeId"]
+    },
+    "ProgramOffering": {
+      "title": "ProgramOffering",
+      "description": "Programs, qualifications, or UCs offered by a Training Center.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "trainingCenterId": { "type": "string" },
+        "trainingCenterName": { "type": "string" },
+        "programTitle": { "type": "string" },
+        "programType": { "type": "string", "enum": ["Unit of Competency", "Cluster of Competencies", "Full Qualification", "Micro-Credential"] },
+        "qualificationName": { "type": "string" },
+        "qualificationCode": { "type": "string" },
+        "badgeTemplateId": { "type": "string" },
+        "badgeType": { "type": "string" },
+        "deliveryMode": { "type": "string", "enum": ["Institution-Based", "Enterprise-Based", "Online", "Blended"] },
+        "status": { "type": "string", "enum": ["Draft", "Active", "Inactive", "Archived"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["trainingCenterId", "programTitle", "programType", "status"]
+    },
+    "ProgramBatch": {
+      "title": "ProgramBatch",
+      "description": "Class or batch offerings under a specific program.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "programOfferingId": { "type": "string" },
+        "trainingCenterId": { "type": "string" },
+        "batchName": { "type": "string" },
+        "startDate": { "type": "string", "format": "date" },
+        "endDate": { "type": "string", "format": "date" },
+        "trainerName": { "type": "string" },
+        "maxSlots": { "type": "integer" },
+        "status": { "type": "string", "enum": ["Open", "Ongoing", "Completed", "Cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["programOfferingId", "trainingCenterId", "batchName", "status"]
+    },
+    "Enrollment": {
+      "title": "Enrollment",
+      "description": "Learner enrollment in a program or batch.",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
         "learnerId": { "type": "string" },
         "learnerName": { "type": "string" },
-        "assessmentRecordId": { "type": "string" },
-        "badgeType": { "type": "string", "enum": ["Skilled Badge", "Master Badge"] },
-        "qualification": { "type": "string" },
-        "competency": { "type": "string" },
-        "pathway": { "type": "string" },
+        "learnerEmail": { "type": "string" },
+        "trainingCenterId": { "type": "string" },
+        "programOfferingId": { "type": "string" },
+        "programBatchId": { "type": "string" },
+        "enrollmentStatus": { "type": "string", "enum": ["Applied", "Accepted", "Enrolled", "Completed", "Dropped", "Withdrawn"] },
+        "completionStatus": { "type": "string", "enum": ["Not Started", "In Progress", "Completed", "For Assessment"] },
+        "dateApplied": { "type": "string", "format": "date-time" },
+        "dateEnrolled": { "type": "string", "format": "date-time" },
+        "dateCompleted": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["learnerId", "learnerName", "trainingCenterId", "programOfferingId", "enrollmentStatus"]
+    },
+    "UCCompletion": {
+      "title": "UCCompletion",
+      "description": "Tracking completion of specific UCs or program components.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "enrollmentId": { "type": "string" },
+        "learnerId": { "type": "string" },
+        "trainingCenterId": { "type": "string" },
+        "programOfferingId": { "type": "string" },
+        "programBatchId": { "type": "string" },
+        "ucTitle": { "type": "string" },
+        "ucCode": { "type": "string" },
+        "completionStatus": { "type": "string", "enum": ["In Progress", "Completed", "For Badge Request", "Badge Requested"] },
         "evidenceUrl": { "type": "string" },
         "remarks": { "type": "string" },
-        "status": { "type": "string", "enum": ["Pending Approval", "Approved", "Rejected"] },
-        "sourceAssessmentCenterId": { "type": "string" },
-        "districtOfficeId": { "type": "string" },
-        "submittedBy": { "type": "string" },
-        "submittedAt": { "type": "string", "format": "date-time" },
-        "rejectionRemarks": { "type": "string" },
-        "approvedBy": { "type": "string" },
-        "approvedAt": { "type": "string", "format": "date-time" }
+        "completedAt": { "type": "string", "format": "date-time" },
+        "verifiedBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["learnerId", "assessmentRecordId", "badgeType", "status", "sourceAssessmentCenterId", "districtOfficeId"]
+      "required": ["enrollmentId", "learnerId", "trainingCenterId", "ucTitle", "completionStatus"]
     }
   },
   "firestore": {
@@ -198,6 +285,10 @@
     "/badges/{badgeId}": { "schema": "Badge", "description": "Public badge definitions" },
     "/issuedBadges/{issuedBadgeId}": { "schema": "IssuedBadge", "description": "Badges issued to learners" },
     "/assessmentRecords/{recordId}": { "schema": "AssessmentRecord", "description": "Assessment and RPL results" },
-    "/badgeRequests/{requestId}": { "schema": "BadgeRequest", "description": "Requests for badge approval" }
+    "/badgeRequests/{requestId}": { "schema": "BadgeRequest", "description": "Requests for badge approval" },
+    "/programOfferings/{offeringId}": { "schema": "ProgramOffering", "description": "Programs offered" },
+    "/programBatches/{batchId}": { "schema": "ProgramBatch", "description": "Program batches" },
+    "/enrollments/{enrollmentId}": { "schema": "Enrollment", "description": "Learner enrollments" },
+    "/ucCompletions/{completionId}": { "schema": "UCCompletion", "description": "UC completions" }
   }
 }

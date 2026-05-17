@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Award, Wallet, ArrowRight, Bell, BookOpen, Clock } from 'lucide-react';
 import { collection, query, where, onSnapshot, getDocs, limit } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
@@ -14,47 +14,165 @@ import { Link, useNavigate } from 'react-router-dom';
 export default function LearnerDashboard() {
   const navigate = useNavigate();
   const { user, userProfile, isAuthReady } = useFirebase();
-  const [earnedBadges, setEarnedBadges] = useState<BadgeMetadata[]>([]);
+  const [badgesEmail, setBadgesEmail] = useState<any[]>([]);
+  const [badgesId, setBadgesId] = useState<any[]>([]);
+  const [badgesRequests, setBadgesRequests] = useState<any[]>([]);
+  const [templates, setTemplates] = useState<BadgeTemplate[]>([]);
   const [recommendations, setRecommendations] = useState<BadgeTemplate[]>([]);
   const [learnerData, setLearnerData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   const [showComingSoon, setShowComingSoon] = useState(false);
 
+  // Combine badges from both email, ID queries, and approved requests
+  const activeBadges = useMemo(() => {
+    const combined = [...badgesEmail];
+    
+    badgesId.forEach(item => {
+      if (!combined.find(c => c.id === item.id)) {
+        combined.push(item);
+      }
+    });
+
+    // Add approved requests to the list
+    badgesRequests.forEach(req => {
+      if (!combined.find(c => c.id === req.id || (c.badgeId && c.badgeId === req.id))) {
+        combined.push({
+          ...req,
+          badgeName: req.badgeTemplateName || req.badgeName || req.programTitle,
+          status: 'Approved' // Treat as approved/earned
+        });
+      }
+    });
+    
+    // Filter to only include badges that match a known template
+    return combined.filter(badge => {
+      const bId = badge.badgeTemplateId || badge.badgeId;
+      const matchedTemplate = templates.find(t => t.id === bId);
+      
+      // Fallback: title match with aggressive normalization
+      const normalize = (s: string) => {
+        return s.toLowerCase()
+          .replace(/[^a-z0-9]/g, ' ')
+          .replace(/\(proficient\)|\(expert\)|\(skilled\)|\(master\)/g, '')
+          .replace(/level|animation|competency/g, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+      };
+      
+      const bTitleNorm = normalize(badge.programTitle || badge.badgeName || badge.badgeTemplateName || '');
+      
+      let finalMatch = null;
+      if (bId && matchedTemplate) {
+        finalMatch = matchedTemplate;
+      } else {
+        if (!bTitleNorm) return false;
+        
+        // Exact normalized match
+        finalMatch = templates.find(t => normalize(t.badgeName || '') === bTitleNorm);
+
+        if (!finalMatch) {
+          // Fuzzy Match: Significant overlap
+          finalMatch = templates.find(t => {
+            const tTitleNorm = normalize(t.badgeName || '');
+            if (!tTitleNorm) return false;
+            const bWords = bTitleNorm.split(' ').filter(w => w.length >= 2);
+            const tWords = tTitleNorm.split(' ').filter(w => w.length >= 2);
+            const intersection = bWords.filter(w => tWords.includes(w));
+            return intersection.length >= 2 || bTitleNorm.includes(tTitleNorm) || tTitleNorm.includes(bTitleNorm);
+          });
+        }
+      }
+
+      if (finalMatch) {
+         // Attach template metadata if missing
+         if (!badge.badgeType) badge.badgeType = finalMatch.badgeType;
+         if (!badge.badgeName) badge.badgeName = finalMatch.badgeName;
+         
+         // Strict Type Check for COC/NC
+         const bType = badge.badgeType;
+         const tType = finalMatch.badgeType;
+         if (tType === 'Skilled' || tType === 'Master') {
+           return bType === tType || (bType === 'COC' && tType === 'Skilled') || (bType === 'Qualification' && tType === 'Master');
+         }
+         return true;
+      }
+      
+      return false;
+    }).sort((a, b) => {
+      const dateA = a.issueDate?.seconds || a.submittedAt?.seconds || 0;
+      const dateB = b.issueDate?.seconds || b.submittedAt?.seconds || 0;
+      return dateB - dateA;
+    });
+  }, [badgesEmail, badgesId, badgesRequests, templates]);
+
   useEffect(() => {
-    if (!isAuthReady || !user) {
+    if (!isAuthReady || !user?.email) {
       if (isAuthReady && !user) setLoading(false);
       return;
     }
 
+    // Fetch official templates for verification
+    const unsubTemplates = onSnapshot(collection(db, 'badgeTemplates'), (snapshot) => {
+      setTemplates(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BadgeTemplate)));
+    });
+
     const path = 'issuedBadges';
-    const q = query(
+    
+    // Filter logic for valid badges to show in dashboard
+    const filterValid = (docs: any[]) => {
+      return docs.filter(item => 
+        item.publishedToLearner === true || 
+        ['Active', 'Approved', 'Published', 'Earned', 'Pending Approval', 'Submitted to CO', 'Under CO Review', 'Badge ID Generated', 'Forwarded to District Office'].includes(item.status)
+      );
+    };
+
+    const qEmail = query(
       collection(db, path),
       where('learnerEmail', '==', user.email)
     );
+    const qId = query(
+      collection(db, path),
+      where('learnerId', '==', user.uid)
+    );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const allBadges = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as any[];
-      
-      // Filter for published or pending badges
-      const badges = allBadges.filter(b => 
-        b.publishedToLearner === true || 
-        ['Pending Approval', 'Submitted to CO', 'Under CO Review', 'Badge ID Generated', 'Forwarded to District Office'].includes(b.status)
-      ) as unknown as BadgeMetadata[];
-      
-      setEarnedBadges(badges);
+    const qRequests = query(
+      collection(db, 'badgeRequests'),
+      where('learnerIds', 'array-contains', user.uid),
+      where('status', 'in', ['Approved', 'Badge ID Generated'])
+    );
+
+    const unsubEmail = onSnapshot(qEmail, (snapshot) => {
+      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setBadgesEmail(filterValid(docs));
       setLoading(false);
     }, (error) => {
-      console.error("Dashboard Snapshot Error:", error);
-      setLoading(false); // Stop loading even on error to show empty state/error message
+      console.error("Dashboard Email Error:", error);
+      setLoading(false);
       handleFirestoreError(error, OperationType.GET, path);
     });
 
-    return () => unsubscribe();
-  }, [user?.email, isAuthReady]);
+    const unsubId = onSnapshot(qId, (snapshot) => {
+      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setBadgesId(filterValid(docs));
+      setLoading(false);
+    }, (error) => {
+      console.error("Dashboard ID Error:", error);
+    });
+
+    const unsubRequests = onSnapshot(qRequests, (snapshot) => {
+      setBadgesRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      console.error("Dashboard Requests Error:", error);
+    });
+
+    return () => {
+      unsubEmail();
+      unsubId();
+      unsubRequests();
+      unsubTemplates();
+    };
+  }, [user?.email, user?.uid, isAuthReady]);
 
   // Fetch learner specific data and recommendations
   useEffect(() => {
@@ -62,7 +180,8 @@ export default function LearnerDashboard() {
 
     const fetchLearnerData = async () => {
       try {
-        const lq = query(collection(db, 'learners'), where('email', '==', user.email));
+        const lPath = 'learners';
+        const lq = query(collection(db, lPath), where('email', '==', user.email));
         const lSnap = await getDocs(lq);
         if (!lSnap.empty) {
           const lData = lSnap.docs[0].data();
@@ -71,18 +190,19 @@ export default function LearnerDashboard() {
           // Fetch recommendations based on qualification
           const qual = lData.qualification || '';
           const hasAnimationInterest = qual.toLowerCase().includes('animation') || 
-                                      earnedBadges.some(b => (b.badgeName || '').toLowerCase().includes('animation'));
+                                      activeBadges.some(b => (b.badgeName || '').toLowerCase().includes('animation'));
 
+          const tPath = 'badgeTemplates';
           const templatesQuery = query(
-            collection(db, 'badgeTemplates'),
+            collection(db, tPath),
             limit(50)
           );
           
           const tSnap = await getDocs(templatesQuery);
           let allTemplates = tSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as BadgeTemplate[];
           
-          // Filter out already earned badges
-          const earnedIds = earnedBadges.map(b => b.badgeId);
+          // Filter out already active badges
+          const activeIds = activeBadges.map(b => b.badgeId);
           
           // Custom Recommendation Logic
           let recs: BadgeTemplate[] = [];
@@ -93,14 +213,14 @@ export default function LearnerDashboard() {
               t.badgeName?.includes('2D Animation NC III') || 
               (t.qualificationName?.includes('2D Animation') && t.badgeType === 'Expert')
             );
-            if (animationExpert && !earnedIds.includes(animationExpert.id)) {
+            if (animationExpert && !activeIds.includes(animationExpert.id)) {
               recs.push(animationExpert);
             }
           }
 
           // 2. Fill with other expert badges from same qualification
           const sameQualExpert = allTemplates.filter(t => 
-            !earnedIds.includes(t.id) && 
+            !activeIds.includes(t.id) && 
             t.qualificationName === qual && 
             t.badgeType === 'Expert' &&
             !recs.find(r => r.id === t.id)
@@ -109,7 +229,7 @@ export default function LearnerDashboard() {
 
           // 3. Fill with other badges from same qualification
           const sameQualOther = allTemplates.filter(t => 
-            !earnedIds.includes(t.id) && 
+            !activeIds.includes(t.id) && 
             t.qualificationName === qual && 
             !recs.find(r => r.id === t.id)
           );
@@ -118,7 +238,7 @@ export default function LearnerDashboard() {
           // 4. Fill with any expert badges
           if (recs.length < 3) {
             const otherExperts = allTemplates.filter(t => 
-              !earnedIds.includes(t.id) && 
+              !activeIds.includes(t.id) && 
               t.badgeType === 'Expert' && 
               !recs.find(r => r.id === t.id)
             );
@@ -127,13 +247,14 @@ export default function LearnerDashboard() {
 
           setRecommendations(recs.slice(0, 3));
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Error fetching recommendations:", err);
+        // Silent error for dashboard recommendations to avoid breaking UI
       }
     };
 
     fetchLearnerData();
-  }, [user?.email, isAuthReady, earnedBadges.length]);
+  }, [user?.email, isAuthReady, activeBadges.length]);
 
   if (loading) {
     return (
@@ -161,11 +282,11 @@ export default function LearnerDashboard() {
         <div>
           <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-2">
             Welcome back, {userProfile?.name?.split(' ')[0]}!
-            {earnedBadges.some(b => b.pathway === 'Recognition of Prior Learning (RPL)') && (
+            {activeBadges.some(b => b.pathway === 'Recognition of Prior Learning (RPL)') && (
               <Badge className="bg-purple-600 text-white text-[10px] uppercase tracking-wider py-0.5 px-2">RPL Pathway</Badge>
             )}
           </h1>
-          <p className="text-slate-500">You have earned {earnedBadges.length} badges. Keep it up!</p>
+          <p className="text-slate-500">You have {activeBadges.length} active badges. Keep it up!</p>
         </div>
         <div className="flex gap-3">
           <Button 
@@ -198,7 +319,7 @@ export default function LearnerDashboard() {
             </div>
             <div>
               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Total</p>
-              <p className="text-xl font-bold text-slate-900">{earnedBadges.length}</p>
+              <p className="text-xl font-bold text-slate-900">{activeBadges.length}</p>
             </div>
           </CardContent>
         </Card>
@@ -212,7 +333,7 @@ export default function LearnerDashboard() {
             <div>
               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Proficient</p>
               <p className="text-xl font-bold text-slate-900">
-                {earnedBadges.filter(b => b.badgeType === 'Proficient').length}
+                {activeBadges.filter(b => b.badgeType === 'Proficient').length}
               </p>
             </div>
           </CardContent>
@@ -227,7 +348,7 @@ export default function LearnerDashboard() {
             <div>
               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Expert</p>
               <p className="text-xl font-bold text-slate-900">
-                {earnedBadges.filter(b => b.badgeType === 'Expert').length}
+                {activeBadges.filter(b => b.badgeType === 'Expert').length}
               </p>
             </div>
           </CardContent>
@@ -242,7 +363,7 @@ export default function LearnerDashboard() {
             <div>
               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Skilled</p>
               <p className="text-xl font-bold text-slate-900">
-                {earnedBadges.filter(b => b.badgeType === 'Skilled').length}
+                {activeBadges.filter(b => b.badgeType === 'Skilled').length}
               </p>
             </div>
           </CardContent>
@@ -257,7 +378,7 @@ export default function LearnerDashboard() {
             <div>
               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Master</p>
               <p className="text-xl font-bold text-slate-900">
-                {earnedBadges.filter(b => b.badgeType === 'Master').length}
+                {activeBadges.filter(b => b.badgeType === 'Master').length}
               </p>
             </div>
           </CardContent>
@@ -274,9 +395,9 @@ export default function LearnerDashboard() {
             </Link>
           </div>
           
-          {earnedBadges.length > 0 ? (
+          {activeBadges.length > 0 ? (
             <div className="grid md:grid-cols-2 gap-6">
-              {earnedBadges.slice(0, 2).map((badge) => (
+              {activeBadges.slice(0, 6).map((badge) => (
                 <div key={badge.id}>
                   <BadgeCard badge={badge} />
                 </div>
@@ -286,7 +407,7 @@ export default function LearnerDashboard() {
             <Card className="border-dashed border-slate-300 bg-slate-50">
               <CardContent className="p-12 text-center">
                 <Award className="h-12 w-12 text-slate-300 mx-auto mb-4" />
-                <p className="text-slate-500">No badges earned yet. Start a program to earn your first badge!</p>
+                <p className="text-slate-500">No active badges yet. Start a program to earn your first badge!</p>
               </CardContent>
             </Card>
           )}

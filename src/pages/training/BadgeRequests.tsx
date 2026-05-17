@@ -3,15 +3,14 @@ import {
   Award, 
   Plus, 
   Search, 
-  Filter, 
   Clock, 
   CheckCircle2, 
   XCircle,
   Eye,
   FileText,
-  Upload,
-  AlertCircle,
-  Edit2,
+  Users,
+  Layers,
+  CheckSquare,
   RotateCcw
 } from 'lucide-react';
 import { 
@@ -21,11 +20,11 @@ import {
   onSnapshot, 
   getDocs,
   addDoc, 
-  updateDoc,
   serverTimestamp,
   doc,
-  getDoc,
-  writeBatch
+  writeBatch,
+  updateDoc,
+  deleteDoc
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
@@ -50,6 +49,7 @@ import {
   DialogTitle 
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { 
   Select,
   SelectContent,
@@ -57,632 +57,536 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from '@/components/ui/textarea';
-import { BadgeIssuanceRequest, Learner, BadgeTemplate, Organization } from '@/src/types';
+import { BadgeRequest, Enrollment, ProgramOffering, ProgramBatch, BadgeTemplate } from '@/src/types';
+import { Checkbox } from '@/components/ui/checkbox';
 
 export default function BadgeRequests() {
   const { user, userProfile, isAuthReady } = useFirebase();
-  const [requests, setRequests] = useState<BadgeIssuanceRequest[]>([]);
-  const [learners, setLearners] = useState<Learner[]>([]);
+  const [requests, setRequests] = useState<BadgeRequest[]>([]);
+  const [offerings, setOfferings] = useState<ProgramOffering[]>([]);
+  const [batches, setBatches] = useState<ProgramBatch[]>([]);
+  const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [templates, setTemplates] = useState<BadgeTemplate[]>([]);
   const [loading, setLoading] = useState(true);
+  
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
-  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedRequest, setSelectedRequest] = useState<BadgeIssuanceRequest | null>(null);
-  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
-  const [assessmentCenters, setAssessmentCenters] = useState<Organization[]>([]);
-
-  // Form State
+  const [isResetting, setIsResetting] = useState(false);
+  const [requestType, setRequestType] = useState<'Individual' | 'Batch'>('Individual');
+  
   const [formData, setFormData] = useState({
-    learnerId: '',
+    programOfferingId: '',
+    programBatchId: '',
     badgeTemplateId: '',
+    learnerIds: [] as string[],
+    issuancePath: 'Standard Training-Based' as 'Standard Training-Based' | 'RPL',
     sourceAssessmentCenterId: '',
     evidenceUrl: '',
-    remarks: '',
-    pathway: 'Standard' as 'Standard' | 'Recognition of Prior Learning (RPL)'
+    remarks: ''
   });
-  const [editingRequestId, setEditingRequestId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAuthReady || !user) return;
 
-    const requestsPath = 'issuedBadges';
-    const q = query(
-      collection(db, requestsPath),
-      where('issuerId', '==', user.uid)
-    );
-
+    const reqPath = 'badgeRequests';
+    const q = query(collection(db, reqPath), where('trainingCenterId', '==', user.uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as BadgeIssuanceRequest[];
-      setRequests(data);
+      setRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as BadgeRequest[]);
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, requestsPath);
+      handleFirestoreError(error, OperationType.LIST, reqPath);
+      setLoading(false);
     });
 
-    // Fetch Learners for selection
-    const learnersQuery = query(
-      collection(db, 'learners'),
-      where('trainingCenterId', '==', user.uid)
-    );
-    const unsubscribeLearners = onSnapshot(learnersQuery, (snapshot) => {
-      setLearners(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Learner[]);
+    const offPath = 'programOfferings';
+    const offQuery = query(collection(db, offPath), where('trainingCenterId', '==', user.uid));
+    const unsubOff = onSnapshot(offQuery, (snapshot) => {
+      setOfferings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ProgramOffering[]);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, offPath);
     });
 
-    // Fetch Badge Templates
-    const templatesQuery = query(collection(db, 'badgeTemplates'));
-    const unsubscribeTemplates = onSnapshot(templatesQuery, (snapshot) => {
+    const batchPath = 'programBatches';
+    const batchQuery = query(collection(db, batchPath), where('trainingCenterId', '==', user.uid));
+    const unsubBatches = onSnapshot(batchQuery, (snapshot) => {
+      setBatches(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ProgramBatch[]);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, batchPath);
+    });
+
+    const enrPath = 'enrollments';
+    const enrQuery = query(collection(db, enrPath), where('trainingCenterId', '==', user.uid));
+    const unsubEnr = onSnapshot(enrQuery, (snapshot) => {
+      setEnrollments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Enrollment[]);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, enrPath);
+    });
+
+    const tempPath = 'badgeTemplates';
+    const tempQuery = query(collection(db, tempPath), where('status', '==', 'Active'));
+    const unsubTemp = onSnapshot(tempQuery, (snapshot) => {
       setTemplates(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as BadgeTemplate[]);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, tempPath);
     });
 
-    // Fetch Assessment Centers
-    const acQuery = query(collection(db, 'organizations'), where('type', '==', 'AssessmentCenter'));
-    const unsubscribeACs = onSnapshot(acQuery, (snapshot) => {
-      setAssessmentCenters(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Organization[]);
+    // Also fetch assessment centers for RPL matching
+    const acPath = 'organizations';
+    const acQuery = query(collection(db, acPath), where('type', '==', 'AssessmentCenter'));
+    const unsubAC = onSnapshot(acQuery, (snapshot) => {
+      // Just to populate Source Assessment Center dropdown later if needed
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, acPath);
     });
 
     return () => {
       unsubscribe();
-      unsubscribeLearners();
-      unsubscribeTemplates();
-      unsubscribeACs();
+      unsubOff();
+      unsubBatches();
+      unsubEnr();
+      unsubTemp();
+      unsubAC();
     };
   }, [user, isAuthReady]);
 
-  const handleEditRequest = (request: BadgeIssuanceRequest) => {
-    setEditingRequestId(request.id);
-    setFormData({
-      learnerId: request.learnerId,
-      badgeTemplateId: request.badgeId,
-      sourceAssessmentCenterId: (request as any).sourceAssessmentCenterId || '',
-      evidenceUrl: request.evidenceUrl || '',
-      remarks: request.remarks || '',
-      pathway: (request as any).pathway || 'Standard'
-    });
-    setIsSubmitModalOpen(true);
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !userProfile || !formData.learnerId || !formData.badgeTemplateId) return;
+    if (!user || !userProfile || !formData.programOfferingId || formData.learnerIds.length === 0) return;
 
     setIsSubmitting(true);
     try {
       if (!userProfile.assignedDistrictId) {
-        alert("Action Required: Your Training Center is not yet linked to a TESDA District Office.\n\nTo fix this:\n1. Log in as Central Admin\n2. Go to 'Organizations'\n3. Edit your Training Center\n4. Select an 'Assigned District Office'\n5. Save and then refresh this page.");
-        setIsSubmitting(false);
-        return;
+         alert("Training Center must be assigned to a District Office.");
+         return;
       }
 
-      const learner = learners.find(l => l.id === formData.learnerId);
-      const template = templates.find(t => t.id === formData.badgeTemplateId);
-      const ac = assessmentCenters.find(a => a.id === formData.sourceAssessmentCenterId);
-
-      if (!learner || !template) throw new Error('Invalid selection');
-
+      const offering = offerings.find(o => o.id === formData.programOfferingId);
+      const templateId = formData.badgeTemplateId || offering?.badgeTemplateId;
+      const template = templates.find(t => t.id === templateId);
+      
       const payload: any = {
-        learnerId: learner.id,
-        learnerName: `${learner.firstName} ${learner.lastName}`,
-        learnerEmail: learner.email,
-        badgeId: template.id,
-        badgeName: template.badgeName,
-        badgeType: template.badgeType,
-        programName: template.badgeName,
-        qualificationName: template.qualificationName || template.badgeName,
-        issuerId: user.uid,
+        requestType,
         trainingCenterId: user.uid,
-        issuerName: userProfile.office || userProfile.name,
-        issuerType: 'TrainingCenter',
-        sourceAssessmentCenterId: formData.sourceAssessmentCenterId,
-        sourceAssessmentCenterName: ac?.name || 'External / RPL',
+        trainingCenterName: userProfile.office || userProfile.name,
+        programOfferingId: formData.programOfferingId,
+        programBatchId: formData.programBatchId,
+        learnerIds: formData.learnerIds,
+        badgeTemplateId: templateId || '',
+        badgeTemplateName: template?.badgeName || offering?.badgeTemplateName || '',
+        badgeType: template?.badgeType || offering?.badgeType || 'Proficient',
+        programTitle: offering?.programTitle || template?.badgeName || '',
+        qualificationName: template?.qualificationName || offering?.qualificationName || '',
+        qualificationCode: template?.qualificationCode || offering?.qualificationCode || '',
         districtOfficeId: userProfile.assignedDistrictId,
-        status: 'Pending Approval',
-        publishedToLearner: false,
+        issuancePath: formData.issuancePath,
+        sourceAssessmentCenterId: formData.issuancePath === 'RPL' ? formData.sourceAssessmentCenterId : '',
+        evidenceUrl: formData.issuancePath === 'RPL' ? formData.evidenceUrl : '',
+        remarks: formData.issuancePath === 'RPL' ? formData.remarks : '',
+        status: 'Pending Review',
         submittedBy: user.uid,
-        submittedByName: userProfile.name,
+        submittedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-        evidenceUrl: formData.evidenceUrl,
-        remarks: formData.remarks,
-        pathway: formData.pathway,
-        criteria: template.criteria,
-        rejectionComment: null // Clear previous rejection feedback
+        templateDetails: template ? {
+          badgeName: template.badgeName,
+          description: template.description,
+          criteria: template.criteria,
+          alignment: template.alignment,
+          qualificationName: template.qualificationName,
+          qualificationCode: template.qualificationCode,
+          badgeType: template.badgeType,
+          credentialLevel: template.credentialLevel
+        } : undefined
       };
 
-      if (editingRequestId) {
-        await updateDoc(doc(db, 'issuedBadges', editingRequestId), payload);
-        await addDoc(collection(db, 'auditLogs'), {
-          userId: user.uid,
-          userName: userProfile.name,
-          action: `Resubmitted badge request for ${payload.learnerName}`,
-          details: `Request ID: ${editingRequestId}`,
-          timestamp: serverTimestamp()
-        });
-      } else {
-        payload.createdAt = serverTimestamp();
-        payload.submittedAt = serverTimestamp();
-        await addDoc(collection(db, 'issuedBadges'), payload);
-        await addDoc(collection(db, 'auditLogs'), {
-          userId: user.uid,
-          userName: userProfile.name,
-          action: `Submitted badge request for ${payload.learnerName}`,
-          details: `Badge: ${payload.badgeName}`,
-          timestamp: serverTimestamp()
-        });
-      }
-
+      await addDoc(collection(db, 'badgeRequests'), payload);
+      
       setIsSubmitModalOpen(false);
-      setEditingRequestId(null);
-      setFormData({ learnerId: '', badgeTemplateId: '', sourceAssessmentCenterId: '', evidenceUrl: '', remarks: '', pathway: 'Standard' });
+      setFormData({
+        programOfferingId: '',
+        programBatchId: '',
+        badgeTemplateId: '',
+        learnerIds: [],
+        evidenceUrl: '',
+        remarks: '',
+        issuancePath: 'Standard Training-Based',
+        sourceAssessmentCenterId: ''
+      });
     } catch (error) {
-      handleFirestoreError(error, editingRequestId ? OperationType.UPDATE : OperationType.CREATE, 'issuedBadges');
+       handleFirestoreError(error, OperationType.CREATE, 'badgeRequests');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleResetRequests = async () => {
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resetStatus, setResetStatus] = useState<string | null>(null);
+
+  const handleResetData = async () => {
     if (!user) return;
-    setIsSubmitting(true);
+    setIsResetting(true);
+    setResetStatus("Initializing reset...");
+    
     try {
-      const q = query(
-        collection(db, 'issuedBadges'),
-        where('issuerId', '==', user.uid)
-      );
-      const snapshot = await getDocs(q);
-      
-      if (snapshot.empty) {
-        setIsResetModalOpen(false);
-        setIsSubmitting(false);
-        return;
+      const collectionsToClear = ['badgeRequests', 'issuedBadges', 'ucCompletions'];
+      let totalDeleted = 0;
+
+      for (const collectionName of collectionsToClear) {
+        setResetStatus(`Clearing ${collectionName}...`);
+        const orgQuery = query(collection(db, collectionName), where('trainingCenterId', '==', user.uid));
+        const districtQuery = query(collection(db, collectionName), where('districtOfficeId', '==', userProfile.assignedDistrictId || 'none'));
+        
+        const [orgSnap, districtSnap] = await Promise.all([
+          getDocs(orgQuery),
+          getDocs(districtQuery)
+        ]);
+
+        // Merge results and filter specifically for this center's data
+        const allDocs = [...orgSnap.docs];
+        districtSnap.docs.forEach(doc => {
+          if (!allDocs.find(d => d.id === doc.id)) {
+            // Only add if it's related to this center's requests or completions
+            const data = doc.data();
+            if (data.trainingCenterId === user.uid) {
+              allDocs.push(doc);
+            }
+          }
+        });
+        
+        if (allDocs.length === 0) continue;
+
+        // Use chunks of 400
+        for (let i = 0; i < allDocs.length; i += 400) {
+          const chunk = allDocs.slice(i, i + 400);
+          const batch = writeBatch(db);
+          chunk.forEach(doc => batch.delete(doc.ref));
+          await batch.commit();
+          totalDeleted += chunk.length;
+        }
       }
 
-      const batch = writeBatch(db);
-      snapshot.docs.forEach((docSnap) => {
-        batch.delete(docSnap.ref);
-      });
-      
-      await batch.commit();
-
-      await addDoc(collection(db, 'auditLogs'), {
-        userId: user.uid,
-        userName: userProfile?.name || 'Unknown',
-        action: `Reset all badge requests`,
-        timestamp: serverTimestamp()
-      });
-
-      setIsResetModalOpen(false);
+      setResetStatus(`Success: ${totalDeleted} records cleared.`);
+      setShowResetConfirm(false);
+      setTimeout(() => setResetStatus(null), 5000);
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, 'issuedBadges');
+      console.error("Reset Error:", error);
+      setResetStatus("Error resetting data. Check console.");
     } finally {
-      setIsSubmitting(false);
+      setIsResetting(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-[60vh] flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
+  const getFilteredLearners = () => {
+    let filtered = enrollments;
+    if (formData.programOfferingId) {
+      filtered = filtered.filter(e => e.programOfferingId === formData.programOfferingId);
+    }
+    if (formData.programBatchId) {
+      filtered = filtered.filter(e => e.programBatchId === formData.programBatchId);
+    }
+    return filtered.filter(e => e.completionStatus === 'Completed');
+  };
+
+  if (loading) return <div className="p-8 text-center text-slate-500">Loading requests...</div>;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 text-slate-900">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Badge Requests</h1>
-          <p className="text-slate-500">Submit and track badge issuance requests for your learners.</p>
+          <h1 className="text-2xl font-bold">Badge Requests</h1>
+          <p className="text-slate-500 text-sm">Submit and monitor requests for badge approvals.</p>
         </div>
-        
-        <div className="flex gap-2">
-          <Button 
-            variant="outline"
-            className="text-rose-600 border-rose-200 hover:bg-rose-50 gap-2"
-            onClick={() => setIsResetModalOpen(true)}
-            disabled={requests.length === 0}
-          >
-            <RotateCcw className="h-4 w-4" />
-            Reset Requests
-          </Button>
-
-          <Button 
-            className="bg-blue-600 hover:bg-blue-700 gap-2"
-            onClick={() => setIsSubmitModalOpen(true)}
-          >
-            <Plus className="h-4 w-4" />
-            Submit Badge Request
-          </Button>
-        </div>
-
-        {/* Reset Confirmation Dialog */}
-        <Dialog open={isResetModalOpen} onOpenChange={setIsResetModalOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle className="text-rose-600 flex items-center gap-2">
-                <AlertCircle className="h-5 w-5" />
-                Reset Badge Requests
-              </DialogTitle>
-              <DialogDescription className="pt-2">
-                Are you sure you want to delete all <span className="font-bold">{requests.length}</span> badge requests? This action cannot be undone and will permanently remove all records submitted by this Training Center.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter className="mt-4">
-              <Button variant="outline" onClick={() => setIsResetModalOpen(false)} disabled={isSubmitting}>
-                Cancel
-              </Button>
+        <div className="flex gap-2 relative">
+          {resetStatus && (
+            <div className="absolute -top-10 right-0 bg-slate-800 text-white text-[10px] px-3 py-1.5 rounded shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-300 z-50 whitespace-nowrap">
+              {resetStatus}
+            </div>
+          )}
+          
+          {showResetConfirm ? (
+            <div className="flex gap-2 animate-in fade-in slide-in-from-right-2 duration-200">
               <Button 
                 variant="destructive" 
-                className="bg-rose-600 hover:bg-rose-700"
-                onClick={handleResetRequests}
-                disabled={isSubmitting}
+                size="sm"
+                onClick={handleResetData} 
+                disabled={isResetting}
+                className="gap-1.5 text-xs h-9 px-3"
               >
-                {isSubmitting ? 'Resetting...' : 'Yes, Delete All'}
+                {isResetting ? 'Resetting...' : 'Confirm Reset'}
               </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
- 
-        <Dialog open={isSubmitModalOpen} onOpenChange={setIsSubmitModalOpen}>
-          <DialogContent className="sm:max-w-[600px]">
-            <form onSubmit={handleSubmit}>
-              <DialogHeader>
-                <DialogTitle>New Badge Request</DialogTitle>
-                <DialogDescription>
-                  Select a learner and the badge they have earned. Requests are sent to the District Office for approval.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                  <Label>Select Learner</Label>
-                  <Select 
-                    value={formData.learnerId} 
-                    onValueChange={(v) => setFormData(prev => ({ ...prev, learnerId: v }))}
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => setShowResetConfirm(false)}
+                disabled={isResetting}
+                className="text-slate-500 h-9 px-3"
+              >
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <Button 
+              variant="outline" 
+              onClick={() => setShowResetConfirm(true)} 
+              disabled={isResetting}
+              className="text-slate-500 border-slate-200 hover:bg-slate-50 gap-1.5"
+            >
+              <RotateCcw className={cn("h-3.5 w-3.5", isResetting && "animate-spin")} /> 
+              Reset Testing Data
+            </Button>
+          )}
+          
+          <Button onClick={() => setIsSubmitModalOpen(true)} className="bg-blue-600 hover:bg-blue-700 gap-1.5">
+            <Plus className="h-4 w-4" /> New Badge Request
+          </Button>
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card className="border-slate-200">
+          <CardContent className="p-4">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Requests</p>
+            <p className="text-2xl font-bold">{requests.length}</p>
+          </CardContent>
+        </Card>
+        <Card className="border-slate-200">
+          <CardContent className="p-4">
+            <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-1">Pending Review</p>
+            <p className="text-2xl font-bold">{requests.filter(r => r.status === 'Pending Review').length}</p>
+          </CardContent>
+        </Card>
+        <Card className="border-slate-200">
+          <CardContent className="p-4">
+            <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest mb-1">Approved</p>
+            <p className="text-2xl font-bold">{requests.filter(r => r.status === 'Approved').length}</p>
+          </CardContent>
+        </Card>
+        <Card className="border-slate-200">
+          <CardContent className="p-4">
+            <p className="text-[10px] font-bold text-rose-500 uppercase tracking-widest mb-1">Rejected</p>
+            <p className="text-2xl font-bold">{requests.filter(r => r.status === 'Rejected').length}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Request History</CardTitle>
+          <CardDescription>Track all submitted badge requests and their approval status.</CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="pl-6">Type</TableHead>
+                <TableHead>Program / Qualification</TableHead>
+                <TableHead>Learners</TableHead>
+                <TableHead>Submitted At</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right pr-6">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {requests.map((request) => {
+                const offering = offerings.find(o => o.id === request.programOfferingId);
+                return (
+                  <TableRow key={request.id}>
+                    <TableCell className="pl-6">
+                      <Badge variant="outline" className="text-[10px] gap-1 px-2">
+                        {request.requestType === 'Individual' && <Plus className="h-2 w-2" />}
+                        {request.requestType === 'Batch' && <Users className="h-2 w-2" />}
+                        {request.requestType}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-slate-800">{offering?.programTitle || 'Program'}</span>
+                        <span className="text-[10px] text-slate-500 uppercase font-medium">{request.badgeType} Level</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm font-semibold">{request.learnerIds.length} Learner(s)</span>
+                    </TableCell>
+                    <TableCell className="text-xs text-slate-500">
+                      {request.submittedAt ? new Date(request.submittedAt.seconds * 1000).toLocaleDateString() : 'N/A'}
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={
+                        request.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' :
+                        request.status === 'Pending Review' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'
+                      }>
+                        {request.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right pr-6">
+                      <Button variant="ghost" size="sm" className="text-blue-600">Details</Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+              {requests.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="h-32 text-center text-slate-500 italic">No badge requests found.</TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Dialog open={isSubmitModalOpen} onOpenChange={setIsSubmitModalOpen}>
+        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+          <form onSubmit={handleSubmit}>
+            <DialogHeader>
+              <DialogTitle>New Badge Issuance Request</DialogTitle>
+              <DialogDescription>Submit learner accomplishments for official badge issuance.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-6 py-4">
+              <div className="flex bg-slate-100 p-1 rounded-lg">
+                {(['Individual', 'Batch'] as const).map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => { setRequestType(type); setFormData({...formData, learnerIds: []}); }}
+                    className={cn(
+                      "flex-1 py-1.5 text-xs font-bold rounded-md transition-all",
+                      requestType === type ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                    )}
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Choose a learner..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {learners.map(l => (
-                        <SelectItem key={l.id} value={l.id!}>
-                          {l.firstName} {l.lastName} ({l.qualification})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    {type} Request
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid gap-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label>Select Program Offering</Label>
+                    <Select value={formData.programOfferingId} onValueChange={(v) => setFormData({...formData, programOfferingId: v})}>
+                      <SelectTrigger><SelectValue placeholder="Choose program..." /></SelectTrigger>
+                      <SelectContent>
+                        {offerings.map(o => (
+                          <SelectItem key={o.id} value={o.id}>{o.programTitle}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Select Batch (Recommended)</Label>
+                    <Select value={formData.programBatchId} onValueChange={(v) => setFormData({...formData, programBatchId: v})}>
+                      <SelectTrigger><SelectValue placeholder="Full Program / All Batches" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">General / No Batch</SelectItem>
+                        {batches.filter(b => b.programOfferingId === formData.programOfferingId).map(b => (
+                          <SelectItem key={b.id} value={b.id}>{b.batchName}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
+
                 <div className="grid gap-2">
-                  <Label>Select Badge Template</Label>
+                  <Label>Issuance Path</Label>
                   <Select 
-                    value={formData.badgeTemplateId} 
-                    onValueChange={(v) => setFormData(prev => ({ ...prev, badgeTemplateId: v }))}
+                    value={formData.issuancePath} 
+                    onValueChange={(v: any) => setFormData({...formData, issuancePath: v})}
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Choose a badge..." />
+                    <SelectTrigger className="font-semibold text-blue-600 bg-blue-50/50">
+                      <SelectValue placeholder="Select path..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {templates.map(t => (
-                        <SelectItem key={t.id} value={t.id!}>
-                          {t.programName} - {t.badgeType}
-                        </SelectItem>
-                      ))}
+                      <SelectItem value="Standard Training-Based">Standard Training-Based</SelectItem>
+                      <SelectItem value="RPL">Recognition of Prior Learning (RPL)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
+                {formData.issuancePath === 'RPL' && (
+                  <div className="grid gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <Label>Source Assessment Center (Required for RPL)</Label>
+                    <Input 
+                      placeholder="Enter the name or ID of the AC that conducted the assessment" 
+                      value={formData.sourceAssessmentCenterId}
+                      onChange={(e) => setFormData({...formData, sourceAssessmentCenterId: e.target.value})}
+                      className="border-blue-200"
+                    />
+                  </div>
+                )}
+
                 <div className="grid gap-2">
-                  <Label>Issuance Pathway</Label>
-                  <Select 
-                    value={formData.pathway} 
-                    onValueChange={(v: any) => setFormData(prev => ({ ...prev, pathway: v }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Standard">Standard (Training-based)</SelectItem>
-                      <SelectItem value="Recognition of Prior Learning (RPL)">Recognition of Prior Learning (RPL)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-[10px] text-slate-500 italic">
-                    * RPL pathway allows issuing higher-level badges without prerequisite foundational units.
-                  </p>
+                  <Label className="flex justify-between items-center">
+                    <span>Eligible Learners ({getFilteredLearners().length})</span>
+                    <span className="text-[10px] text-slate-400 capitalize">Requirement: Completion Logged</span>
+                  </Label>
+                  <div className="border border-slate-200 rounded-lg p-2 max-h-[200px] overflow-y-auto space-y-2 bg-slate-50/50">
+                    {getFilteredLearners().map((enr) => (
+                      <div key={enr.id} className="flex items-center gap-3 p-2 bg-white rounded border border-slate-100 hover:border-blue-200 transition-colors">
+                        <Checkbox 
+                          id={`learner-${enr.id}`} 
+                          checked={formData.learnerIds.includes(enr.learnerId)}
+                          onCheckedChange={(checked) => {
+                            if (requestType === 'Individual') {
+                              setFormData({...formData, learnerIds: checked ? [enr.learnerId] : []});
+                            } else {
+                              const newIds = checked 
+                                ? [...formData.learnerIds, enr.learnerId]
+                                : formData.learnerIds.filter(id => id !== enr.learnerId);
+                              setFormData({...formData, learnerIds: newIds});
+                            }
+                          }}
+                        />
+                        <Label htmlFor={`learner-${enr.id}`} className="flex-1 cursor-pointer">
+                          <div className="flex flex-col">
+                            <span className="text-sm font-bold">{enr.learnerName}</span>
+                            <span className="text-[10px] text-slate-500">{enr.learnerEmail}</span>
+                          </div>
+                        </Label>
+                      </div>
+                    ))}
+                    {getFilteredLearners().length === 0 && (
+                      <div className="p-4 text-center text-slate-400 text-xs italic">No eligible learners found for this selection.</div>
+                    )}
+                  </div>
                 </div>
 
-                {formData.pathway === 'Recognition of Prior Learning (RPL)' && (
+                {formData.issuancePath === 'RPL' && (
                   <>
-                    <div className="grid gap-2">
-                      <Label>Source Assessment Center</Label>
-                      <Select 
-                        value={formData.sourceAssessmentCenterId} 
-                        onValueChange={(v) => setFormData(prev => ({ ...prev, sourceAssessmentCenterId: v }))}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Where was the assessment taken?" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {assessmentCenters.map(ac => (
-                            <SelectItem key={ac.id} value={ac.id}>
-                              {ac.name}
-                            </SelectItem>
-                          ))}
-                          <SelectItem value="Other/Manual">Other / RPL Evaluation</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="grid gap-2">
-                      <Label htmlFor="evidenceUrl">Evidence URL (Optional)</Label>
+                    <div className="grid gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                      <Label>Evidence Link (URL to Portfolio/LMS/Records)</Label>
                       <Input 
-                        id="evidenceUrl" 
-                        placeholder="https://link-to-portfolio-or-certificate.com"
+                        placeholder="https://testda.gov.ph/verification/..." 
                         value={formData.evidenceUrl}
-                        onChange={(e) => setFormData(prev => ({ ...prev, evidenceUrl: e.target.value }))}
+                        onChange={(e) => setFormData({...formData, evidenceUrl: e.target.value})}
                       />
                     </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="remarks">Remarks / Notes</Label>
+
+                    <div className="grid gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                      <Label>Remarks / Submission Notes</Label>
                       <Textarea 
-                        id="remarks" 
-                        placeholder="Add any additional context for the reviewer..."
+                        placeholder="Provide context for the District Office reviewer..."
+                        className="h-20"
                         value={formData.remarks}
-                        onChange={(e) => setFormData(prev => ({ ...prev, remarks: e.target.value }))}
+                        onChange={(e) => setFormData({...formData, remarks: e.target.value})}
                       />
                     </div>
                   </>
                 )}
               </div>
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsSubmitModalOpen(false)}>Cancel</Button>
-                <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={isSubmitting}>
-                  {isSubmitting ? 'Submitting...' : 'Submit Request'}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="border-slate-200">
-          <CardContent className="p-4">
-            <div className="flex justify-between items-start mb-2">
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Submitted</p>
-              <FileText className="h-4 w-4 text-slate-400" />
             </div>
-            <p className="text-2xl font-bold text-slate-900">{requests.length}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-slate-200">
-          <CardContent className="p-4">
-            <div className="flex justify-between items-start mb-2">
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Pending</p>
-              <Clock className="h-4 w-4 text-amber-500" />
-            </div>
-            <p className="text-2xl font-bold text-slate-900">
-              {requests.filter(r => r.status === 'Pending Approval').length}
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="border-slate-200">
-          <CardContent className="p-4">
-            <div className="flex justify-between items-start mb-2">
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Approved</p>
-              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-            </div>
-            <p className="text-2xl font-bold text-slate-900">
-              {requests.filter(r => r.status === 'Approved').length}
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="border-slate-200">
-          <CardContent className="p-4">
-            <div className="flex justify-between items-start mb-2">
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Rejected</p>
-              <XCircle className="h-4 w-4 text-rose-500" />
-            </div>
-            <p className="text-2xl font-bold text-slate-900">
-              {requests.filter(r => r.status === 'Rejected').length}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Submissions Table */}
-      <Card className="border-slate-200">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle className="text-lg">Submission Tracking</CardTitle>
-            <CardDescription>Monitor the status of your badge requests</CardDescription>
-          </div>
-          <div className="flex gap-2">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-              <Input placeholder="Search requests..." className="pl-9 w-48 h-9 text-sm" />
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-md border border-slate-100">
-            <Table>
-              <TableHeader className="bg-slate-50">
-                <TableRow>
-                  <TableHead>Request ID</TableHead>
-                  <TableHead>Learner</TableHead>
-                  <TableHead>Badge Type</TableHead>
-                  <TableHead>Qualification</TableHead>
-                  <TableHead>Submitted</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {requests.length > 0 ? (
-                  requests.map((request) => (
-                    <TableRow key={request.id} className="hover:bg-slate-50/50 transition-colors">
-                      <TableCell className="font-mono text-[10px] text-slate-500">
-                        {request.id?.slice(-8).toUpperCase()}
-                      </TableCell>
-                      <TableCell className="font-bold text-slate-900">{request.learnerName}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium text-slate-700">{request.badgeName}</span>
-                          <span className="text-[10px] text-slate-500 uppercase">{request.badgeType}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm text-slate-600">{request.programName}</TableCell>
-                      <TableCell className="text-xs text-slate-500">
-                        {request.submittedAt ? new Date(request.submittedAt.seconds * 1000).toLocaleDateString() : 'N/A'}
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={
-                          request.status === 'Approved' ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100' :
-                          request.status === 'Pending Approval' ? 'bg-amber-100 text-amber-700 hover:bg-amber-100' :
-                          'bg-rose-100 text-rose-700 hover:bg-rose-100'
-                        }>
-                          {request.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          {request.status === 'Rejected' && (
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              className="h-8 text-rose-600 border-rose-200 hover:bg-rose-50"
-                              onClick={() => handleEditRequest(request)}
-                            >
-                              <Edit2 className="h-4 w-4 mr-1" />
-                              Fix & Resubmit
-                            </Button>
-                          )}
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="h-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                            onClick={() => {
-                              setSelectedRequest(request);
-                              setIsDetailsModalOpen(true);
-                            }}
-                          >
-                            <Eye className="h-4 w-4 mr-1" />
-                            Details
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={7} className="h-32 text-center text-slate-500">
-                      No badge requests submitted yet.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Details Modal */}
-      <Dialog open={isDetailsModalOpen} onOpenChange={setIsDetailsModalOpen}>
-        <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle>Request Details</DialogTitle>
-            <DialogDescription>
-              Full information for badge request #{selectedRequest?.id?.slice(-8).toUpperCase()}
-            </DialogDescription>
-          </DialogHeader>
-          
-          {selectedRequest && (
-            <div className="space-y-6 py-4">
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-1">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Learner Information</p>
-                  <p className="font-bold text-slate-900">{selectedRequest.learnerName}</p>
-                  <p className="text-sm text-slate-500">{selectedRequest.learnerEmail}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Badge Details</p>
-                  <p className="font-bold text-slate-900">{selectedRequest.badgeName}</p>
-                  <Badge variant="outline" className="text-[10px] uppercase mt-1">
-                    {selectedRequest.badgeType}
-                  </Badge>
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Qualification / Unit</p>
-                <p className="text-sm text-slate-700">{selectedRequest.programName}</p>
-              </div>
-
-              <div className="space-y-1">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Evidence & Remarks</p>
-                {selectedRequest.evidenceUrl ? (
-                  <a 
-                    href={selectedRequest.evidenceUrl} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-sm text-blue-600 hover:underline mt-1"
-                  >
-                    <Upload className="h-3 w-3" />
-                    View Evidence Document
-                  </a>
-                ) : (
-                  <p className="text-sm text-slate-400 italic">No evidence URL provided</p>
-                )}
-                <p className="text-sm text-slate-600 mt-2 bg-slate-50 p-3 rounded-md border border-slate-100">
-                  {selectedRequest.remarks || 'No remarks provided.'}
-                </p>
-              </div>
-
-              <div className="pt-4 border-t border-slate-100">
-                <div className="flex items-center justify-between mb-4">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Approval Status</p>
-                  <Badge className={
-                    selectedRequest.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' :
-                    selectedRequest.status === 'Pending Approval' ? 'bg-amber-100 text-amber-700' :
-                    'bg-rose-100 text-rose-700'
-                  }>
-                    {selectedRequest.status}
-                  </Badge>
-                </div>
-
-                {selectedRequest.status === 'Rejected' && (
-                  <div className="p-4 bg-rose-50 border border-rose-100 rounded-lg flex gap-3">
-                    <AlertCircle className="h-5 w-5 text-rose-500 shrink-0" />
-                    <div>
-                      <p className="text-sm font-bold text-rose-900">Rejection Feedback</p>
-                      <p className="text-sm text-rose-700 mt-1">{selectedRequest.rejectionComment || 'No feedback provided.'}</p>
-                    </div>
-                  </div>
-                )}
-
-                {selectedRequest.status === 'Approved' && (
-                  <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-lg flex gap-3">
-                    <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />
-                    <div>
-                      <p className="text-sm font-bold text-emerald-900">Badge Published</p>
-                      <p className="text-sm text-emerald-700 mt-1">
-                        Approved by {selectedRequest.approvedBy || 'District Office'} on {selectedRequest.approvedAt ? new Date(selectedRequest.approvedAt.seconds * 1000).toLocaleDateString() : 'N/A'}
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-          
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDetailsModalOpen(false)}>Close</Button>
-          </DialogFooter>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsSubmitModalOpen(false)}>Cancel</Button>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={isSubmitting || formData.learnerIds.length === 0}>
+                {isSubmitting ? 'Submitting Request...' : `Submit ${formData.learnerIds.length > 1 ? 'Batch' : ''} Request`}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>
   );
+}
+
+function cn(...inputs: any[]) {
+  return inputs.filter(Boolean).join(' ');
 }

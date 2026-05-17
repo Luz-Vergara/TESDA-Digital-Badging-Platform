@@ -47,6 +47,58 @@ import { motion, AnimatePresence } from 'motion/react';
 import { getBadgeColor, getStatusColor } from '@/src/lib/badge-utils';
 import { format } from 'date-fns';
 
+const matchBadgeWithTemplate = (item: any, template: BadgeTemplate, offerings: any[] = []) => {
+  // 1. Template ID connection
+  if (item.badgeTemplateId === template.id || item.badgeId === template.id) return true;
+  
+  // 2. Program Offering connection
+  if (item.programOfferingId) {
+    const off = offerings.find(o => o.id === item.programOfferingId);
+    if (off && off.badgeTemplateId === template.id) return true;
+  }
+  
+  // 3. Fallback Title & Type match with aggressive normalization
+  const normalize = (s: string) => {
+    return s.toLowerCase()
+      .replace(/[^a-z0-9]/g, ' ')
+      .replace(/\(proficient\)|\(expert\)|\(skilled\)|\(master\)/g, '')
+      .replace(/level|animation|competency/g, '') // Remove very common words that might be missing
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
+  const itemTitleNorm = normalize(item.programTitle || item.badgeName || item.badgeTemplateName || '');
+  const templateTitleNorm = normalize(template.badgeName || '');
+  
+  if (!itemTitleNorm || !templateTitleNorm) return false;
+
+  // Type Match constraint: tightened for COC/NC badges
+  let typeMatch = !item.badgeType || !template.badgeType || 
+                   item.badgeType.toLowerCase().includes(template.badgeType.toLowerCase()) ||
+                   template.badgeType.toLowerCase().includes(item.badgeType.toLowerCase()) ||
+                   (item.badgeType === 'Individual' && template.badgeType === 'Proficient');
+
+  // Specific rule: COC/NC badges MUST match their type specifically to avoid accidental normalization matches
+  if (template.badgeType === 'Skilled' || template.badgeType === 'Master') {
+    typeMatch = item.badgeType === template.badgeType || 
+                (item.badgeType === 'COC' && template.badgeType === 'Skilled') ||
+                (item.badgeType === 'Qualification' && template.badgeType === 'Master');
+  }
+
+  if (typeMatch) {
+    if (itemTitleNorm === templateTitleNorm) return true;
+    if (itemTitleNorm.includes(templateTitleNorm) || templateTitleNorm.includes(itemTitleNorm)) return true;
+    
+    // Fuzzy match fallback
+    const wordsA = itemTitleNorm.split(' ').filter(w => w.length >= 2);
+    const wordsB = templateTitleNorm.split(' ').filter(w => w.length >= 2);
+    const intersection = wordsA.filter(w => wordsB.includes(w));
+    if (intersection.length >= 2) return true;
+  }
+  
+  return false;
+};
+
 const TIER_COLORS = {
   Proficient: 'bg-[#f0fdf4] text-green-700 border-green-200', // Light Green
   Skilled: 'bg-[#eff6ff] text-blue-700 border-blue-200',    // Blue
@@ -58,14 +110,24 @@ const PROGRESS_COLORS = {
   Locked: 'bg-slate-50 text-slate-400 border-slate-200 grayscale opacity-40',
   Pending: 'bg-orange-50 text-orange-600 border-orange-200',
   Rejected: 'bg-rose-50 text-rose-600 border-rose-200',
-  Earned: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  Active: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   Eligible: 'bg-blue-50 text-blue-600 border-blue-300',
 };
+
+const ACTIVE_STATUSES = ['Active', 'Approved', 'Published to Learner Wallet', 'Approved for Publication', 'Published', 'Earned', 'Badge ID Generated'];
+const PENDING_STATUSES = [
+  'Pending Review', 'Pending Approval', 'Approved for Badge ID Generation', 
+  'Badge ID Generated', 'Forwarded to District Office', 'Submitted to CO', 'Under CO Review', 'Verified by AC', 'Assessment Result Uploaded', 'Submitted'
+];
+const REJECTED_STATUSES = ['Rejected', 'Returned by CO', 'Returned by District Office'];
 
 export default function BadgeHierarchy() {
   const { user, userProfile, isAuthReady } = useFirebase();
   const [templates, setTemplates] = useState<BadgeTemplate[]>([]);
-  const [userBadges, setUserBadges] = useState<any[]>([]);
+  const [issuedBadges, setIssuedBadges] = useState<any[]>([]);
+  const [listRequests, setListRequests] = useState<any[]>([]);
+  const [completions, setCompletions] = useState<any[]>([]);
+  const [offerings, setOfferings] = useState<any[]>([]);
   const [learnerProfileFromCollection, setLearnerProfileFromCollection] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -102,33 +164,94 @@ export default function BadgeHierarchy() {
       setLoading(false);
     });
 
-    let unsubBadges: () => void = () => {};
+    let unsubIssued: () => void = () => {};
+    let unsubRequests: () => void = () => {};
+    let unsubCompletions: () => void = () => {};
+
     if (isLearner && user) {
-      const qBadges = query(
+      // Fetch by email (old records) and UID (new records)
+      const qIssuedEmail = query(
         collection(db, 'issuedBadges'),
         where('learnerEmail', '==', user.email)
       );
+      const qIssuedUID = query(
+        collection(db, 'issuedBadges'),
+        where('learnerId', '==', user.uid)
+      );
 
-      unsubBadges = onSnapshot(qBadges, (snapshot) => {
-        const badges = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setUserBadges(badges);
+      const unsubIssuedEmail = onSnapshot(qIssuedEmail, (snapshot) => {
+        setIssuedBadges(prev => {
+          const newData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          // Merge and avoid duplicates
+          const combined = [...prev];
+          newData.forEach(item => {
+            if (!combined.find(c => c.id === item.id)) combined.push(item);
+          });
+          return combined;
+        });
+      }, (error) => {
+        console.error("Issued Badges Email Error:", error);
+        handleFirestoreError(error, OperationType.GET, 'issuedBadges');
+      });
+
+      const unsubIssuedUID = onSnapshot(qIssuedUID, (snapshot) => {
+        setIssuedBadges(prev => {
+          const newData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          const combined = [...prev];
+          newData.forEach(item => {
+            if (!combined.find(c => c.id === item.id)) combined.push(item);
+          });
+          return combined;
+        });
+      }, (error) => {
+        console.error("Issued Badges UID Error:", error);
+        handleFirestoreError(error, OperationType.GET, 'issuedBadges');
+      });
+
+      const qRequests = query(
+        collection(db, 'badgeRequests'),
+        where('learnerIds', 'array-contains', user.uid)
+      );
+      
+      unsubRequests = onSnapshot(qRequests, (snapshot) => {
+        setListRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }, (error) => {
+        console.error("Requests Error:", error);
+      });
+
+      const qCompletions = query(
+        collection(db, 'ucCompletions'),
+        where('learnerId', '==', user.uid)
+      );
+      unsubCompletions = onSnapshot(qCompletions, (snapshot) => {
+        setCompletions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }, (error) => {
+        console.error("Completions Error:", error);
+      });
+
+      const qOfferings = query(collection(db, 'programOfferings'));
+      const unsubOfferings = onSnapshot(qOfferings, (snapshot) => {
+        setOfferings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         setLoading(false);
       }, (error) => {
-        console.error("User Badges Snapshot Error:", error);
-        handleFirestoreError(error, OperationType.GET, 'issuedBadges');
+        console.error("Offerings Error:", error);
         setLoading(false);
       });
+
+      unsubIssued = () => {
+        unsubIssuedEmail();
+        unsubIssuedUID();
+        unsubOfferings();
+      };
     } else if (isLearner && !user) {
-      // If we are a learner but user is missing (logged out), stop loading
       setLoading(false);
     }
 
     return () => {
       unsubTemplates();
-      unsubBadges();
+      unsubIssued();
+      unsubRequests();
+      unsubCompletions();
     };
   }, [isAuthReady, isLearner, user]);
 
@@ -192,7 +315,7 @@ export default function BadgeHierarchy() {
               </Badge>
               <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 gap-1.5 px-3 py-1">
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                Earned
+                Active
               </Badge>
             </div>
           ) : (
@@ -246,7 +369,10 @@ export default function BadgeHierarchy() {
               badges={groupedTemplates[qual]} 
               isExpanded={expandedQualifications.includes(qual)}
               onToggle={() => toggleQualification(qual)}
-              userBadges={userBadges}
+              issuedBadges={issuedBadges}
+              listRequests={listRequests}
+              completions={completions}
+              offerings={offerings}
               isLearner={isLearner}
               learnerQualification={learnerProfileFromCollection?.qualification || userProfile?.qualification}
             />
@@ -272,12 +398,15 @@ interface RowProps {
   badges: BadgeTemplate[];
   isExpanded: boolean;
   onToggle: () => void;
-  userBadges: any[];
+  issuedBadges: any[];
+  listRequests: any[];
+  completions: any[];
+  offerings: any[];
   isLearner: boolean;
   learnerQualification?: string;
 }
 
-function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, userBadges, isLearner, learnerQualification }: RowProps) {
+function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, issuedBadges, listRequests, completions, offerings, isLearner, learnerQualification }: RowProps) {
   const masterBadges = badges.filter(b => b.badgeType === 'Master').sort((a, b) => a.displayOrder - b.displayOrder);
   const expertBadges = badges.filter(b => b.badgeType === 'Expert').sort((a, b) => a.displayOrder - b.displayOrder);
   const skilledBadges = badges.filter(b => b.badgeType === 'Skilled').sort((a, b) => a.displayOrder - b.displayOrder);
@@ -286,34 +415,40 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, userBad
   const totalBadges = badges.length;
   
   // Detailed status counts for learner
-  const isRPLCandidate = userBadges.some(ub => ub.pathway === 'Recognition of Prior Learning (RPL)');
+  const isRPLCandidate = issuedBadges.some(ub => ub.pathway === 'Recognition of Prior Learning (RPL)');
+
+  // Check if learner has ANY active badge in this specific qualification
+  const hasEngagementInQual = isLearner && badges.some(t => 
+    issuedBadges.some(ub => matchBadgeWithTemplate(ub, t, offerings) && ACTIVE_STATUSES.includes(ub.status))
+  );
 
   const stats = badges.reduce((acc, t) => {
-    const record = userBadges.find(ub => ub.badgeId === t.id);
-    const hasAnyInQual = userBadges.some(ub => ub.qualificationName === qual || ub.badgeName?.includes(qual));
+    // 1. Check for Active Issued Badge (Green)
+    const issued = issuedBadges.find(ub => matchBadgeWithTemplate(ub, t, offerings) && ACTIVE_STATUSES.includes(ub.status));
 
-    const earnedStatuses = ['Active', 'Approved', 'Published to Learner Wallet', 'Approved for Publication'];
-    const pendingStatuses = [
-      'Pending', 'Pending Approval', 'Submitted to CO', 'Under CO Review', 
-      'Badge ID Generated', 'Forwarded to District Office', 
-      'Pending District Office Approval', 'Approved for Badge ID Generation'
-    ];
-    const rejectedStatuses = ['Rejected', 'Returned by CO', 'Returned by District Office'];
+    // 2. Check for Pending Request (Amber)
+    const request = listRequests.find(r => matchBadgeWithTemplate(r, t, offerings));
 
-    if (record) {
-      if (earnedStatuses.includes(record.status)) acc.earned++;
-      else if (pendingStatuses.includes(record.status)) acc.pending++;
-      else if (rejectedStatuses.includes(record.status)) acc.rejected++;
-      else acc.locked++;
-    } else if (isLearner && (t.qualificationName === learnerQualification || hasAnyInQual)) {
+    // 3. Check for Completion (Available - Blue)
+    const completion = completions.find(c => 
+      matchBadgeWithTemplate(c, t, offerings) && (c.completionStatus === 'Completed' || c.completionStatus === 'For Badge Request')
+    );
+    
+    if (issued || (request && ACTIVE_STATUSES.includes(request.status))) {
+      acc.active++;
+    } else if (request && PENDING_STATUSES.includes(request.status)) {
+      acc.pending++;
+    } else if (request && REJECTED_STATUSES.includes(request.status)) {
+      acc.rejected++;
+    } else if (completion || (isLearner && (t.qualificationName === learnerQualification)) || hasEngagementInQual) {
       acc.available++;
     } else {
       acc.locked++;
     }
     return acc;
-  }, { earned: 0, pending: 0, available: 0, rejected: 0, locked: 0 });
+  }, { active: 0, pending: 0, available: 0, rejected: 0, locked: 0 });
 
-  const progressValue = totalBadges > 0 ? (stats.earned / totalBadges) * 100 : 0;
+  const progressValue = totalBadges > 0 ? (stats.active / totalBadges) * 100 : 0;
   const isComplete = masterBadges.length > 0 && expertBadges.length > 0 && skilledBadges.length > 0 && proficientBadges.length > 0;
 
   return (
@@ -328,7 +463,7 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, userBad
         <div className="flex items-center gap-6">
           <div className={cn(
             "w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg flex-shrink-0 transition-all",
-            isLearner && stats.earned > 0 ? "bg-emerald-600 shadow-emerald-100" : "bg-blue-600 shadow-blue-100"
+            isLearner && stats.active > 0 ? "bg-emerald-600 shadow-emerald-100" : "bg-blue-600 shadow-blue-100"
           )}>
             <BookOpen className="h-7 w-7 text-white" />
           </div>
@@ -347,7 +482,7 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, userBad
               <div className="mt-3 space-y-2">
                 <div className="flex justify-between items-end mb-1">
                   <div className="text-xs font-bold text-slate-500">
-                    Overall Progress: <span className="text-slate-900">{stats.earned} of {totalBadges} badges earned</span>
+                    Overall Progress: <span className="text-slate-900">{stats.active} of {totalBadges} badges active</span>
                   </div>
                   <div className="text-xs font-bold text-blue-600">
                     {Math.round(progressValue)}%
@@ -358,7 +493,7 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, userBad
                 <div className="flex flex-wrap gap-4 pt-1">
                   <div className="flex items-center gap-1.5">
                     <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                    <span className="text-[10px] font-bold text-slate-500 uppercase">Earned: <span className="text-slate-900">{stats.earned}</span></span>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">Active: <span className="text-slate-900">{stats.active}</span></span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <div className="w-2 h-2 rounded-full bg-orange-500" />
@@ -398,9 +533,11 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, userBad
                 const qBadges = badges.filter(b => b.badgeType === type);
                 if (qBadges.length === 0) return null;
                 
-                const earned = qBadges.filter(t => 
-                  userBadges.some(ub => ub.badgeId === t.id && (ub.status === 'Active' || ub.status === 'Approved'))
-                ).length;
+                const activeCount = qBadges.filter(t => {
+                  const issued = issuedBadges.find(ub => matchBadgeWithTemplate(ub, t, offerings) && ACTIVE_STATUSES.includes(ub.status));
+                  const request = listRequests.find(r => matchBadgeWithTemplate(r, t, offerings));
+                  return issued || (request && ACTIVE_STATUSES.includes(request.status));
+                }).length;
 
                 return (
                   <div key={type} className={cn(
@@ -409,9 +546,9 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, userBad
                     type === 'Expert' ? TIER_COLORS.Expert :
                     type === 'Skilled' ? TIER_COLORS.Skilled : 
                     TIER_COLORS.Proficient,
-                    isLearner && earned === 0 && "grayscale opacity-40 bg-slate-200 text-slate-500"
+                    isLearner && activeCount === 0 && "grayscale opacity-40 bg-slate-200 text-slate-500"
                   )}>
-                    {isLearner ? (earned > 0 ? <CheckCircle2 className="h-3 w-3" /> : qBadges.length) : qBadges.length}
+                    {isLearner ? (activeCount > 0 ? <CheckCircle2 className="h-3 w-3" /> : qBadges.length) : qBadges.length}
                   </div>
                 );
               })}
@@ -456,8 +593,8 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, userBad
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="p-3 bg-white rounded-xl border border-slate-100 shadow-sm text-center">
-                    <p className="text-[9px] uppercase tracking-tighter text-slate-400 font-bold mb-1">Earned</p>
-                    <p className="text-lg font-bold text-slate-900">{stats.earned}</p>
+                    <p className="text-[9px] uppercase tracking-tighter text-slate-400 font-bold mb-1">Active</p>
+                    <p className="text-lg font-bold text-slate-900">{stats.active}</p>
                   </div>
                   <div className="p-3 bg-white rounded-xl border border-slate-100 shadow-sm text-center">
                     <p className="text-[9px] uppercase tracking-tighter text-slate-400 font-bold mb-1">Locked</p>
@@ -478,9 +615,13 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, userBad
                       title="Master Badge" 
                       level="Official NC Level" 
                       items={masterBadges} 
+                      allBadges={badges}
                       colorClass={TIER_COLORS.Master} 
                       maxSlots={1} 
-                      userBadges={userBadges}
+                      issuedBadges={issuedBadges}
+                      listRequests={listRequests}
+                      completions={completions}
+                      offerings={offerings}
                       isLearner={isLearner}
                       learnerQualification={learnerQualification}
                     />
@@ -489,9 +630,13 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, userBad
                       title="Expert Badge" 
                       level="Training Complete" 
                       items={expertBadges} 
+                      allBadges={badges}
                       colorClass={TIER_COLORS.Expert} 
                       maxSlots={1} 
-                      userBadges={userBadges}
+                      issuedBadges={issuedBadges}
+                      listRequests={listRequests}
+                      completions={completions}
+                      offerings={offerings}
                       isLearner={isLearner}
                       learnerQualification={learnerQualification}
                     />
@@ -508,10 +653,14 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, userBad
                       title="Skilled Badges" 
                       level="Certificate of Competency (COC)" 
                       items={skilledBadges} 
+                      allBadges={badges}
                       colorClass={TIER_COLORS.Skilled} 
                       maxSlots={4}
                       compact
-                      userBadges={userBadges}
+                      issuedBadges={issuedBadges}
+                      listRequests={listRequests}
+                      completions={completions}
+                      offerings={offerings}
                       isLearner={isLearner}
                       learnerQualification={learnerQualification}
                     />
@@ -528,10 +677,14 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, userBad
                       title="Proficient Badges" 
                       level="Unit of Competency Mastery" 
                       items={proficientBadges} 
+                      allBadges={badges}
                       colorClass={TIER_COLORS.Proficient} 
                       maxSlots={6}
                       compact
-                      userBadges={userBadges}
+                      issuedBadges={issuedBadges}
+                      listRequests={listRequests}
+                      completions={completions}
+                      offerings={offerings}
                       isLearner={isLearner}
                       learnerQualification={learnerQualification}
                     />
@@ -553,20 +706,24 @@ interface GroupProps {
   title: string;
   level: string;
   items: BadgeTemplate[];
+  allBadges: BadgeTemplate[];
   colorClass: string;
   maxSlots: number;
   compact?: boolean;
-  userBadges: any[];
+  issuedBadges: any[];
+  listRequests: any[];
+  completions: any[];
+  offerings: any[];
   isLearner: boolean;
   learnerQualification?: string;
 }
 
-function HierarchyGroup({ title, level, items, colorClass, maxSlots, compact, userBadges, isLearner, learnerQualification }: GroupProps) {
+function HierarchyGroup({ title, level, items, allBadges, colorClass, maxSlots, compact, issuedBadges, listRequests, completions, offerings, isLearner, learnerQualification }: GroupProps) {
   const navigate = useNavigate();
   const [selectedBadge, setSelectedBadge] = useState<{
     template: BadgeTemplate;
     record?: BadgeIssuanceRequest;
-    status: 'Locked' | 'Pending' | 'Rejected' | 'Earned' | 'Eligible';
+    status: 'Locked' | 'Pending' | 'Rejected' | 'Active' | 'Eligible';
   } | null>(null);
 
   // Create fixed slots to show the structure even if empty
@@ -601,28 +758,43 @@ function HierarchyGroup({ title, level, items, colorClass, maxSlots, compact, us
             );
           }
 
-          // Determine status for learner
-          let status: 'Locked' | 'Pending' | 'Rejected' | 'Earned' | 'Eligible' = 'Locked';
-          const record = userBadges.find(ub => ub.badgeId === badge.id);
-          
-          if (isLearner) {
-            const earnedStatuses = ['Active', 'Approved', 'Published to Learner Wallet', 'Approved for Publication'];
-            const pendingStatuses = [
-              'Pending', 'Pending Approval', 'Submitted to CO', 'Under CO Review', 
-              'Badge ID Generated', 'Forwarded to District Office', 
-              'Pending District Office Approval', 'Approved for Badge ID Generation'
-            ];
-            const rejectedStatuses = ['Rejected', 'Returned by CO', 'Returned by District Office'];
-
-            if (record) {
-              if (earnedStatuses.includes(record.status)) status = 'Earned';
-              else if (pendingStatuses.includes(record.status)) status = 'Pending';
-              else if (rejectedStatuses.includes(record.status)) status = 'Rejected';
-            } else if (badge.qualificationName === learnerQualification || userBadges.some(ub => ub.qualificationName === badge.qualificationName)) {
-              status = 'Eligible';
-            }
-          } else {
-            status = 'Earned'; // Default view for admin/qso
+            // Determing status for learner
+            let status: 'Locked' | 'Pending' | 'Rejected' | 'Active' | 'Eligible' = 'Locked';
+            let activeRecord: any = null;
+            
+            if (isLearner) {
+              // Priority 1: Issued Badge (Earned)
+              const issued = issuedBadges.find(ub => matchBadgeWithTemplate(ub, badge, offerings) && ACTIVE_STATUSES.includes(ub.status));
+  
+              // Priority 2: Request from badgeRequests collection
+              const request = listRequests.find(r => matchBadgeWithTemplate(r, badge, offerings));
+  
+              // Priority 3: Completion or Eligibility
+              const completion = completions.find(c => 
+                matchBadgeWithTemplate(c, badge, offerings) && 
+                (c.completionStatus === 'Completed' || c.completionStatus === 'Badge Requested' || c.completionStatus === 'For Badge Request')
+              );
+  
+              // Check if learner has ANY active badge in this specific qualification
+              const hasEngagementInQual = allBadges.some(t => 
+                issuedBadges.some(ub => matchBadgeWithTemplate(ub, t, offerings) && ACTIVE_STATUSES.includes(ub.status))
+              );
+  
+              if (issued || (request && ACTIVE_STATUSES.includes(request.status))) {
+                status = 'Active';
+                activeRecord = issued || request;
+              } else if (request && REJECTED_STATUSES.includes(request.status)) {
+                status = 'Rejected';
+                activeRecord = request;
+              } else if (request && PENDING_STATUSES.includes(request.status)) {
+                status = 'Pending';
+                activeRecord = request;
+              } else if (completion || badge.qualificationName === learnerQualification || hasEngagementInQual) {
+                status = 'Eligible';
+                activeRecord = completion;
+              }
+            } else {
+            status = 'Active'; // Default view for admin/qso
           }
 
           return (
@@ -632,7 +804,11 @@ function HierarchyGroup({ title, level, items, colorClass, maxSlots, compact, us
             )}>
               <motion.div 
                 whileHover={{ scale: 1.02, translateY: -2 }}
-                onClick={() => setSelectedBadge({ template: badge, record, status })}
+                onClick={() => setSelectedBadge({ 
+                  template: badge, 
+                  record: activeRecord, 
+                  status 
+                })}
                 className={cn(
                   "p-4 rounded-2xl border-2 shadow-sm transition-all h-full flex flex-col justify-between group cursor-pointer",
                   PROGRESS_COLORS[status]
@@ -641,12 +817,12 @@ function HierarchyGroup({ title, level, items, colorClass, maxSlots, compact, us
                 <div className="space-y-1">
                   <div className="flex justify-between items-start">
                     <p className="text-[9px] font-bold opacity-70 uppercase truncate mr-2">
-                      {status === 'Earned' ? badge.badgeType : status}
+                      {status === 'Active' ? badge.badgeType : status}
                     </p>
                     {status === 'Locked' && <Lock className="h-3 w-3 opacity-60" />}
                     {status === 'Pending' && <Clock className="h-3 w-3" />}
                     {status === 'Rejected' && <XCircle className="h-3 w-3" />}
-                    {status === 'Earned' && <CheckCircle2 className="h-3 w-3" />}
+                    {status === 'Active' && <CheckCircle2 className="h-3 w-3" />}
                     {status === 'Eligible' && <HelpCircle className="h-3 w-3" />}
                   </div>
                   <h6 className="font-bold text-xs leading-tight line-clamp-2 min-h-[2.5em]">{badge.badgeName}</h6>
@@ -674,14 +850,14 @@ function HierarchyGroup({ title, level, items, colorClass, maxSlots, compact, us
                 <div className="flex items-center gap-4 mb-4">
                   <div className={cn(
                     "w-16 h-16 rounded-2xl flex items-center justify-center shadow-md",
-                    selectedBadge.status === 'Earned' ? colorClass : PROGRESS_COLORS[selectedBadge.status]
+                    selectedBadge.status === 'Active' ? colorClass : PROGRESS_COLORS[selectedBadge.status]
                   )}>
                     <Award className="h-8 w-8" />
                   </div>
                   <div>
                     <Badge variant="outline" className={cn(
                       "mb-1 px-2 py-0",
-                      selectedBadge.status === 'Earned' ? colorClass : PROGRESS_COLORS[selectedBadge.status]
+                      selectedBadge.status === 'Active' ? colorClass : PROGRESS_COLORS[selectedBadge.status]
                     )}>
                       {selectedBadge.template.badgeType}
                     </Badge>
@@ -710,7 +886,7 @@ function HierarchyGroup({ title, level, items, colorClass, maxSlots, compact, us
                     <div className="flex items-center gap-2">
                       <div className={cn(
                         "w-2 h-2 rounded-full",
-                        selectedBadge.status === 'Earned' ? "bg-emerald-500" :
+                        selectedBadge.status === 'Active' ? "bg-emerald-500" :
                         selectedBadge.status === 'Pending' ? "bg-amber-500" :
                         selectedBadge.status === 'Rejected' ? "bg-rose-500" : "bg-slate-300"
                       )} />
@@ -759,7 +935,7 @@ function HierarchyGroup({ title, level, items, colorClass, maxSlots, compact, us
                     Apply for Badge
                   </Button>
                 )}
-                {selectedBadge.status === 'Earned' && (
+                {selectedBadge.status === 'Active' && (
                   <Button 
                     className="flex-1 bg-emerald-600 hover:bg-emerald-700"
                     onClick={() => navigate('/learner/wallet')}

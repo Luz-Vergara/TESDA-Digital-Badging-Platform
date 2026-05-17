@@ -30,7 +30,7 @@ export default function BadgeCard({ badge, onViewDetails }: BadgeCardProps) {
           {badge.badgeType}
         </Badge>
         <h3 className="text-lg font-bold text-slate-900 mb-2 line-clamp-2 leading-tight group-hover:text-blue-600 transition-colors">
-          {badge.programName}
+          {badge.programName || (badge as any).programTitle || (badge as any).badgeName || (badge as any).badgeTemplateName || 'Untitled Badge'}
         </h3>
         
         <div className="space-y-2 mt-4">

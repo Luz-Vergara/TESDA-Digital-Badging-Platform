@@ -69,7 +69,7 @@ import {
 import { Organization } from '@/src/types';
 
 export default function Users() {
-  const { isAuthReady } = useFirebase();
+  const { isAuthReady, user, userProfile } = useFirebase();
   const [users, setUsers] = useState<any[]>([]);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,7 +87,14 @@ export default function Users() {
   });
 
   useEffect(() => {
-    if (!isAuthReady) return;
+    if (!isAuthReady || !userProfile) return;
+
+    // Only subscribe if user is an admin
+    const allowedRoles = ['Admin', 'qso_admin', 'co_admin', 'icto_admin'];
+    if (!allowedRoles.includes(userProfile.role)) {
+      setLoading(false);
+      return;
+    }
 
     const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
       const userData = snapshot.docs.map(doc => ({
@@ -97,22 +104,26 @@ export default function Users() {
       setUsers(userData);
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'users');
+      handleFirestoreError(error, OperationType.LIST, 'users');
+      setLoading(false);
     });
 
-    const unsubOrgs = onSnapshot(collection(db, 'organizations'), (snapshot) => {
+    const offPath = 'organizations';
+    const unsubOrgs = onSnapshot(collection(db, offPath), (snapshot) => {
       const orgData = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as Organization[];
       setOrganizations(orgData);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, offPath);
     });
 
     return () => {
       unsubUsers();
       unsubOrgs();
     };
-  }, [isAuthReady]);
+  }, [isAuthReady, userProfile]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

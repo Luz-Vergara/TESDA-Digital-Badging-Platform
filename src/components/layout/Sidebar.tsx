@@ -75,9 +75,12 @@ export default function Sidebar({ role }: SidebarProps) {
     if (role === 'Learner') {
       return [
         ...common,
+        { name: 'Available Programs', href: '/learner/programs', icon: Search },
+        { name: 'My Applications', href: '/learner/applications', icon: ClipboardList },
+        { name: 'My Enrollments', href: '/learner/enrollments', icon: Users },
+        { name: 'My Completed UCs', href: '/learner/completions', icon: CheckCircle },
         { name: 'My Badge Wallet', href: '/learner/wallet', icon: Wallet },
         { name: 'Badge Hierarchy', href: '/learner/hierarchy', icon: Award },
-        { name: 'Programs', href: '/learner/programs', icon: FileCheck },
       ];
     }
 
@@ -135,7 +138,6 @@ export default function Sidebar({ role }: SidebarProps) {
         ...common,
         { name: 'Approval Queue', href: '/districtoffice/queue', icon: ClipboardCheck },
         { name: 'Badge Request Status', href: '/districtoffice/status', icon: TrendingUp },
-        { name: 'Renewal Management', href: '/districtoffice/renewal', icon: FileText },
         { name: 'Training Centers', href: '/districtoffice/training-centers', icon: Building2 },
         { name: 'Assessment Centers', href: '/districtoffice/assessment-centers', icon: Building2 },
       ];
@@ -145,9 +147,11 @@ export default function Sidebar({ role }: SidebarProps) {
       return [
         ...common,
         { name: 'Learners', href: '/trainingcenter/learners', icon: Users },
-        { name: 'Training Records', href: '/trainingcenter/records', icon: FileText },
+        { name: 'Programs Offered', href: '/trainingcenter/programs', icon: Layers },
+        { name: 'Batches / Classes', href: '/trainingcenter/batches', icon: Layers },
+        { name: 'Learner Applications', href: '/trainingcenter/applications', icon: Building2 },
         { name: 'Badge Requests', href: '/trainingcenter/requests', icon: Award },
-        { name: 'Submissions', href: '/trainingcenter/submissions', icon: HistoryIcon },
+        { name: 'Reports', href: '/trainingcenter/reports', icon: TrendingUp },
       ];
     }
 

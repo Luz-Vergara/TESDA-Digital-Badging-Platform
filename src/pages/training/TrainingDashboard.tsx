@@ -13,6 +13,7 @@ import {
   Activity,
   Building2,
   Info,
+  Layers,
   FileText,
   History as HistoryIcon
 } from 'lucide-react';
@@ -57,7 +58,7 @@ export default function TrainingDashboard() {
       }));
       setIssuedBadges(badges);
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, badgesPath);
+      handleFirestoreError(error, OperationType.LIST, badgesPath);
     });
 
     const learnersPath = 'learners';
@@ -74,16 +75,21 @@ export default function TrainingDashboard() {
       setLearners(learnerData);
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, learnersPath);
+      handleFirestoreError(error, OperationType.LIST, learnersPath);
     });
 
     // Fetch District Office Info
     if (userProfile?.assignedDistrictId) {
-      getDoc(doc(db, 'organizations', userProfile.assignedDistrictId)).then(docSnap => {
-        if (docSnap.exists()) {
-          setDistrictOffice(docSnap.data());
-        }
-      });
+      const orgPath = `organizations/${userProfile.assignedDistrictId}`;
+      getDoc(doc(db, 'organizations', userProfile.assignedDistrictId))
+        .then(docSnap => {
+          if (docSnap.exists()) {
+            setDistrictOffice(docSnap.data());
+          }
+        })
+        .catch(error => {
+          handleFirestoreError(error, OperationType.GET, orgPath);
+        });
     }
 
     // Recent Activity
@@ -95,6 +101,8 @@ export default function TrainingDashboard() {
     );
     const unsubscribeActivity = onSnapshot(activityQuery, (snapshot) => {
       setRecentActivity(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'auditLogs');
     });
 
     return () => {
@@ -129,13 +137,13 @@ export default function TrainingDashboard() {
         </div>
         <div className="flex gap-3">
           <Link to="/trainingcenter/learners">
-            <Button variant="outline" className="gap-2">
-              <UserPlus className="h-4 w-4" />
-              Add New Learner
+            <Button className="bg-blue-600 hover:bg-blue-700 gap-2">
+              <Users className="h-4 w-4" />
+              Manage Learners
             </Button>
           </Link>
           <Link to="/trainingcenter/requests">
-            <Button className="bg-blue-600 hover:bg-blue-700 gap-2">
+            <Button variant="outline" className="gap-2">
               <Plus className="h-4 w-4" />
               Submit Badge Request
             </Button>
@@ -196,9 +204,11 @@ export default function TrainingDashboard() {
                 <CardTitle className="text-lg">Recent Submissions</CardTitle>
                 <CardDescription>Track the status of your latest badge requests</CardDescription>
               </div>
-              <Button variant="ghost" size="sm" className="text-blue-600" render={<Link to="/trainingcenter/submissions" />} nativeButton={false}>
-                View All
-              </Button>
+              <Link to="/trainingcenter/requests">
+                <Button variant="ghost" size="sm" className="text-blue-600">
+                  View All
+                </Button>
+              </Link>
             </CardHeader>
             <CardContent>
               {issuedBadges.length > 0 ? (
@@ -309,18 +319,30 @@ export default function TrainingDashboard() {
               <CardTitle className="text-lg">Quick Links</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-2">
-              <Button variant="outline" className="justify-start gap-2" render={<Link to="/trainingcenter/learners" />} nativeButton={false}>
-                <Users className="h-4 w-4" />
-                Learner Directory
-              </Button>
-              <Button variant="outline" className="justify-start gap-2" render={<Link to="/trainingcenter/records" />} nativeButton={false}>
-                <FileText className="h-4 w-4" />
-                Training Progress
-              </Button>
-              <Button variant="outline" className="justify-start gap-2" render={<Link to="/trainingcenter/submissions" />} nativeButton={false}>
-                <HistoryIcon className="h-4 w-4" />
-                Submission History
-              </Button>
+              <Link to="/trainingcenter/learners" className="w-full">
+                <Button variant="outline" className="w-full justify-start gap-2">
+                  <Users className="h-4 w-4" />
+                  Manage Learners
+                </Button>
+              </Link>
+              <Link to="/trainingcenter/programs" className="w-full">
+                <Button variant="outline" className="w-full justify-start gap-2">
+                  <Layers className="h-4 w-4" />
+                  Program Offerings
+                </Button>
+              </Link>
+              <Link to="/trainingcenter/completions" className="w-full">
+                <Button variant="outline" className="w-full justify-start gap-2">
+                  <CheckCircle className="h-4 w-4" />
+                  UC Completion
+                </Button>
+              </Link>
+              <Link to="/trainingcenter/requests" className="w-full">
+                <Button variant="outline" className="w-full justify-start gap-2">
+                  <Award className="h-4 w-4" />
+                  Badge Requests
+                </Button>
+              </Link>
             </CardContent>
           </Card>
         </div>

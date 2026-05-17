@@ -129,6 +129,158 @@ export interface BadgeIssuanceRequest {
   qualificationName?: string;
 }
 
+export interface ProgramOffering {
+  id: string;
+  trainingCenterId: string;
+  trainingCenterName: string;
+  programTitle: string;
+  programType: 'Unit of Competency' | 'Cluster of Competencies' | 'Full Qualification' | 'Micro-Credential';
+  qualificationName: string;
+  qualificationCode: string;
+  badgeTemplateId: string;
+  badgeType: BadgeType;
+  deliveryMode: 'Institution-Based' | 'Enterprise-Based' | 'Online' | 'Blended';
+  status: 'Draft' | 'Active' | 'Inactive' | 'Archived';
+  createdAt: any;
+  updatedAt: any;
+}
+
+export interface ProgramBatch {
+  id: string;
+  programOfferingId: string;
+  trainingCenterId: string;
+  badgeTemplateId: string; // Added to carry through
+  batchName: string;
+  startDate: string;
+  endDate: string;
+  trainerName: string;
+  maxSlots: number;
+  status: 'Open' | 'Ongoing' | 'Completed' | 'Cancelled';
+  createdAt: any;
+  updatedAt: any;
+}
+
+export interface Enrollment {
+  id: string;
+  learnerId: string;
+  learnerName: string;
+  learnerEmail: string;
+  trainingCenterId: string;
+  programOfferingId: string;
+  programBatchId: string;
+  badgeTemplateId: string; // Added to carry through
+  enrollmentStatus: 'Applied' | 'Accepted' | 'Enrolled' | 'Completed' | 'Dropped' | 'Withdrawn';
+  completionStatus: 'Not Started' | 'In Progress' | 'Completed' | 'For Assessment';
+  dateApplied: any;
+  dateEnrolled?: any;
+  dateCompleted?: any;
+  createdAt: any;
+  updatedAt: any;
+}
+
+export interface UCCompletion {
+  id: string;
+  enrollmentId: string;
+  learnerId: string;
+  trainingCenterId: string;
+  programOfferingId: string;
+  programBatchId: string;
+  badgeTemplateId: string; // Added to carry through
+  ucTitle: string;
+  ucCode: string;
+  completionStatus: 'In Progress' | 'Completed' | 'For Badge Request' | 'Badge Requested';
+  evidenceUrl?: string;
+  remarks?: string;
+  completedAt: any;
+  verifiedBy: string;
+  createdAt: any;
+  updatedAt: any;
+}
+
+export interface BadgeRequest {
+  id: string;
+  requestType?: 'Individual' | 'Batch' | 'UC';
+  trainingCenterId?: string;
+  programOfferingId?: string;
+  programBatchId?: string;
+  ucCompletionId?: string;
+  learnerIds: string[]; // Supports batch requests
+  badgeTemplateId: string;
+  badgeType: BadgeType;
+  districtOfficeId: string;
+  issuancePath?: 'Standard Training-Based' | 'RPL';
+  sourceAssessmentCenterId?: string;
+  evidenceUrl?: string;
+  remarks?: string;
+  status: 'Pending Review' | 'Approved' | 'Rejected' | BadgeStatus;
+  submittedBy: string;
+  submittedAt: any;
+  reviewedBy?: string;
+  reviewedAt?: any;
+  reviewRemarks?: string;
+  createdAt: any;
+  updatedAt: any;
+  // Template details for IssuedBadge copy
+  templateDetails?: {
+    badgeName: string;
+    description: string;
+    criteria: string;
+    alignment: string;
+    qualificationName: string;
+    qualificationCode: string;
+    badgeType: BadgeType;
+    credentialLevel: string;
+  };
+  // Fallback fields for compatibility with older components
+  learnerId?: string;
+  learnerName?: string;
+  learnerEmail?: string;
+  badgeId?: string;
+  badgeName?: string;
+  programName?: string;
+  issuerId?: string;
+  issuerName?: string;
+  issuerType?: string;
+  assessmentRecordId?: string;
+  qualification?: string;
+  competency?: string;
+  pathway?: string;
+  rejectionRemarks?: string;
+  approvedBy?: string;
+  approvedAt?: any;
+}
+
+export interface NewIssuedBadge {
+  id: string;
+  badgeId: string; // ID of the template it originated from
+  learnerId: string;
+  learnerName: string;
+  learnerEmail: string;
+  badgeTemplateId: string;
+  badgeRequestId: string;
+  trainingCenterId: string;
+  trainingCenterName?: string;
+  districtOfficeId: string;
+  verificationId: string;
+  badgeType: BadgeType;
+  programTitle: string;
+  qualificationName: string;
+  qualificationCode?: string; // Added
+  credentialLevel?: string; // Added
+  criteria?: string; // Added
+  alignment?: string; // Added
+  description?: string; // Added
+  ucTitle?: string;
+  issueDate: any;
+  expiryDate?: any;
+  status: 'Active' | 'Expired' | 'Revoked';
+  publishedToLearner?: boolean; // Added
+  evidenceUrl?: string;
+  metadata?: any;
+  createdAt: any;
+  updatedAt: any;
+}
+
 export interface AssessmentRecord {
   id: string;
   learnerId: string;
@@ -154,32 +306,3 @@ export interface AssessmentRecord {
   createdAt: any;
 }
 
-export interface BadgeRequest {
-  id: string;
-  learnerId: string;
-  learnerName: string;
-  learnerEmail?: string;
-  badgeId?: string;
-  badgeName?: string;
-  programName?: string;
-  issuerId?: string;
-  issuerName?: string;
-  issuerType?: string;
-  assessmentRecordId: string;
-  badgeType: 'Skilled Badge' | 'Master Badge';
-  qualification: string;
-  competency?: string;
-  pathway: string;
-  evidenceUrl: string;
-  remarks: string;
-  status: BadgeStatus | 'Approved' | 'Rejected';
-  sourceAssessmentCenterId: string;
-  districtOfficeId: string;
-  routingTier?: 'DistrictOffice' | 'CertificationOffice';
-  targetApproverId?: string;
-  submittedBy: string;
-  submittedAt: any;
-  rejectionRemarks?: string;
-  approvedBy?: string;
-  approvedAt?: any;
-}

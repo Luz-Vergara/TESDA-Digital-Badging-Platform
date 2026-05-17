@@ -68,7 +68,7 @@ import {
 import { Organization } from '@/src/types';
 
 export default function Organizations() {
-  const { isAuthReady } = useFirebase();
+  const { isAuthReady, user, userProfile } = useFirebase();
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [districts, setDistricts] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,6 +77,7 @@ export default function Organizations() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingOrg, setEditingOrg] = useState<Organization | null>(null);
   const [orgToDelete, setOrgToDelete] = useState<Organization | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
   
   const [formData, setFormData] = useState({
     name: '',
@@ -87,9 +88,17 @@ export default function Organizations() {
   });
 
   useEffect(() => {
-    if (!isAuthReady) return;
+    if (!isAuthReady || !userProfile) return;
 
-    const unsubOrgs = onSnapshot(collection(db, 'organizations'), (snapshot) => {
+    // Only subscribe if user is an admin or specific office role
+    const allowedRoles = ['Admin', 'qso_admin', 'co_admin', 'icto_admin'];
+    if (!allowedRoles.includes(userProfile.role)) {
+      setLoading(false);
+      return;
+    }
+
+    const path = 'organizations';
+    const unsubOrgs = onSnapshot(collection(db, path), (snapshot) => {
       const orgData = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
@@ -98,11 +107,12 @@ export default function Organizations() {
       setDistricts(orgData.filter(o => o.type === 'DistrictOffice'));
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'organizations');
+      handleFirestoreError(error, OperationType.LIST, path);
+      setLoading(false);
     });
 
     return () => unsubOrgs();
-  }, [isAuthReady]);
+  }, [isAuthReady, userProfile]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -343,7 +353,12 @@ export default function Organizations() {
           <div className="flex flex-col md:flex-row gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <Input placeholder="Search organizations..." className="pl-10" />
+              <Input 
+                placeholder="Search organizations..." 
+                className="pl-10" 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
             </div>
             <div className="flex gap-2">
               <Button variant="outline" className="gap-2">
@@ -377,8 +392,16 @@ export default function Organizations() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {organizations.length > 0 ? (
-                  organizations.map((org) => (
+                {organizations.filter(org => 
+                  org.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                  org.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                  org.location.toLowerCase().includes(searchTerm.toLowerCase())
+                ).length > 0 ? (
+                  organizations.filter(org => 
+                    org.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    org.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    org.location.toLowerCase().includes(searchTerm.toLowerCase())
+                  ).map((org) => (
                     <TableRow key={org.id} className="hover:bg-slate-50/50 transition-colors">
                       <TableCell>
                         <div className="flex flex-col">
