@@ -41,12 +41,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ProgramBatch, ProgramOffering } from '@/src/types';
+import { ProgramBatch, ProgramOffering, Enrollment } from '@/src/types';
 
 export default function ProgramBatches() {
   const { user, userProfile, isAuthReady } = useFirebase();
   const [batches, setBatches] = useState<ProgramBatch[]>([]);
   const [offerings, setOfferings] = useState<ProgramOffering[]>([]);
+  const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
+  const [selectedBatchForLearners, setSelectedBatchForLearners] = useState<ProgramBatch | null>(null);
+  const [isViewLearnersOpen, setIsViewLearnersOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -92,9 +95,21 @@ export default function ProgramBatches() {
       handleFirestoreError(error, OperationType.LIST, offPath);
     });
 
+    const enrPath = 'enrollments';
+    const enrQuery = userProfile?.role === 'Admin'
+      ? query(collection(db, enrPath))
+      : query(collection(db, enrPath), where('trainingCenterId', '==', user.uid));
+      
+    const unsubscribeEnr = onSnapshot(enrQuery, (snapshot) => {
+      setEnrollments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Enrollment[]);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, enrPath);
+    });
+
     return () => {
       unsubscribe();
       unsubscribeOff();
+      unsubscribeEnr();
     };
   }, [user, userProfile, isAuthReady]);
 
@@ -193,6 +208,10 @@ export default function ProgramBatches() {
             <TableBody>
               {batches.map((batch) => {
                 const offering = offerings.find(o => o.id === batch.programOfferingId);
+                const enrolledCount = enrollments.filter(e => e.programBatchId === batch.id && (e.enrollmentStatus === 'Enrolled' || e.enrollmentStatus === 'Completed')).length;
+                
+                const isFull = enrolledCount >= batch.maxSlots;
+                
                 return (
                   <TableRow key={batch.id}>
                     <TableCell className="pl-6 font-medium">{batch.batchName}</TableCell>
@@ -205,12 +224,40 @@ export default function ProgramBatches() {
                       </div>
                     </TableCell>
                     <TableCell className="text-sm">{batch.trainerName}</TableCell>
-                    <TableCell className="text-sm">{batch.maxSlots}</TableCell>
+                    <TableCell className="text-sm font-medium">
+                      <div className="flex flex-col">
+                        <span className={isFull ? "font-bold text-red-600" : "text-slate-800"}>
+                          {enrolledCount} / {batch.maxSlots}
+                        </span>
+                        <span className="text-[10px] text-slate-400">seats filled</span>
+                      </div>
+                    </TableCell>
                     <TableCell>
-                      <Badge variant={batch.status === 'Open' ? 'default' : 'secondary'}>{batch.status}</Badge>
+                      {batch.status === 'Cancelled' ? (
+                        <Badge variant="destructive" className="bg-slate-500">Cancelled</Badge>
+                      ) : batch.status === 'Completed' ? (
+                        <Badge variant="secondary" className="bg-blue-600 text-white">Completed</Badge>
+                      ) : isFull ? (
+                        <Badge variant="destructive" className="bg-red-500 text-white animate-pulse">Full</Badge>
+                      ) : batch.status === 'Ongoing' ? (
+                        <Badge variant="default" className="bg-amber-500 text-white">Ongoing</Badge>
+                      ) : (
+                        <Badge variant="default" className="bg-emerald-500 text-white">Open</Badge>
+                      )}
                     </TableCell>
                     <TableCell className="text-right pr-6">
-                      <div className="flex justify-end gap-2">
+                      <div className="flex justify-end gap-2 items-center">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="text-blue-600 border-blue-200 hover:bg-blue-50 gap-1"
+                          onClick={() => {
+                            setSelectedBatchForLearners(batch);
+                            setIsViewLearnersOpen(true);
+                          }}
+                        >
+                          <Users className="h-3.5 w-3.5" /> View Learners
+                        </Button>
                         <Button variant="ghost" size="sm" onClick={() => {
                           setEditingId(batch.id);
                           setFormData({
@@ -314,6 +361,65 @@ export default function ProgramBatches() {
               <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Saving...' : 'Save Batch'}</Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isViewLearnersOpen} onOpenChange={setIsViewLearnersOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Learners in {selectedBatchForLearners?.batchName}</DialogTitle>
+            <DialogDescription>
+              A complete list of learners officially assigned to this class.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-2 max-h-[400px] overflow-y-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Learner Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Enrollment Status</TableHead>
+                  <TableHead>Completion Status</TableHead>
+                  <TableHead>Date Enrolled</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {enrollments
+                  .filter(e => e.programBatchId === selectedBatchForLearners?.id)
+                  .map((e) => (
+                    <TableRow key={e.id}>
+                      <TableCell className="font-semibold">{e.learnerName}</TableCell>
+                      <TableCell className="text-sm text-slate-500">{e.learnerEmail}</TableCell>
+                      <TableCell>
+                        <Badge variant={e.enrollmentStatus === 'Enrolled' ? 'default' : 'secondary'} className={e.enrollmentStatus === 'Enrolled' ? 'bg-emerald-500 text-white hover:bg-emerald-600' : ''}>
+                          {e.enrollmentStatus}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-slate-600 bg-slate-50">
+                          {e.completionStatus || 'Not Started'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-500">
+                        {e.dateEnrolled ? (e.dateEnrolled.seconds ? new Date(e.dateEnrolled.seconds * 1000).toLocaleDateString() : new Date(e.dateEnrolled).toLocaleDateString()) : 'N/A'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                {enrollments.filter(e => e.programBatchId === selectedBatchForLearners?.id).length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="h-24 text-center text-slate-500 italic">
+                      No learners assigned to this batch yet.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsViewLearnersOpen(false)}>Close</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

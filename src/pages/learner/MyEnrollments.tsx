@@ -28,7 +28,7 @@ export default function MyEnrollments() {
     const q = query(
       collection(db, enrPath),
       where('learnerId', '==', user.uid),
-      where('enrollmentStatus', 'in', ['Accepted', 'Enrolled', 'Completed'])
+      where('enrollmentStatus', 'in', ['Enrolled', 'Completed'])
     );
 
     const unsubscribe = onSnapshot(q, async (snapshot) => {
@@ -115,14 +115,10 @@ export default function MyEnrollments() {
                 </div>
 
                 <div className="pt-2 border-t border-slate-50 flex gap-2">
-                   {enr.enrollmentStatus === 'Accepted' ? (
-                      <p className="text-xs text-amber-600 font-medium">Please wait for the Training Center to confirm your enrollment.</p>
-                   ) : (
-                      <div className="flex items-center gap-2 text-xs text-emerald-600 font-bold">
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        Official enrollment confirmed
-                      </div>
-                   )}
+                   <div className="flex items-center gap-2 text-xs text-emerald-600 font-bold">
+                     <CheckCircle2 className="h-3.5 w-3.5" />
+                     Official enrollment confirmed
+                   </div>
                 </div>
               </CardContent>
             </Card>

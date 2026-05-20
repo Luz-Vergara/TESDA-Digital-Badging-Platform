@@ -184,7 +184,7 @@ export default function LearnerManagement() {
     const q = query(
       collection(db, enrPath),
       where('trainingCenterId', '==', user.uid),
-      where('enrollmentStatus', 'in', ['Accepted', 'Enrolled', 'Completed'])
+      where('enrollmentStatus', 'in', ['Enrolled', 'Completed'])
     );
 
     const unsubscribeEnr = onSnapshot(q, (snapshot) => {
@@ -783,15 +783,7 @@ export default function LearnerManagement() {
                           </div>
                         </TableCell>
                         <TableCell className="text-right pr-6">
-                           {enr.enrollmentStatus === 'Accepted' && (
-                            <Button size="sm" className="bg-blue-600" onClick={() => handleEnroll(enr.id)}>
-                              Enroll <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-                            </Button>
-                          )}
-                          {enr.enrollmentStatus === 'Enrolled' && (
-                            <Button variant="outline" size="sm" onClick={() => handleDetails(enr)}>Details</Button>
-                          )}
-                          {enr.enrollmentStatus === 'Completed' && (
+                          {(enr.enrollmentStatus === 'Enrolled' || enr.enrollmentStatus === 'Completed') && (
                             <Button variant="outline" size="sm" onClick={() => handleDetails(enr)}>Details</Button>
                           )}
                         </TableCell>

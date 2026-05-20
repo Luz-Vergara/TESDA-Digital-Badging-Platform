@@ -78,7 +78,6 @@ export default function Sidebar({ role }: SidebarProps) {
         { name: 'Available Programs', href: '/learner/programs', icon: Search },
         { name: 'My Applications', href: '/learner/applications', icon: ClipboardList },
         { name: 'My Enrollments', href: '/learner/enrollments', icon: Users },
-        { name: 'My Completed UCs', href: '/learner/completions', icon: CheckCircle },
         { name: 'My Badge Wallet', href: '/learner/wallet', icon: Wallet },
         { name: 'Badge Hierarchy', href: '/learner/hierarchy', icon: Award },
       ];

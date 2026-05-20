@@ -120,7 +120,7 @@ export default function AvailablePrograms() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredOfferings.map((offering) => {
-          const hasApplied = myEnrollments.some(e => e.programOfferingId === offering.id);
+          const enrollment = myEnrollments.find(e => e.programOfferingId === offering.id);
           return (
             <Card key={offering.id} className="group hover:shadow-xl transition-all duration-300 border-slate-200 overflow-hidden flex flex-col">
               <div className="h-2 bg-blue-600" />
@@ -151,10 +151,35 @@ export default function AvailablePrograms() {
                 </div>
               </CardContent>
               <CardFooter className="pt-0 pb-6 pr-6 pl-6">
-                {hasApplied ? (
-                  <Button disabled className="w-full bg-slate-100 text-slate-500 font-bold">
+                {!enrollment ? (
+                  <Button 
+                    onClick={() => { setSelectedProgram(offering); setIsApplyModalOpen(true); }}
+                    className="w-full bg-blue-600 hover:bg-blue-700 font-bold gap-2"
+                  >
+                    Apply Now <ArrowRight className="h-4 w-4" />
+                  </Button>
+                ) : enrollment.enrollmentStatus === 'Applied' ? (
+                  <Button disabled className="w-full bg-amber-50 text-amber-700 border border-amber-200 font-bold">
                     Application Pending
                   </Button>
+                ) : enrollment.enrollmentStatus === 'Enrolled' ? (
+                  <Button variant="outline" className="w-full text-emerald-600 border-emerald-200 hover:bg-emerald-50 font-bold cursor-default">
+                    Enrolled • View in My Enrollments
+                  </Button>
+                ) : enrollment.enrollmentStatus === 'Completed' ? (
+                  <Button disabled className="w-full bg-blue-50 text-blue-700 border border-blue-200 font-bold">
+                    Completed
+                  </Button>
+                ) : enrollment.enrollmentStatus === 'Rejected' ? (
+                  <div className="w-full space-y-2">
+                    <div className="text-center text-xs text-rose-600 font-semibold">Previous Application Rejected</div>
+                    <Button 
+                      onClick={() => { setSelectedProgram(offering); setIsApplyModalOpen(true); }}
+                      className="w-full bg-blue-600 hover:bg-blue-700 font-bold gap-2"
+                    >
+                      Re-apply Now <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  </div>
                 ) : (
                   <Button 
                     onClick={() => { setSelectedProgram(offering); setIsApplyModalOpen(true); }}

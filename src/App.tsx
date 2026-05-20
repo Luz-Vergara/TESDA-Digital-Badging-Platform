@@ -8,7 +8,6 @@ import LearnerDashboard from './pages/learner/LearnerDashboard';
 import AvailablePrograms from './pages/learner/AvailablePrograms';
 import MyApplications from './pages/learner/MyApplications';
 import MyEnrollments from './pages/learner/MyEnrollments';
-import MyCompletions from './pages/learner/MyCompletions';
 import MyBadgeWallet from './pages/learner/MyBadgeWallet';
 import DistrictOfficeDashboard from './pages/districtoffice/DistrictOfficeDashboard';
 import ApprovalQueue from './pages/districtoffice/ApprovalQueue';
@@ -53,7 +52,6 @@ export default function App() {
             <Route path="programs" element={<AvailablePrograms />} />
             <Route path="applications" element={<MyApplications />} />
             <Route path="enrollments" element={<MyEnrollments />} />
-            <Route path="completions" element={<MyCompletions />} />
             <Route path="wallet" element={<MyBadgeWallet />} />
             <Route path="hierarchy" element={<BadgeHierarchy />} />
           </Route>

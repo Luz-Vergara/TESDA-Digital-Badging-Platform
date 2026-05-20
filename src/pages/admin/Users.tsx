@@ -78,6 +78,8 @@ export default function Users() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingUser, setEditingUser] = useState<any | null>(null);
   const [userToDelete, setUserToDelete] = useState<any | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
   
   const [formData, setFormData] = useState({
     name: '',
@@ -284,6 +286,18 @@ export default function Users() {
     );
   }
 
+  const filteredUsers = users.filter(u => {
+    const nameStr = (u.name || '').toLowerCase();
+    const emailStr = (u.email || '').toLowerCase();
+    const officeStr = (u.office || '').toLowerCase();
+    const searchLower = searchQuery.toLowerCase();
+    
+    const matchesSearch = nameStr.includes(searchLower) || emailStr.includes(searchLower) || officeStr.includes(searchLower);
+    const matchesRole = roleFilter === 'all' || u.role === roleFilter;
+    
+    return matchesSearch && matchesRole;
+  });
+
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
@@ -413,13 +427,30 @@ export default function Users() {
           <div className="flex flex-col md:flex-row gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <Input placeholder="Search users by name or email..." className="pl-10" />
+              <Input 
+                placeholder="Search users by name or email..." 
+                className="pl-10" 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" className="gap-2">
-                <Filter className="h-4 w-4" />
-                Filter
-              </Button>
+              <Select value={roleFilter} onValueChange={setRoleFilter}>
+                <SelectTrigger className="w-[200px] gap-2">
+                  <Filter className="h-4 w-4 text-slate-400" />
+                  <SelectValue placeholder="All Roles" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Roles</SelectItem>
+                  <SelectItem value="Admin">Super Admin</SelectItem>
+                  <SelectItem value="qso_admin">QSO Admin</SelectItem>
+                  <SelectItem value="co_admin">CO Admin</SelectItem>
+                  <SelectItem value="icto_admin">ICTO Admin</SelectItem>
+                  <SelectItem value="DistrictOffice">District Office</SelectItem>
+                  <SelectItem value="TrainingCenter">Training Center</SelectItem>
+                  <SelectItem value="AssessmentCenter">Assessment Center</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardContent>
@@ -447,8 +478,8 @@ export default function Users() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {users.length > 0 ? (
-                  users.map((u) => (
+                {filteredUsers.length > 0 ? (
+                  filteredUsers.map((u) => (
                     <TableRow key={u.id} className="hover:bg-slate-50/50 transition-colors">
                       <TableCell>
                         <div className="flex flex-col">

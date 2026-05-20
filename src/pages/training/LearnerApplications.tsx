@@ -37,8 +37,7 @@ export default function LearnerApplications() {
 
     const q = query(
       collection(db, 'enrollments'),
-      where('trainingCenterId', '==', user.uid),
-      where('enrollmentStatus', '==', 'Applied')
+      where('trainingCenterId', '==', user.uid)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -70,12 +69,56 @@ export default function LearnerApplications() {
     };
   }, [user]);
 
-  const handleStatusUpdate = async (enrollmentId: string, newStatus: 'Accepted' | 'Rejected') => {
+  const handleStatusUpdate = async (enrollmentId: string, newStatus: 'Enrolled' | 'Rejected') => {
     try {
-      await updateDoc(doc(db, 'enrollments', enrollmentId), {
-        enrollmentStatus: newStatus,
-        updatedAt: serverTimestamp()
-      });
+      if (newStatus === 'Enrolled') {
+        const enr = enrollments.find(e => e.id === enrollmentId);
+        if (!enr) {
+          alert("Selected enrollment application not found.");
+          return;
+        }
+
+        // Find open or ongoing batches for this program offering and training center
+        const programBatches = batches.filter(batch => 
+          batch.programOfferingId === enr.programOfferingId &&
+          batch.trainingCenterId === enr.trainingCenterId &&
+          (batch.status === 'Open' || batch.status === 'Ongoing')
+        );
+
+        if (programBatches.length === 0) {
+          alert("No available batch/class for this program. Please create a new batch first.");
+          return;
+        }
+
+        // Auto-assign to the first batch that has available slots
+        let selectedBatch: ProgramBatch | null = null;
+        for (const batch of programBatches) {
+          const count = enrollments.filter(e => e.programBatchId === batch.id && (e.enrollmentStatus === 'Enrolled' || e.enrollmentStatus === 'Completed')).length;
+          if (count < batch.maxSlots) {
+            selectedBatch = batch;
+            break;
+          }
+        }
+
+        if (!selectedBatch) {
+          alert("No available batch/class for this program. Please create a new batch first.");
+          return;
+        }
+
+        await updateDoc(doc(db, 'enrollments', enrollmentId), {
+          enrollmentStatus: 'Enrolled',
+          completionStatus: 'Not Started',
+          programBatchId: selectedBatch.id,
+          dateAccepted: serverTimestamp(),
+          dateEnrolled: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        await updateDoc(doc(db, 'enrollments', enrollmentId), {
+          enrollmentStatus: 'Rejected',
+          updatedAt: serverTimestamp()
+        });
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, 'enrollments');
     }
@@ -114,7 +157,7 @@ export default function LearnerApplications() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {enrollments.map((enr) => {
+              {enrollments.filter(e => e.enrollmentStatus === 'Applied').map((enr) => {
                 const offering = offerings.find(o => o.id === enr.programOfferingId);
                 const batch = batches.find(b => b.id === enr.programBatchId);
                 return (
@@ -138,7 +181,7 @@ export default function LearnerApplications() {
                           variant="outline" 
                           size="sm" 
                           className="text-emerald-600 border-emerald-200 hover:bg-emerald-50 gap-1.5"
-                          onClick={() => handleStatusUpdate(enr.id, 'Accepted')}
+                          onClick={() => handleStatusUpdate(enr.id, 'Enrolled')}
                         >
                           <CheckCircle className="h-4 w-4" /> Accept
                         </Button>
@@ -155,7 +198,7 @@ export default function LearnerApplications() {
                   </TableRow>
                 );
               })}
-              {enrollments.length === 0 && (
+              {enrollments.filter(e => e.enrollmentStatus === 'Applied').length === 0 && (
                 <TableRow>
                   <TableCell colSpan={5} className="h-32 text-center text-slate-500">No pending applications.</TableCell>
                 </TableRow>
