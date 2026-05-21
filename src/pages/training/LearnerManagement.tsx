@@ -240,6 +240,59 @@ export default function LearnerManagement() {
     };
   }, [user]);
 
+  // Database duplicate cleanup effect
+  useEffect(() => {
+    if (enrollments.length === 0) return;
+
+    // Group enrollments by learner email and program offering ID
+    const groups: { [key: string]: Enrollment[] } = {};
+    enrollments.forEach(enr => {
+      const key = `${enr.learnerEmail.toLowerCase()}_${enr.programOfferingId}`;
+      if (!groups[key]) {
+        groups[key] = [];
+      }
+      groups[key].push(enr);
+    });
+
+    const toDeleteIds: string[] = [];
+    Object.keys(groups).forEach(key => {
+      const list = groups[key];
+      if (list.length > 1) {
+        // Find which one to keep
+        // High priority: keep the learner record that has a batch ID assigned.
+        let keepIndex = 0;
+        let highestScore = -1;
+
+        list.forEach((enr, i) => {
+          const hasBatch = !!enr.programBatchId && enr.programBatchId !== "";
+          const score = hasBatch ? 10 : 0;
+          if (score > highestScore) {
+            highestScore = score;
+            keepIndex = i;
+          }
+        });
+
+        // Add all others to deletion list
+        list.forEach((enr, i) => {
+          if (i !== keepIndex && enr.id) {
+            toDeleteIds.push(enr.id);
+          }
+        });
+      }
+    });
+
+    if (toDeleteIds.length > 0) {
+      console.log("Automatically purging duplicate enrollment records from Firestore:", toDeleteIds);
+      toDeleteIds.forEach(async (id) => {
+        try {
+          await deleteDoc(doc(db, 'enrollments', id));
+        } catch (error) {
+          console.error("Error during duplicate enrollment clean up:", id, error);
+        }
+      });
+    }
+  }, [enrollments]);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -525,12 +578,31 @@ export default function LearnerManagement() {
     }
   };
 
-  const filteredEnrollments = enrollments.filter(enr => {
+  const baseFilteredEnrollments = enrollments.filter(enr => {
     const matchesProgram = filterProgram === 'all' || enr.programOfferingId === filterProgram;
     const matchesSearch = enr.learnerName.toLowerCase().includes(searchQuery.toLowerCase()) || 
                          enr.learnerEmail.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesProgram && matchesSearch;
   });
+
+  // Deduplicate by program (programOfferingId) and learnerEmail.
+  // Prioritize keeping the enrollment with an assigned batch.
+  const uniqueEnrollmentsMap = new Map<string, Enrollment>();
+  baseFilteredEnrollments.forEach(enr => {
+    const key = `${enr.learnerEmail.toLowerCase()}_${enr.programOfferingId}`;
+    const existing = uniqueEnrollmentsMap.get(key);
+    if (!existing) {
+      uniqueEnrollmentsMap.set(key, enr);
+    } else {
+      const currentHasBatch = !!existing.programBatchId && existing.programBatchId !== "";
+      const newHasBatch = !!enr.programBatchId && enr.programBatchId !== "";
+      if (!currentHasBatch && newHasBatch) {
+        uniqueEnrollmentsMap.set(key, enr);
+      }
+    }
+  });
+
+  const filteredEnrollments = Array.from(uniqueEnrollmentsMap.values());
 
   const filteredDirectory = learners.filter(l => 
     l.firstName.toLowerCase().includes(searchQuery.toLowerCase()) || 

@@ -128,6 +128,7 @@ export default function BadgeHierarchy() {
   const [listRequests, setListRequests] = useState<any[]>([]);
   const [completions, setCompletions] = useState<any[]>([]);
   const [offerings, setOfferings] = useState<any[]>([]);
+  const [enrollments, setEnrollments] = useState<any[]>([]);
   const [learnerProfileFromCollection, setLearnerProfileFromCollection] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -167,6 +168,7 @@ export default function BadgeHierarchy() {
     let unsubIssued: () => void = () => {};
     let unsubRequests: () => void = () => {};
     let unsubCompletions: () => void = () => {};
+    let unsubEnrollments: () => void = () => {};
 
     if (isLearner && user) {
       // Fetch by email (old records) and UID (new records)
@@ -229,6 +231,29 @@ export default function BadgeHierarchy() {
         console.error("Completions Error:", error);
       });
 
+      const qEnrollments = query(
+        collection(db, 'enrollments'),
+        where('learnerId', '==', user.uid)
+      );
+      unsubEnrollments = onSnapshot(qEnrollments, async (snapshot) => {
+        let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        if (data.length === 0 && user.email) {
+          try {
+            const q2 = query(
+              collection(db, 'enrollments'),
+              where('learnerEmail', '==', user.email)
+            );
+            const emailSnap = await getDocs(q2);
+            data = emailSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          } catch (err) {
+            console.error("Error fetching enrollments by email:", err);
+          }
+        }
+        setEnrollments(data);
+      }, (error) => {
+        console.error("Enrollments Error:", error);
+      });
+
       const qOfferings = query(collection(db, 'programOfferings'));
       const unsubOfferings = onSnapshot(qOfferings, (snapshot) => {
         setOfferings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -252,6 +277,7 @@ export default function BadgeHierarchy() {
       unsubIssued();
       unsubRequests();
       unsubCompletions();
+      unsubEnrollments();
     };
   }, [isAuthReady, isLearner, user]);
 
@@ -373,6 +399,7 @@ export default function BadgeHierarchy() {
               listRequests={listRequests}
               completions={completions}
               offerings={offerings}
+              enrollments={enrollments}
               isLearner={isLearner}
               learnerQualification={learnerProfileFromCollection?.qualification || userProfile?.qualification}
             />
@@ -402,11 +429,12 @@ interface RowProps {
   listRequests: any[];
   completions: any[];
   offerings: any[];
+  enrollments: any[];
   isLearner: boolean;
   learnerQualification?: string;
 }
 
-function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, issuedBadges, listRequests, completions, offerings, isLearner, learnerQualification }: RowProps) {
+function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, issuedBadges, listRequests, completions, offerings, enrollments, isLearner, learnerQualification }: RowProps) {
   const masterBadges = badges.filter(b => b.badgeType === 'Master').sort((a, b) => a.displayOrder - b.displayOrder);
   const expertBadges = badges.filter(b => b.badgeType === 'Expert').sort((a, b) => a.displayOrder - b.displayOrder);
   const skilledBadges = badges.filter(b => b.badgeType === 'Skilled').sort((a, b) => a.displayOrder - b.displayOrder);
@@ -417,9 +445,30 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, issuedB
   // Detailed status counts for learner
   const isRPLCandidate = issuedBadges.some(ub => ub.pathway === 'Recognition of Prior Learning (RPL)');
 
-  // Check if learner has ANY active badge in this specific qualification
-  const hasEngagementInQual = isLearner && badges.some(t => 
-    issuedBadges.some(ub => matchBadgeWithTemplate(ub, t, offerings) && ACTIVE_STATUSES.includes(ub.status))
+  // Check if learner has ANY active badge or enrollment in this specific qualification
+  const hasEngagementInQual = isLearner && (
+    badges.some(t => 
+      issuedBadges.some(ub => matchBadgeWithTemplate(ub, t, offerings) && ACTIVE_STATUSES.includes(ub.status))
+    ) ||
+    enrollments.some(enr => {
+      const hasStatus = ['Enrolled', 'Completed', 'Applied'].includes(enr.enrollmentStatus);
+      if (!hasStatus) return false;
+      const off = offerings.find(o => o.id === enr.programOfferingId);
+      if (!off) return false;
+      const normQual = qual.toLowerCase().trim();
+      const offTitle = (off.programTitle || '').toLowerCase();
+      const offQual = (off.qualificationCode || '').toLowerCase();
+      return (
+        offTitle.includes(normQual) || 
+        normQual.includes(offTitle) || 
+        offQual.includes(normQual) || 
+        normQual.includes(offQual) ||
+        badges.some(b => 
+          (b.qualificationCode && offQual && b.qualificationCode.toLowerCase().trim() === offQual.trim()) ||
+          (b.qualificationName && offQual && b.qualificationName.toLowerCase().trim() === offQual.trim())
+        )
+      );
+    })
   );
 
   const stats = badges.reduce((acc, t) => {
@@ -624,6 +673,8 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, issuedB
                       offerings={offerings}
                       isLearner={isLearner}
                       learnerQualification={learnerQualification}
+                      enrollments={enrollments}
+                      qual={qual}
                     />
                     <div className="w-1" /> {/* Spacer */}
                     <HierarchyGroup 
@@ -639,6 +690,8 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, issuedB
                       offerings={offerings}
                       isLearner={isLearner}
                       learnerQualification={learnerQualification}
+                      enrollments={enrollments}
+                      qual={qual}
                     />
                   </div>
 
@@ -663,6 +716,8 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, issuedB
                       offerings={offerings}
                       isLearner={isLearner}
                       learnerQualification={learnerQualification}
+                      enrollments={enrollments}
+                      qual={qual}
                     />
                   </div>
 
@@ -687,6 +742,8 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, issuedB
                       offerings={offerings}
                       isLearner={isLearner}
                       learnerQualification={learnerQualification}
+                      enrollments={enrollments}
+                      qual={qual}
                     />
                   </div>
                 </div>
@@ -716,9 +773,11 @@ interface GroupProps {
   offerings: any[];
   isLearner: boolean;
   learnerQualification?: string;
+  enrollments: any[];
+  qual: string;
 }
 
-function HierarchyGroup({ title, level, items, allBadges, colorClass, maxSlots, compact, issuedBadges, listRequests, completions, offerings, isLearner, learnerQualification }: GroupProps) {
+function HierarchyGroup({ title, level, items, allBadges, colorClass, maxSlots, compact, issuedBadges, listRequests, completions, offerings, isLearner, learnerQualification, enrollments, qual }: GroupProps) {
   const navigate = useNavigate();
   const [selectedBadge, setSelectedBadge] = useState<{
     template: BadgeTemplate;
@@ -775,10 +834,28 @@ function HierarchyGroup({ title, level, items, allBadges, colorClass, maxSlots, 
                 (c.completionStatus === 'Completed' || c.completionStatus === 'Badge Requested' || c.completionStatus === 'For Badge Request')
               );
   
-              // Check if learner has ANY active badge in this specific qualification
+              // Check if learner has ANY active badge or enrollment/taken program in this specific qualification
               const hasEngagementInQual = allBadges.some(t => 
                 issuedBadges.some(ub => matchBadgeWithTemplate(ub, t, offerings) && ACTIVE_STATUSES.includes(ub.status))
-              );
+              ) || enrollments.some(enr => {
+                const hasStatus = ['Enrolled', 'Completed', 'Applied'].includes(enr.enrollmentStatus);
+                if (!hasStatus) return false;
+                const off = offerings.find(o => o.id === enr.programOfferingId);
+                if (!off) return false;
+                const normQual = qual.toLowerCase().trim();
+                const offTitle = (off.programTitle || '').toLowerCase();
+                const offQual = (off.qualificationCode || '').toLowerCase();
+                return (
+                  offTitle.includes(normQual) || 
+                  normQual.includes(offTitle) || 
+                  offQual.includes(normQual) || 
+                  normQual.includes(offQual) ||
+                  allBadges.some(b => 
+                    (b.qualificationCode && offQual && b.qualificationCode.toLowerCase().trim() === offQual.trim()) ||
+                    (b.qualificationName && offQual && b.qualificationName.toLowerCase().trim() === offQual.trim())
+                  )
+                );
+              });
   
               if (issued || (request && ACTIVE_STATUSES.includes(request.status))) {
                 status = 'Active';

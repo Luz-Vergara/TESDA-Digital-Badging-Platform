@@ -1,6 +1,11 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Award, Wallet, ArrowRight, Bell, BookOpen, Clock } from 'lucide-react';
-import { collection, query, where, onSnapshot, getDocs, limit } from 'firebase/firestore';
+import { Award, Wallet, ArrowRight, Bell, BookOpen, Clock, Building2 } from 'lucide-react';
+
+function cn(...inputs: any[]) {
+  return inputs.filter(Boolean).join(' ');
+}
+
+import { collection, query, where, onSnapshot, getDocs, limit, doc, getDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -21,6 +26,10 @@ export default function LearnerDashboard() {
   const [recommendations, setRecommendations] = useState<BadgeTemplate[]>([]);
   const [learnerData, setLearnerData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+
+  const [enrollments, setEnrollments] = useState<any[]>([]);
+  const [offerings, setOfferings] = useState<any[]>([]);
+  const [batches, setBatches] = useState<any[]>([]);
 
   const [showComingSoon, setShowComingSoon] = useState(false);
 
@@ -174,6 +183,60 @@ export default function LearnerDashboard() {
     };
   }, [user?.email, user?.uid, isAuthReady]);
 
+  // Fetch active enrollments (e.g. for training-based learners like Melanie)
+  useEffect(() => {
+    if (!isAuthReady || !user) return;
+
+    const enrPath = 'enrollments';
+    const q1 = query(
+      collection(db, enrPath),
+      where('learnerId', '==', user.uid),
+      where('enrollmentStatus', '==', 'Enrolled')
+    );
+
+    const unsubscribe = onSnapshot(q1, async (snapshot) => {
+      let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      // Fallback in case email query matches standard user registration vs learner record email
+      if (data.length === 0 && user.email) {
+        try {
+          const q2 = query(
+            collection(db, enrPath),
+            where('learnerEmail', '==', user.email),
+            where('enrollmentStatus', '==', 'Enrolled')
+          );
+          const emailSnap = await getDocs(q2);
+          data = emailSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        } catch (err) {
+          console.error("Error fetching enrollments by email:", err);
+        }
+      }
+
+      setEnrollments(data);
+
+      if (data.length > 0) {
+        try {
+          const offIds = [...new Set(data.map((d: any) => d.programOfferingId))];
+          const batchIds = [...new Set(data.map((d: any) => d.programBatchId).filter(Boolean))];
+          
+          const [offDocs, batchDocs] = await Promise.all([
+            Promise.all(offIds.map(id => getDoc(doc(db, 'programOfferings', id)))),
+            Promise.all(batchIds.map(id => getDoc(doc(db, 'programBatches', id))))
+          ]);
+          
+          setOfferings(offDocs.filter(d => d.exists()).map(d => ({ id: d.id, ...d.data() })));
+          setBatches(batchDocs.filter(d => d.exists()).map(d => ({ id: d.id, ...d.data() })));
+        } catch (err) {
+          console.error("Error loading enrollment subdocs:", err);
+        }
+      }
+    }, (error) => {
+      console.error("Dashboard enrollments listener error:", error);
+    });
+
+    return () => unsubscribe();
+  }, [user, isAuthReady]);
+
   // Fetch learner specific data and recommendations
   useEffect(() => {
     if (!isAuthReady || !user?.email) return;
@@ -183,8 +246,21 @@ export default function LearnerDashboard() {
         const lPath = 'learners';
         const lq = query(collection(db, lPath), where('email', '==', user.email));
         const lSnap = await getDocs(lq);
+        
+        let lData: any = null;
         if (!lSnap.empty) {
-          const lData = lSnap.docs[0].data();
+          lData = lSnap.docs[0].data();
+        } else if (user.email) {
+          // Robust case-insensitive check on entire collection if capitalized differently
+          const qAll = query(collection(db, lPath));
+          const allSnap = await getDocs(qAll);
+          const foundDoc = allSnap.docs.find(d => (d.data().email || '').toLowerCase() === user.email.toLowerCase());
+          if (foundDoc) {
+            lData = foundDoc.data();
+          }
+        }
+
+        if (lData) {
           setLearnerData(lData);
           
           // Fetch recommendations based on qualification
@@ -255,6 +331,7 @@ export default function LearnerDashboard() {
 
     fetchLearnerData();
   }, [user?.email, isAuthReady, activeBadges.length]);
+
 
   if (loading) {
     return (
@@ -412,8 +489,69 @@ export default function LearnerDashboard() {
             </Card>
           )}
 
-          {/* In-Progress Programs would go here - removing hardcoded placeholder as requested */}
+          {/* Active Enrollments */}
+          {enrollments.length > 0 && (
+            <div className="space-y-4 pt-4 border-t border-slate-200">
+              <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                <BookOpen className="h-5 w-5 text-blue-600" />
+                My Active Enrollments
+              </h3>
+              <div className="grid md:grid-cols-2 gap-6">
+                {enrollments.map((enr) => {
+                  const off = offerings.find(o => o.id === enr.programOfferingId);
+                  const batch = batches.find(b => b.id === enr.programBatchId);
+                  return (
+                    <Card key={enr.id} className="border-slate-200 hover:border-blue-300 transition-all hover:shadow-md overflow-hidden bg-white">
+                      <div className="h-1 bg-emerald-500" />
+                      <CardHeader className="pb-3 pt-4 px-4">
+                        <div className="flex justify-between items-start gap-2">
+                          <Badge variant="default" className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200">
+                            {enr.enrollmentStatus}
+                          </Badge>
+                          <BookOpen className="h-4 w-4 text-blue-500 shrink-0 mt-1" />
+                        </div>
+                        <CardTitle className="text-base font-bold mt-2 text-slate-800 line-clamp-1">{off?.programTitle || 'Program'}</CardTitle>
+                        <p className="text-[10px] text-slate-400 font-mono italic">{off?.qualificationCode || 'Code'}</p>
+                      </CardHeader>
+                      <CardContent className="space-y-4 pb-4 px-4">
+                        <div className="space-y-2 text-xs">
+                          <div className="flex items-center gap-2 text-slate-600">
+                            <Building2 className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                            <span className="font-semibold truncate">{off?.trainingCenterName || 'Center'}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-slate-600">
+                            <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                            <span>Batch: <span className="font-medium text-slate-800">{batch?.batchName || 'General'}</span></span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                          <div className="flex justify-between text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+                            <span>Progress: {enr.completionStatus || 'Not Started'}</span>
+                            <span className="text-slate-700">
+                              {enr.completionStatus === 'Completed' ? '100%' : 
+                               enr.completionStatus === 'For Assessment' ? '75%' : 
+                               enr.completionStatus === 'In Progress' ? '40%' : '0%'}
+                            </span>
+                          </div>
+                          <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                            <div className={cn(
+                              "h-full transition-all duration-500",
+                              enr.completionStatus === 'Completed' ? 'w-full bg-emerald-500' : 
+                              enr.completionStatus === 'For Assessment' ? 'w-3/4 bg-blue-500' :
+                              enr.completionStatus === 'In Progress' ? 'w-2/5 bg-amber-500' : 'w-0'
+                            )} />
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
+
 
         {/* Sidebar - Recommendations */}
         <div className="space-y-8">
