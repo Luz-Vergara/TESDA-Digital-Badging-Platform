@@ -9,6 +9,21 @@ import { Input } from '@/components/ui/input';
 import { BadgeMetadata, BadgeTemplate } from '@/src/types';
 import { getBadgeColor, getStatusColor } from '@/src/lib/badge-utils';
 import { Link } from 'react-router-dom';
+import { BadgeRenderer } from '@/src/components/badges/BadgeRenderer';
+
+const formatDate = (value: any) => {
+  if (!value) return "N/A";
+
+  if (value?.seconds) {
+    return new Date(value.seconds * 1000).toLocaleDateString();
+  }
+
+  if (value instanceof Date) {
+    return value.toLocaleDateString();
+  }
+
+  return String(value);
+};
 
 export default function MyBadgeWallet() {
   const { user, isAuthReady } = useFirebase();
@@ -231,25 +246,55 @@ export default function MyBadgeWallet() {
 
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredBadges.length > 0 ? (
-          filteredBadges.map((badge) => (
-            <Card key={badge.id} className="group border-slate-200 hover:border-blue-300 transition-all hover:shadow-md overflow-hidden">
-              <div className={`h-2 ${getBadgeColor(badge.badgeType).split(' ')[0]}`} />
-              <CardContent className="p-6">
-                <div className="flex justify-between items-start mb-4">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${getBadgeColor(badge.badgeType)}`}>
-                    <Award className="h-5 w-5" />
+          filteredBadges.map((badge) => {
+            const matchedTemplate = templates.find(
+              (template) => template.id === (badge.badgeTemplateId || badge.badgeId)
+            );
+            return (
+              <Card key={badge.id} className="group border-slate-200 hover:border-blue-300 transition-all hover:shadow-md overflow-hidden">
+                <div className={`h-2 ${getBadgeColor(badge.badgeType).split(' ')[0]}`} />
+                <CardContent className="p-6">
+                  <div className="flex justify-between items-start mb-4">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${getBadgeColor(badge.badgeType)}`}>
+                      <Award className="h-5 w-5" />
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 bg-slate-50 rounded-full border border-slate-100">
+                      <div className={`w-1.5 h-1.5 rounded-full ${badge.publishedToLearner ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                        {badge.publishedToLearner ? 'Published' : (badge.status === 'Submitted to CO' ? 'CO Review' : 'Pending')}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5 px-2 py-0.5 bg-slate-50 rounded-full border border-slate-100">
-                    <div className={`w-1.5 h-1.5 rounded-full ${badge.publishedToLearner ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                      {badge.publishedToLearner ? 'Published' : (badge.status === 'Submitted to CO' ? 'CO Review' : 'Pending')}
-                    </span>
-                  </div>
-                </div>
-                
-                <h3 className="font-bold text-slate-900 mb-1 group-hover:text-blue-600 transition-colors line-clamp-2 min-h-[3rem]">
-                  {badge.programName || (badge as any).programTitle || (badge as any).badgeName || (badge as any).badgeTemplateName || "Unnamed Badge"}
-                </h3>
+                  
+                  {matchedTemplate && (
+                    <div className="mb-4 flex justify-center">
+                      <BadgeRenderer
+                        scale={0.52}
+                        data={{
+                          id: badge.id,
+                          name: matchedTemplate.badgeName,
+                          learnerName: badge.learnerName || user?.displayName || "Learner Name",
+                          issueDate: formatDate(badge.issueDate),
+                          validUntil: formatDate(badge.validUntil),
+                          verificationId: badge.verificationId || (badge as any).certificationId || "PENDING",
+                          imageUrl: matchedTemplate.imageUrl || "",
+                          level: badge.badgeType || matchedTemplate.badgeType,
+                          qualificationTitle:
+                            matchedTemplate.qualificationName ||
+                            badge.qualificationName ||
+                            badge.programTitle,
+                          qualificationCode:
+                            matchedTemplate.qualificationCode ||
+                            badge.qualificationCode,
+                          templateConfig: matchedTemplate.templateConfig
+                        }}
+                      />
+                    </div>
+                  )}
+                  
+                  <h3 className="font-bold text-slate-900 mb-1 group-hover:text-blue-600 transition-colors line-clamp-2 min-h-[3rem]">
+                    {badge.programName || (badge as any).programTitle || (badge as any).badgeName || (badge as any).badgeTemplateName || "Unnamed Badge"}
+                  </h3>
                 <p className="text-[10px] text-slate-500 mb-4 font-bold uppercase tracking-widest bg-slate-100 w-fit px-2 py-0.5 rounded">
                   {badge.badgeType}
                 </p>
@@ -278,7 +323,8 @@ export default function MyBadgeWallet() {
                 </Button>
               </div>
             </Card>
-          ))
+          );
+        })
         ) : (
           <div className="col-span-full py-12 text-center">
             <Award className="h-12 w-12 text-slate-200 mx-auto mb-4" />

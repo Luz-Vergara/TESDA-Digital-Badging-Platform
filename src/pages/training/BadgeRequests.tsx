@@ -123,7 +123,7 @@ export default function BadgeRequests() {
     });
 
     const tempPath = 'badgeTemplates';
-    const tempQuery = query(collection(db, tempPath), where('status', '==', 'Active'));
+    const tempQuery = query(collection(db, tempPath), where('status', 'in', ['Approved', 'Active']));
     const unsubTemp = onSnapshot(tempQuery, (snapshot) => {
       setTemplates(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as BadgeTemplate[]);
     }, (error) => {

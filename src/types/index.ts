@@ -33,6 +33,9 @@ export interface BadgeMetadata {
   hierarchyLevel: number; // 1: Proficient, 2: Expert, 3: Skilled, 4: Master
   badgeId?: string; // ID of the template it originated from
   pathway?: string; // Added to distinguish RPL vs Standard
+  qualificationName?: string;
+  qualificationCode?: string;
+  badgeName?: string;
 }
 
 export interface User {
@@ -71,6 +74,14 @@ export interface Organization {
   approvalRate?: number;
 }
 
+export interface FieldPosition {
+  x: number;
+  y: number;
+  fontSize?: string;
+  color?: string;
+  enabled?: boolean;
+}
+
 export interface BadgeTemplate {
   id: string;
   badgeName: string;
@@ -89,6 +100,23 @@ export interface BadgeTemplate {
   displayOrder: number;
   hierarchyVisible: boolean;
   status: 'Approved' | 'Draft' | 'Archived' | 'Active';
+  imageUrl?: string;
+  templateConfig?: {
+    fitMode?: 'cover' | 'contain' | 'fill';
+    name?: FieldPosition;
+    date?: FieldPosition;
+    validUntil?: FieldPosition;
+    id?: FieldPosition;
+    level?: FieldPosition;
+    qualificationTitle?: FieldPosition;
+    qualificationCode?: FieldPosition;
+    qr?: {
+      x: number;
+      y: number;
+      size?: number;
+      enabled?: boolean;
+    };
+  };
 }
 
 export interface AuditLog {

@@ -223,7 +223,7 @@ export default function LearnerManagement() {
       handleFirestoreError(error, OperationType.LIST, 'badgeRequests');
     });
 
-    const templateQuery = query(collection(db, 'badgeTemplates'), where('status', '==', 'Active'));
+    const templateQuery = query(collection(db, 'badgeTemplates'), where('status', 'in', ['Approved', 'Active']));
     const unsubscribeTemplates = onSnapshot(templateQuery, (snapshot) => {
       setTemplates(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as BadgeTemplate[]);
     }, (error) => {

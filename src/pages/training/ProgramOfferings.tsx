@@ -85,7 +85,7 @@ export default function ProgramOfferings() {
     });
 
     const tempPath = 'badgeTemplates';
-    const templatesQuery = query(collection(db, tempPath), where('status', '==', 'Active'));
+    const templatesQuery = query(collection(db, tempPath), where('status', 'in', ['Approved', 'Active']));
     const unsubscribeTemplates = onSnapshot(templatesQuery, (snapshot) => {
       setTemplates(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as BadgeTemplate[]);
     }, (error) => {

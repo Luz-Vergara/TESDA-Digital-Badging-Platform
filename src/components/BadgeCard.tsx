@@ -29,9 +29,15 @@ export default function BadgeCard({ badge, onViewDetails }: BadgeCardProps) {
         <Badge variant="outline" className="mb-2 text-[10px] uppercase tracking-widest font-bold border-slate-200">
           {badge.badgeType}
         </Badge>
-        <h3 className="text-lg font-bold text-slate-900 mb-2 line-clamp-2 leading-tight group-hover:text-blue-600 transition-colors">
-          {badge.programName || (badge as any).programTitle || (badge as any).badgeName || (badge as any).badgeTemplateName || 'Untitled Badge'}
+        <h3 className="text-lg font-bold text-slate-900 mb-1 line-clamp-1 leading-tight group-hover:text-blue-600 transition-colors">
+          {badge.badgeName || badge.programName || (badge as any).programTitle || (badge as any).badgeTemplateName || 'Untitled Badge'}
         </h3>
+        {badge.qualificationName && (
+          <div className="text-xs text-slate-500 font-medium mb-3 line-clamp-1 flex items-center gap-1">
+            <span className="text-slate-400 font-semibold font-sans">Profile:</span>
+            <span>{badge.qualificationName}</span>
+          </div>
+        )}
         
         <div className="space-y-2 mt-4">
           <div className="flex items-center gap-2 text-xs text-slate-500">

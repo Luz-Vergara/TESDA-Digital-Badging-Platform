@@ -46,6 +46,21 @@ import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { getBadgeColor, getStatusColor } from '@/src/lib/badge-utils';
 import { format } from 'date-fns';
+import { BadgeRenderer } from '@/src/components/badges/BadgeRenderer';
+
+const formatDate = (value: any) => {
+  if (!value) return "N/A";
+
+  if (value?.seconds) {
+    return new Date(value.seconds * 1000).toLocaleDateString();
+  }
+
+  if (value instanceof Date) {
+    return value.toLocaleDateString();
+  }
+
+  return String(value);
+};
 
 const matchBadgeWithTemplate = (item: any, template: BadgeTemplate, offerings: any[] = []) => {
   // 1. Template ID connection
@@ -902,6 +917,37 @@ function HierarchyGroup({ title, level, items, allBadges, colorClass, maxSlots, 
                     {status === 'Active' && <CheckCircle2 className="h-3 w-3" />}
                     {status === 'Eligible' && <HelpCircle className="h-3 w-3" />}
                   </div>
+
+                  {/* Aesthetic Badge Overlay inside Node */}
+                  <div className="my-2.5 flex justify-center relative">
+                    <div className={status === 'Active' ? "" : "opacity-40 grayscale"}>
+                      <BadgeRenderer
+                        scale={0.34}
+                        data={{
+                          id: badge.id,
+                          name: badge.badgeName,
+                          learnerName: activeRecord?.learnerName || "Learner Name",
+                          issueDate: activeRecord ? formatDate(activeRecord.issueDate) : "Not yet issued",
+                          validUntil: activeRecord ? formatDate(activeRecord.validUntil) : "",
+                          verificationId: activeRecord?.verificationId || "LOCKED",
+                          imageUrl: badge.imageUrl || "",
+                          level: badge.badgeType,
+                          qualificationTitle: badge.qualificationName,
+                          qualificationCode: badge.qualificationCode,
+                          templateConfig: badge.templateConfig
+                        }}
+                      />
+                    </div>
+                    {status !== 'Active' && (
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div className="bg-slate-900/85 text-white rounded-full p-2.5 shadow-lg backdrop-blur-[2px] flex items-center gap-1">
+                          <Lock className="h-3.5 w-3.5 text-amber-500" />
+                          <span className="text-[9px] font-bold uppercase tracking-wider pr-1">Locked</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <h6 className="font-bold text-xs leading-tight line-clamp-2 min-h-[2.5em]">{badge.badgeName}</h6>
                 </div>
                 <div className="pt-3 mt-3 border-t border-black/5 flex justify-between items-center">
