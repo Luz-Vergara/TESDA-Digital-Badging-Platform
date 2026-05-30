@@ -43,9 +43,15 @@ export default function LearnerDashboard() {
       }
     });
 
-    // Add approved requests to the list
+    // Add approved requests to the list only if there is no individual issued badge
     badgesRequests.forEach(req => {
-      if (!combined.find(c => c.id === req.id || (c.badgeId && c.badgeId === req.id))) {
+      const alreadyHasBadge = combined.some(c => 
+        c.badgeRequestId === req.id ||
+        c.badgeTemplateId === req.badgeTemplateId ||
+        (c.badgeId && c.badgeId === req.badgeTemplateId) ||
+        c.id === req.id
+      );
+      if (!alreadyHasBadge) {
         combined.push({
           ...req,
           badgeName: req.badgeTemplateName || req.badgeName || req.programTitle,

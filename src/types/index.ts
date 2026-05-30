@@ -280,7 +280,7 @@ export interface BadgeRequest {
 
 export interface NewIssuedBadge {
   id: string;
-  badgeId: string; // ID of the template it originated from
+  badgeId: string; // The generated professional Badge ID of the issued badge
   learnerId: string;
   learnerName: string;
   learnerEmail: string;
@@ -307,6 +307,8 @@ export interface NewIssuedBadge {
   metadata?: any;
   createdAt: any;
   updatedAt: any;
+  verificationUrl?: string;
+  qrPayload?: string;
 }
 
 export interface AssessmentRecord {

@@ -23,6 +23,9 @@ import BadgeTemplates from './pages/admin/BadgeTemplates';
 // Office Modules
 import QSODashboard from './pages/qso/QSODashboard';
 import BadgeHierarchy from './pages/qso/BadgeHierarchy';
+import MetadataStandards from './pages/qso/MetadataStandards';
+import QualificationAlignment from './pages/qso/QualificationAlignment';
+import NamingConventions from './pages/qso/NamingConventions';
 import CODashboard from './pages/co/CODashboard';
 import ICTODashboard from './pages/icto/ICTODashboard';
 
@@ -45,6 +48,7 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
           <Route path="/verify" element={<Verification />} />
+          <Route path="/verify/:verificationId" element={<Verification />} />
           
           {/* Learner Portal */}
           <Route path="/learner" element={<DashboardLayout role="Learner" />}>
@@ -71,10 +75,10 @@ export default function App() {
           <Route path="/qso" element={<DashboardLayout role="qso_admin" />}>
             <Route index element={<QSODashboard />} />
             <Route path="templates" element={<BadgeTemplates />} />
-            <Route path="metadata" element={<div className="p-8 text-center text-slate-500">Metadata Standards Management</div>} />
+            <Route path="metadata" element={<MetadataStandards />} />
             <Route path="hierarchy" element={<BadgeHierarchy />} />
-            <Route path="alignment" element={<div className="p-8 text-center text-slate-500">Qualification Alignment Tool</div>} />
-            <Route path="conventions" element={<div className="p-8 text-center text-slate-500">Naming Conventions Policy</div>} />
+            <Route path="alignment" element={<QualificationAlignment />} />
+            <Route path="conventions" element={<NamingConventions />} />
           </Route>
 
           {/* CO Module */}

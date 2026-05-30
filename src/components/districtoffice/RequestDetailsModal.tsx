@@ -66,7 +66,14 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
   if (!request) return null;
 
   const generateVerificationId = () => {
-    return `TESDA-${Math.random().toString(36).substring(2, 10).toUpperCase()}-${Date.now().toString().slice(-4)}`;
+    return `V26-${Math.random().toString(36).substring(2, 12).toUpperCase()}`;
+  };
+
+  const generateBadgeId = (badgeType: string) => {
+    const prefix = badgeType === 'Master' ? 'NC-IV' : badgeType === 'Skilled' ? 'NC-II' : 'COC';
+    const randomDigits = Math.floor(100000 + Math.random() * 900000);
+    const suffix = Date.now().toString().slice(-2);
+    return `${prefix}-2026-${randomDigits}-${suffix}`;
   };
 
   const handleApprove = async () => {
@@ -75,14 +82,26 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
     const batch = writeBatch(db);
 
     try {
+      let firstVerificationId = '';
+      let firstBadgeId = '';
+
       // 1. Create IssuedBadge for each learner
       for (const learner of learners) {
         const verificationId = generateVerificationId();
+        const badgeId = generateBadgeId(request.badgeType);
+        const verificationUrl = `${window.location.origin}/verify/${verificationId}`;
+        const qrPayload = verificationUrl;
+        
+        if (!firstVerificationId) {
+          firstVerificationId = verificationId;
+          firstBadgeId = badgeId;
+        }
+
         const issuedBadgeRef = doc(collection(db, 'issuedBadges'));
         
         const badgeData: any = {
           verificationId,
-          badgeId: request.badgeTemplateId,
+          badgeId, // Functional Badge ID
           badgeTemplateId: request.badgeTemplateId,
           badgeTemplateName: (request as any).badgeTemplateName || request.templateDetails?.badgeName || offering.badgeTemplateName || offering.programTitle,
           badgeRequestId: request.id,
@@ -106,6 +125,8 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
           alignment: request.templateDetails?.alignment,
           description: request.templateDetails?.description,
           ucTitle: (request as any).badgeTemplateName || request.templateDetails?.badgeName || offering.programTitle,
+          verificationUrl,
+          qrPayload,
           metadata: {
             batchId: request.programBatchId,
             programTitle: (request as any).programTitle || offering.programTitle,
@@ -134,7 +155,9 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
         status: 'Approved',
         approvedBy: user.uid,
         approvedAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
+        updatedAt: serverTimestamp(),
+        verificationId: firstVerificationId,
+        badgeId: firstBadgeId
       });
 
       // 3. Audit Log

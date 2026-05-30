@@ -125,31 +125,51 @@ export default function AssessmentDashboard() {
 
   // Fetch AC Organization and its District Office
   useEffect(() => {
-    if (!isAuthReady || !userProfile?.office) return;
+    if (!isAuthReady) return;
 
     const fetchOrgData = async () => {
       try {
-        if (!userProfile?.office) {
-          setLoading(false);
-          return;
-        }
+        const orgName = (userProfile?.office || '').trim();
+        const orgId = userProfile?.organizationId || '';
+        const orgIdentifier = orgName || orgId || 'demo-assessment-center';
+
         const orgsRef = collection(db, 'organizations');
-        const orgName = (userProfile.office || "").trim();
-        if (!orgName) {
-          setLoading(false);
-          return;
-        }
-        const q = query(orgsRef, where('name', '==', orgName));
-        const qid = query(orgsRef, where('id', '==', orgName));
-        
         let orgDoc: any = null;
-        const querySnapshot = await getDocs(q);
-        if (!querySnapshot.empty) {
-          orgDoc = { id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() };
-        } else {
-          const qidSnapshot = await getDocs(qid);
-          if (!qidSnapshot.empty) {
-            orgDoc = { id: qidSnapshot.docs[0].id, ...qidSnapshot.docs[0].data() };
+
+        // 1. Try direct fetch by organization ID
+        if (orgIdentifier) {
+          const directRef = doc(db, 'organizations', orgIdentifier);
+          try {
+            const docSnap = await getDoc(directRef);
+            if (docSnap.exists()) {
+              orgDoc = { id: docSnap.id, ...docSnap.data() };
+            }
+          } catch (e) {
+            console.warn("Could not fetch organization by direct document reference:", e);
+          }
+        }
+
+        // 2. Query fallback if needed
+        if (!orgDoc && orgIdentifier) {
+          const qName = query(orgsRef, where('name', '==', orgIdentifier));
+          const qNameSnap = await getDocs(qName);
+          if (!qNameSnap.empty) {
+            orgDoc = { id: qNameSnap.docs[0].id, ...qNameSnap.docs[0].data() };
+          } else {
+            const qId = query(orgsRef, where('id', '==', orgIdentifier));
+            const qIdSnap = await getDocs(qId);
+            if (!qIdSnap.empty) {
+              orgDoc = { id: qIdSnap.docs[0].id, ...qIdSnap.docs[0].data() };
+            }
+          }
+        }
+
+        // 3. Fallback to any assessment center organization if still not found
+        if (!orgDoc) {
+          const qAC = query(orgsRef, where('type', '==', 'AssessmentCenter'));
+          const qACSnap = await getDocs(qAC);
+          if (!qACSnap.empty) {
+            orgDoc = { id: qACSnap.docs[0].id, ...qACSnap.docs[0].data() };
           }
         }
 
@@ -157,8 +177,8 @@ export default function AssessmentDashboard() {
           setOrganization(orgDoc);
           if (orgDoc.assignedDistrictId) {
             // First try by ID
-            const districtRef = doc(db, 'organizations', orgDoc.assignedDistrictId);
-            const districtSnap = await getDoc(districtRef);
+            const districtDocRef = doc(db, 'organizations', orgDoc.assignedDistrictId);
+            const districtSnap = await getDoc(districtDocRef);
             if (districtSnap.exists()) {
               setDistrictOffice({ id: districtSnap.id, ...districtSnap.data() } as Organization);
             } else {
@@ -174,9 +194,14 @@ export default function AssessmentDashboard() {
               }
             }
           }
+        } else {
+          console.warn("No organization match found for identifier:", orgIdentifier);
         }
       } catch (error) {
         console.error("Error fetching organization data:", error);
+      } finally {
+        // Universal fallback to end infinite loading state if subscription isn't guaranteed
+        setLoading(false);
       }
     };
 

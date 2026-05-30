@@ -54,6 +54,10 @@ export const BadgeRenderer: React.FC<BadgeRendererProps> = ({ scale = 1, data })
     templateConfig,
   } = data;
 
+  const finalId = (verificationId && verificationId !== 'PENDING') 
+    ? verificationId 
+    : ((data as any).certificationId || (data as any).badgeId || id);
+
   const baseWidth = 500;
   const baseHeight = 500;
 
@@ -200,7 +204,7 @@ export const BadgeRenderer: React.FC<BadgeRendererProps> = ({ scale = 1, data })
 
           {renderField(
             templateConfig?.id,
-            verificationId ? `ID: ${verificationId}` : '',
+            finalId ? `ID: ${finalId}` : '',
             {
               fontSize: templateConfig?.id?.fontSize || '0.7rem',
               color: templateConfig?.id?.color || '#64748b',
@@ -211,7 +215,7 @@ export const BadgeRenderer: React.FC<BadgeRendererProps> = ({ scale = 1, data })
           {/* QR Code Overlay (linked to verification endpoint or details) */}
           {renderQR(
             templateConfig?.qr,
-            verificationId ? `https://tesda.gov.ph/verify/${verificationId}` : id
+            `${window.location.origin}/verify/${finalId}`
           )}
         </div>
       </div>
@@ -287,12 +291,12 @@ export const BadgeRenderer: React.FC<BadgeRendererProps> = ({ scale = 1, data })
         <div className="flex flex-col items-center justify-center space-y-1.5 py-1">
           <div className="p-1 px-[6px] bg-slate-50 border border-slate-100 rounded-lg shadow-sm">
             <QRCodeSVG
-              value={verificationId ? `https://tesda.gov.ph/verify/${verificationId}` : id}
+              value={`${window.location.origin}/verify/${finalId}`}
               size={64}
             />
           </div>
           <span className="text-[9px] font-mono font-medium text-slate-500 select-all max-w-[200px] truncate leading-none">
-            {verificationId || 'PENDING'}
+            {finalId || 'PENDING'}
           </span>
         </div>
       </div>

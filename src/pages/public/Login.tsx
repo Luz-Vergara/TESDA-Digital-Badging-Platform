@@ -1,18 +1,57 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Shield, User, Building2, Briefcase, Lock, FileCheck, LayoutDashboard, LogOut } from 'lucide-react';
-import { signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
+import { signInWithPopup, GoogleAuthProvider, signOut, signInWithEmailAndPassword } from 'firebase/auth';
 import { auth, db } from '@/src/lib/firebase';
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp, collection, query, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import Navbar from '@/src/components/layout/Navbar';
-import { useFirebase } from '@/src/lib/FirebaseProvider';
+import { useFirebase, getDemoRoleByEmail } from '@/src/lib/FirebaseProvider';
 
 export default function Login() {
   const navigate = useNavigate();
 
   const { user, userProfile, logout } = useFirebase();
+
+  const [demoEmail, setDemoEmail] = useState('');
+  const [demoPassword, setDemoPassword] = useState('');
+  const [isDemoSubmitting, setIsDemoSubmitting] = useState(false);
+  const [isDemoLoginOpen, setIsDemoLoginOpen] = useState(false);
+
+  const handleDemoLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isDemoSubmitting || !demoEmail || !demoPassword) return;
+
+    setIsDemoSubmitting(true);
+    setLoginError(null);
+
+    try {
+      localStorage.setItem('is_demo_user', 'true');
+      const result = await signInWithEmailAndPassword(auth, demoEmail, demoPassword);
+      const user = result.user;
+      
+      const role = getDemoRoleByEmail(user.email || '');
+      
+      const redirectPath = role === 'qso_admin' ? '/qso' : 
+                           role === 'co_admin' ? '/co' : 
+                           role === 'icto_admin' ? '/icto' : 
+                           `/${role.toLowerCase()}`;
+      
+      navigate(redirectPath);
+    } catch (error: any) {
+      console.error('Demo Login failed:', error);
+      localStorage.setItem('is_demo_user', 'false');
+      
+      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+        setLoginError('Invalid demo credentials. Ensure this account has been manually created in the Firebase Console and that the email and password are correct.');
+      } else {
+        setLoginError('Error signing in to demo account: ' + (error.message || 'Unknown error'));
+      }
+    } finally {
+      setIsDemoSubmitting(false);
+    }
+  };
 
   const getDashboardLink = () => {
     if (!userProfile) return '/login';
@@ -178,6 +217,85 @@ export default function Login() {
             </div>
           )}
         </div>
+
+        <div className="text-center mb-8">
+          <Button
+            variant="outline"
+            onClick={() => setIsDemoLoginOpen(!isDemoLoginOpen)}
+            className="border-blue-200 bg-blue-50/50 text-blue-700 hover:bg-blue-100/50 hover:text-blue-800 font-bold text-sm gap-2 px-6 h-11 shadow-sm rounded-full"
+          >
+            <Lock className="h-4 w-4" />
+            {isDemoLoginOpen ? "Hide Prototype Testing Login" : "Show Demo Account Login for Prototype Testing"}
+          </Button>
+        </div>
+
+        {isDemoLoginOpen && (
+          <Card className="max-w-md mx-auto mb-12 border-blue-200 bg-blue-50/20 p-6 shadow-sm animate-in fade-in slide-in-from-top-4 duration-300">
+            <CardHeader className="p-0 mb-4 text-center">
+              <CardTitle className="text-lg font-bold text-slate-800 gap-2 flex items-center justify-center">
+                <Lock className="h-5 w-5 text-blue-600 animate-pulse" />
+                Demo Account Sign In
+              </CardTitle>
+              <CardDescription className="text-slate-600 mt-1">
+                Enter email and password for a manually created Firebase console user to test roles.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <form onSubmit={handleDemoLogin} className="space-y-4">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Email Address</label>
+                  <input
+                    type="email"
+                    value={demoEmail}
+                    onChange={(e) => setDemoEmail(e.target.value)}
+                    placeholder="learner@demo.com"
+                    required
+                    className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 shadow-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Password</label>
+                  <input
+                    type="password"
+                    value={demoPassword}
+                    onChange={(e) => setDemoPassword(e.target.value)}
+                    placeholder="••••••••"
+                    required
+                    className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 shadow-sm"
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  disabled={isDemoSubmitting}
+                  className="w-full bg-blue-600 hover:bg-blue-700 font-bold h-11 text-white gap-2 mt-2"
+                >
+                  {isDemoSubmitting ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  ) : (
+                    "Login to Demo Portal"
+                  )}
+                </Button>
+              </form>
+              
+              <div className="mt-6 border-t border-slate-200 pt-4">
+                <p className="text-[10px] font-bold text-slate-500 mb-2 uppercase tracking-wide">Prototype Testing Key (Email Mapping)</p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-slate-600 font-mono bg-white p-3 rounded-lg border border-slate-100">
+                  <div>• learner@demo.com <span className="text-blue-600 font-sans font-medium">(Learner)</span></div>
+                  <div>• admin@demo.com <span className="text-blue-600 font-sans font-medium">(Admin)</span></div>
+                  <div>• qso@demo.com <span className="text-blue-600 font-sans font-medium">(QSO)</span></div>
+                  <div>• co@demo.com <span className="text-blue-600 font-sans font-medium">(Cert Office)</span></div>
+                  <div>• district@demo.com <span className="text-blue-600 font-sans font-medium">(District)</span></div>
+                  <div>• training@demo.com <span className="text-blue-600 font-sans font-medium">(Training)</span></div>
+                  <div>• assessment@demo.com <span className="text-blue-600 font-sans font-medium">(Assessment)</span></div>
+                  <div>• icto@demo.com <span className="text-blue-600 font-sans font-medium">(ICTO)</span></div>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-3 italic leading-relaxed">
+                  Note: Demo users must be created manually under Authentication &rarr; Users in your Firebase Console. No sign up is allowed in the app.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <div className={`grid md:grid-cols-2 gap-6 transition-opacity duration-300 ${isLoggingIn || user ? 'opacity-50 pointer-events-none' : ''}`}>
           <Card 

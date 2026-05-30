@@ -132,6 +132,7 @@ export default function BadgeTemplates() {
   // Layout Designer Workspace States
   const [designerTemplateId, setDesignerTemplateId] = useState<string>('');
   const [designerImgUrl, setDesignerImgUrl] = useState<string>('');
+  const [testTitle, setTestTitle] = useState<string>('Determine Traditional Key Poses');
   const [designerConfig, setDesignerConfig] = useState<any>({
     fitMode: 'cover',
     name: { x: 50, y: 45, fontSize: "1.4rem", color: "#111827", enabled: true },
@@ -270,6 +271,7 @@ export default function BadgeTemplates() {
     const t = templates.find(doc => doc.id === designerTemplateId);
     if (t) {
       setDesignerImgUrl(t.imageUrl || '');
+      setTestTitle(t.qualificationName || t.badgeName || 'Determine Traditional Key Poses');
       if (t.templateConfig && typeof t.templateConfig === 'object') {
         setDesignerConfig(t.templateConfig);
       } else {
@@ -715,11 +717,13 @@ export default function BadgeTemplates() {
                           </TableCell>
                           <TableCell className="text-right">
                             <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-slate-100">
-                                  <MoreVertical className="h-4 w-4 text-slate-500" />
-                                </Button>
-                              </DropdownMenuTrigger>
+                              <DropdownMenuTrigger
+                                render={
+                                  <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-slate-100">
+                                    <MoreVertical className="h-4 w-4 text-slate-500" />
+                                  </Button>
+                                }
+                              />
                               <DropdownMenuContent align="end" className="w-[180px] bg-white border rounded shadow-md">
                                 <DropdownMenuLabel className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Template Actions</DropdownMenuLabel>
                                 <DropdownMenuSeparator />
@@ -802,6 +806,23 @@ export default function BadgeTemplates() {
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+
+                {/* Test Title (Real-time Preview) Input Field */}
+                <div className="space-y-2 border-t border-slate-100 dark:border-slate-800 pt-3">
+                  <Label className="text-xs font-bold uppercase text-slate-600 flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5 text-emerald-500 animate-pulse" />
+                    Test Title (Real-time Preview)
+                  </Label>
+                  <Input 
+                    placeholder="Enter any program or certificate title..." 
+                    value={testTitle}
+                    onChange={(e) => setTestTitle(e.target.value)}
+                    className="text-xs border-emerald-500/30 focus:border-emerald-500 bg-emerald-50/5"
+                  />
+                  <p className="text-[10px] text-slate-400">
+                    Type a long program title (e.g., <em>Determine Traditional Key Poses</em>) to test layout formatting.
+                  </p>
                 </div>
 
                 {/* Change background image URL */}
@@ -985,7 +1006,7 @@ export default function BadgeTemplates() {
                           verificationId: 'TESDA-NC3-A89102',
                           imageUrl: designerImgUrl,
                           level: templates.find(t => t.id === designerTemplateId)?.badgeType || 'Expert',
-                          qualificationTitle: templates.find(t => t.id === designerTemplateId)?.qualificationName || 'Advanced Multimedia Production',
+                          qualificationTitle: testTitle,
                           qualificationCode: templates.find(t => t.id === designerTemplateId)?.qualificationCode || 'ICT-AMP-23',
                           templateConfig: designerConfig
                         }}
@@ -1293,39 +1314,6 @@ export default function BadgeTemplates() {
                   required
                   className="text-xs"
                 />
-              </div>
-
-              {/* Active Standard Profile Name (KEY USER REQUIREMENT) */}
-              <div className="space-y-1.5 col-span-2 bg-slate-50 p-3 rounded-lg border border-slate-100">
-                <Label className="text-xs font-bold uppercase text-slate-700 block mb-1">
-                  Active Standard Profile Name
-                </Label>
-                <div className="text-[10px] text-slate-500 mb-2">
-                  Selecting a standard profile will automatically populate the Qualification Title, Code, and default Name.
-                </div>
-                <Select
-                  value={formData.qualificationName}
-                  onValueChange={(val) => {
-                    const code = PROFILE_CODE_MAPPING[val] || '';
-                    setFormData(prev => ({
-                      ...prev,
-                      qualificationName: val,
-                      qualificationCode: code || prev.qualificationCode,
-                      badgeName: prev.badgeName || `${val} Standard`
-                    }));
-                  }}
-                >
-                  <SelectTrigger className="w-full text-xs bg-white">
-                    <SelectValue placeholder="Choose standard qualification profile..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ACTIVE_STANDARD_PROFILES.map((profile) => (
-                      <SelectItem key={profile} value={profile} className="text-xs">
-                        {profile}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
 
               {/* Qualification Name Display / Override */}

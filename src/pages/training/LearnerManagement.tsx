@@ -35,6 +35,7 @@ import {
   updateDoc, 
   deleteDoc,
   doc, 
+  getDoc,
   serverTimestamp,
   getDocs,
   writeBatch
@@ -501,51 +502,134 @@ export default function LearnerManagement() {
         });
       }
 
+      // Find program offering & any active batch
+      const selectedOffering = offerings.find(o => o.programTitle === formData?.qualification);
+      let assignedBatchId = '';
+      let assignedBatchName = '';
+
+      if (selectedOffering) {
+        const activeBatchesForOffering = batches.filter(b => 
+          b.programOfferingId === selectedOffering.id &&
+          (b.status === 'Open' || b.status === 'Ongoing')
+        );
+        if (activeBatchesForOffering.length > 0) {
+          assignedBatchId = activeBatchesForOffering[0].id;
+          assignedBatchName = activeBatchesForOffering[0].batchName || '';
+        }
+      }
+
+      // Fetch district office name
+      let districtOfficeId = organization?.assignedDistrictId || userProfile.assignedDistrictId || 'demo-district-office';
+      let districtOfficeName = 'Demo District Office - National Capital Region';
+      if (districtOfficeId) {
+        try {
+          const distDoc = await getDoc(doc(db, 'organizations', districtOfficeId));
+          if (distDoc.exists()) {
+            districtOfficeName = distDoc.data().name || districtOfficeName;
+          }
+        } catch (e) {
+          console.error("Failed to fetch district office doc:", e);
+        }
+      }
+
+      const connectionPayload = {
+        trainingCenterId: user.uid,
+        trainingCenterName: organization?.name || userProfile.office || userProfile.name,
+        organizationId: organization?.id || '',
+        organizationName: organization?.name || userProfile.office || userProfile.name,
+        districtOfficeId: districtOfficeId,
+        districtOfficeName: districtOfficeName,
+        programOfferingId: selectedOffering?.id || '',
+        programTitle: selectedOffering?.programTitle || formData.qualification || '',
+        programBatchId: assignedBatchId,
+        batchName: assignedBatchName,
+        qualification: selectedOffering?.programTitle || formData.qualification || ''
+      };
+
       if (editingLearner) {
         const updatedLearner = {
           ...formData,
+          ...connectionPayload,
           updatedAt: serverTimestamp()
         };
         await updateDoc(doc(db, 'learners', editingLearner.id), updatedLearner);
+
+        // Also update any existing enrollment for this combination
+        if (selectedOffering) {
+          const enrollmentsRef = collection(db, 'enrollments');
+          const qEnr = query(enrollmentsRef, 
+            where('learnerId', '==', editingLearner.id),
+            where('programOfferingId', '==', selectedOffering.id)
+          );
+          const enrSnap = await getDocs(qEnr);
+          if (!enrSnap.empty) {
+            await updateDoc(doc(db, 'enrollments', enrSnap.docs[0].id), {
+              learnerName: `${formData.firstName} ${formData.lastName}`,
+              learnerEmail: formData.email,
+              badgeTemplateId: selectedOffering.badgeTemplateId || '', 
+              enrollmentStatus: 'Enrolled',
+              dateEnrolled: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+              ...connectionPayload
+            });
+          }
+        }
       } else {
         const learnersRef = collection(db, 'learners');
         const q = query(learnersRef, where('email', '==', formData.email));
         const querySnapshot = await getDocs(q);
 
+        let targetLearnerId = '';
         if (!querySnapshot.empty) {
           const existingDoc = querySnapshot.docs[0];
+          targetLearnerId = existingDoc.id;
           await updateDoc(doc(db, 'learners', existingDoc.id), {
             ...formData,
+            ...connectionPayload,
             updatedAt: serverTimestamp()
           });
         } else {
           // Create the learner
           const learnerDoc = await addDoc(collection(db, 'learners'), {
             ...formData,
-            trainingCenterId: user.uid,
-            trainingCenterName: userProfile.office || userProfile.name,
-            districtOfficeId: organization?.assignedDistrictId || userProfile.assignedDistrictId || '',
+            ...connectionPayload,
             status: 'Enrolled',
-            createdAt: serverTimestamp()
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
           });
+          targetLearnerId = learnerDoc.id;
+        }
 
-          // Automatically enroll in the chosen program if it matches an offering
-          const selectedOffering = offerings.find(o => o.programTitle === formData.qualification);
-          if (selectedOffering) {
+        // Automatically enroll in the chosen program if it matches an offering
+        if (selectedOffering) {
+          const enrollmentsRef = collection(db, 'enrollments');
+          const qEnr = query(enrollmentsRef, 
+            where('learnerId', '==', targetLearnerId),
+            where('programOfferingId', '==', selectedOffering.id)
+          );
+          const enrSnap = await getDocs(qEnr);
+          if (enrSnap.empty) {
             await addDoc(collection(db, 'enrollments'), {
-              learnerId: learnerDoc.id,
+              learnerId: targetLearnerId,
               learnerName: `${formData.firstName} ${formData.lastName}`,
               learnerEmail: formData.email,
-              trainingCenterId: user.uid,
-              programOfferingId: selectedOffering.id,
-              badgeTemplateId: selectedOffering.badgeTemplateId || '', // Carry through
-              programBatchId: '', // Initially no batch assigned
+              badgeTemplateId: selectedOffering.badgeTemplateId || '', 
               enrollmentStatus: 'Enrolled',
               completionStatus: 'In Progress',
               dateApplied: serverTimestamp(),
               dateEnrolled: serverTimestamp(),
               createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp()
+              updatedAt: serverTimestamp(),
+              ...connectionPayload
+            });
+          } else {
+            await updateDoc(doc(db, 'enrollments', enrSnap.docs[0].id), {
+              learnerName: `${formData.firstName} ${formData.lastName}`,
+              learnerEmail: formData.email,
+              enrollmentStatus: 'Enrolled',
+              dateEnrolled: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+              ...connectionPayload
             });
           }
         }

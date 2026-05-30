@@ -21,6 +21,81 @@ const FirebaseContext = createContext<FirebaseContextType>({
 
 export const useFirebase = () => useContext(FirebaseContext);
 
+export function getDemoRoleByEmail(email: string): string {
+  const e = email.toLowerCase();
+  const username = e.split('@')[0] || '';
+  
+  if (username.includes('qso')) return 'qso_admin';
+  if (username.includes('co') || username.includes('cert') || username.includes('licens') || username.includes('credential')) return 'co_admin';
+  if (username.includes('icto')) return 'icto_admin';
+  if (username.includes('district') || username.includes('do')) return 'DistrictOffice';
+  if (username.includes('training') || username.includes('tc')) return 'TrainingCenter';
+  if (username.includes('assessment') || username.includes('ac')) return 'AssessmentCenter';
+  if (username.includes('admin') || username.includes('superuser')) return 'Admin';
+  if (username.includes('learner') || username.includes('student') || username.includes('holder')) return 'Learner';
+  if (username.includes('employer') || username.includes('verify')) return 'Employer';
+  
+  // Safe defaults
+  return 'Learner';
+}
+
+async function seedDemoTemplatesAndData() {
+  const demoTemplates = [
+    {
+      id: 'demo-template-1',
+      badgeName: 'Computer Systems Servicing NC II',
+      qualificationName: 'Computer Systems Servicing NC II',
+      qualificationCode: 'CSS-NCII-2026',
+      badgeType: 'Master',
+      credentialLevel: 'National Certificate',
+      relatedCompetency: 'Install networks, server setup, repair systems',
+      description: 'Demonstrates mastery in computer systems servicing',
+      criteria: 'Successful completion of national assessment',
+      validityMonths: 60,
+      alignment: 'PQF Level 3',
+      tags: ['IT', 'Hardware', 'Networking'],
+      issuableBy: ['CertificationOffice'],
+      requiresApproval: true,
+      displayOrder: 1,
+      hierarchyVisible: true,
+      status: 'Approved',
+      isDemo: true
+    },
+    {
+      id: 'demo-template-2',
+      badgeName: 'Cloud Computing Fundamentals',
+      qualificationName: 'Cloud Computing Fundamentals',
+      qualificationCode: 'CCF-2026',
+      badgeType: 'Expert',
+      credentialLevel: 'Full Qualification / Certificate of Training',
+      relatedCompetency: 'Deploy cloud infrastructure and serverless systems',
+      description: 'Awarded for completing the cloud training course',
+      criteria: 'Passed final assessment exam',
+      validityMonths: 36,
+      alignment: 'Institutional Standard',
+      tags: ['Cloud', 'AWS', 'Azure'],
+      issuableBy: ['TrainingCenter'],
+      requiresApproval: true,
+      displayOrder: 2,
+      hierarchyVisible: true,
+      status: 'Approved',
+      isDemo: true
+    }
+  ];
+
+  for (const tmpl of demoTemplates) {
+    const docRef = doc(db, 'badgeTemplates', tmpl.id);
+    const tmplDoc = await getDoc(docRef);
+    if (!tmplDoc.exists()) {
+      await setDoc(docRef, { 
+        ...tmpl, 
+        createdAt: serverTimestamp(), 
+        updatedAt: serverTimestamp() 
+      });
+    }
+  }
+}
+
 export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<any | null>(null);
@@ -32,68 +107,155 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setUser(currentUser);
       
       if (currentUser) {
-        // Fetch or create user profile
-        const userDocRef = doc(db, 'users', currentUser.uid);
-        const userDoc = await getDoc(userDocRef);
-        
-        let profile = userDoc.exists() ? userDoc.data() : null;
+        const isDemo = currentUser.providerData.some(p => p.providerId === 'password') || 
+                       currentUser.email?.toLowerCase().includes('demo') ||
+                       localStorage.getItem('is_demo_user') === 'true';
 
-        // Always check for admin-created profiles by email to ensure sync/linking
-        // This handles cases where an admin updated a user's role after they already logged in as a learner
-        const usersRef = collection(db, 'users');
-        const q = query(usersRef, where('email', '==', currentUser.email));
-        const querySnapshot = await getDocs(q);
-
-        if (!querySnapshot.empty) {
-          // Find the admin-created doc (one that isn't the UID-indexed one, or the UID one if it's the only one)
-          const adminDoc = querySnapshot.docs.find(d => d.id !== currentUser.uid) || querySnapshot.docs[0];
-          const adminData = adminDoc.data();
-
-          // If we found an admin-created doc with a different ID, or the UID doc doesn't exist,
-          // or if the current profile is just a default 'Learner' and the admin assigned a specific role
-          if (adminDoc.id !== currentUser.uid || !profile || (profile.role === 'Learner' && adminData.role !== 'Learner')) {
-            profile = {
-              ...(profile || {}),
-              ...adminData,
-              uid: currentUser.uid,
-              updatedAt: serverTimestamp()
-            };
-            await setDoc(userDocRef, profile);
+        if (isDemo) {
+          localStorage.setItem('is_demo_user', 'true');
+          
+          // Force profile mapping & creation/sync
+          const userDocRef = doc(db, 'users', currentUser.uid);
+          const userDoc = await getDoc(userDocRef);
+          
+          const role = getDemoRoleByEmail(currentUser.email || '');
+          let organizationId = '';
+          let assignedDistrictId = '';
+          
+          if (role === 'TrainingCenter') {
+            organizationId = 'demo-training-center';
+            assignedDistrictId = 'demo-district-office';
+          } else if (role === 'AssessmentCenter') {
+            organizationId = 'demo-assessment-center';
+            assignedDistrictId = 'demo-district-office';
+          } else if (role === 'DistrictOffice') {
+            organizationId = 'demo-district-office';
           }
-        }
 
-        if (profile) {
-          // Robust sync for assignedDistrictId
-          const isCenter = profile.role === 'TrainingCenter' || profile.role === 'AssessmentCenter';
-          if (isCenter && profile.organizationId) {
-            try {
-              const orgDoc = await getDoc(doc(db, 'organizations', profile.organizationId));
-              if (orgDoc.exists()) {
-                const orgData = orgDoc.data();
-                if (orgData.assignedDistrictId && profile.assignedDistrictId !== orgData.assignedDistrictId) {
-                  profile.assignedDistrictId = orgData.assignedDistrictId;
-                  // Update the doc to persist the sync
-                  await updateDoc(userDocRef, { assignedDistrictId: orgData.assignedDistrictId });
-                }
-              }
-            } catch (e) {
-              console.error("Error syncing district ID:", e);
+          // Force setup of demo organization if active
+          if (organizationId) {
+            const orgDocRef = doc(db, 'organizations', organizationId);
+            const orgDoc = await getDoc(orgDocRef);
+            if (!orgDoc.exists()) {
+              await setDoc(orgDocRef, {
+                id: organizationId,
+                name: role === 'TrainingCenter' ? 'Demo Training Center - Manila' :
+                      role === 'AssessmentCenter' ? 'Demo Assessment Center - Manila' :
+                      'Demo District Office - National Capital Region',
+                type: role === 'DistrictOffice' ? 'DistrictOffice' : role,
+                email: currentUser.email,
+                location: 'Manila, Philippines',
+                assignedDistrictId: assignedDistrictId || null,
+                status: 'Active',
+                isDemo: true,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+              });
             }
           }
-          setUserProfile(profile);
-        } else {
-          // Create default profile for new users (Learner by default)
-          const newProfile = {
+
+          // Make sure demo district office exists to prevent empty drop downs
+          if (assignedDistrictId) {
+            const distDocRef = doc(db, 'organizations', assignedDistrictId);
+            const distDoc = await getDoc(distDocRef);
+            if (!distDoc.exists()) {
+              await setDoc(distDocRef, {
+                id: assignedDistrictId,
+                name: 'Demo District Office - National Capital Region',
+                type: 'DistrictOffice',
+                email: 'district@demo.com',
+                location: 'Manila, Philippines',
+                status: 'Active',
+                isDemo: true,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+              });
+            }
+          }
+
+          let profile = userDoc.exists() ? userDoc.data() : null;
+          
+          const demoProfile = {
             uid: currentUser.uid,
-            name: currentUser.displayName || 'New Learner',
+            name: currentUser.displayName || `Demo ${role === 'co_admin' ? 'Certification Officer' : role === 'qso_admin' ? 'QSO Admin' : role === 'icto_admin' ? 'ICTO Admin' : role.replace(/([A-Z])/g, ' $1').trim()}`,
             email: currentUser.email,
-            role: 'Learner',
-            createdAt: serverTimestamp(),
+            role: role,
+            status: 'Active',
+            isDemo: true,
+            organizationId: organizationId || null,
+            assignedDistrictId: assignedDistrictId || null,
+            createdAt: profile?.createdAt || serverTimestamp(),
+            updatedAt: serverTimestamp()
           };
-          await setDoc(userDocRef, newProfile);
-          setUserProfile(newProfile);
+
+          await setDoc(userDocRef, demoProfile);
+          setUserProfile(demoProfile);
+
+          // Seed standard demo templates so UI functions perfectly
+          try {
+            await seedDemoTemplatesAndData();
+          } catch (e) {
+            console.error("Error seeding demo templates:", e);
+          }
+        } else {
+          localStorage.setItem('is_demo_user', 'false');
+          
+          // Regular real user authentication profile lookup
+          const userDocRef = doc(db, 'users', currentUser.uid);
+          const userDoc = await getDoc(userDocRef);
+          
+          let profile = userDoc.exists() ? userDoc.data() : null;
+
+          const usersRef = collection(db, 'users');
+          const q = query(usersRef, where('email', '==', currentUser.email));
+          const querySnapshot = await getDocs(q);
+
+          if (!querySnapshot.empty) {
+            const adminDoc = querySnapshot.docs.find(d => d.id !== currentUser.uid) || querySnapshot.docs[0];
+            const adminData = adminDoc.data();
+
+            if (adminDoc.id !== currentUser.uid || !profile || (profile.role === 'Learner' && adminData.role !== 'Learner')) {
+              profile = {
+                ...(profile || {}),
+                ...adminData,
+                uid: currentUser.uid,
+                updatedAt: serverTimestamp()
+              };
+              await setDoc(userDocRef, profile);
+            }
+          }
+
+          if (profile) {
+            const isCenter = profile.role === 'TrainingCenter' || profile.role === 'AssessmentCenter';
+            if (isCenter && profile.organizationId) {
+              try {
+                const orgDoc = await getDoc(doc(db, 'organizations', profile.organizationId));
+                if (orgDoc.exists()) {
+                  const orgData = orgDoc.data();
+                  if (orgData.assignedDistrictId && profile.assignedDistrictId !== orgData.assignedDistrictId) {
+                    profile.assignedDistrictId = orgData.assignedDistrictId;
+                    await updateDoc(userDocRef, { assignedDistrictId: orgData.assignedDistrictId });
+                  }
+                }
+              } catch (e) {
+                console.error("Error syncing district ID:", e);
+              }
+            }
+            setUserProfile(profile);
+          } else {
+            const newProfile = {
+              uid: currentUser.uid,
+              name: currentUser.displayName || 'New Learner',
+              email: currentUser.email,
+              role: 'Learner',
+              createdAt: serverTimestamp(),
+            };
+            await setDoc(userDocRef, newProfile);
+            setUserProfile(newProfile);
+          }
         }
       } else {
+        localStorage.setItem('is_demo_user', 'false');
         setUserProfile(null);
       }
       
@@ -106,6 +268,7 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const logout = async () => {
     try {
+      localStorage.setItem('is_demo_user', 'false');
       await auth.signOut();
     } catch (error) {
       console.error('Error signing out:', error);

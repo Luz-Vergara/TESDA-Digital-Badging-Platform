@@ -932,7 +932,10 @@ function HierarchyGroup({ title, level, items, allBadges, colorClass, maxSlots, 
                           verificationId: activeRecord?.verificationId || "LOCKED",
                           imageUrl: badge.imageUrl || "",
                           level: badge.badgeType,
-                          qualificationTitle: badge.qualificationName,
+                          qualificationTitle:
+                            activeRecord?.programName ||
+                            activeRecord?.programTitle ||
+                            badge.qualificationName,
                           qualificationCode: badge.qualificationCode,
                           templateConfig: badge.templateConfig
                         }}

@@ -23,6 +23,21 @@ export default function DashboardLayout({ role }: DashboardLayoutProps) {
     return <Navigate to="/login" replace />;
   }
 
+  if (userProfile && userProfile.role !== 'Admin' && userProfile.role !== role) {
+    const defaultPaths: Record<string, string> = {
+      Learner: '/learner',
+      Admin: '/admin',
+      qso_admin: '/qso',
+      co_admin: '/co',
+      icto_admin: '/icto',
+      DistrictOffice: '/districtoffice',
+      TrainingCenter: '/trainingcenter',
+      AssessmentCenter: '/assessmentcenter',
+    };
+    const dest = defaultPaths[userProfile.role] || '/';
+    return <Navigate to={dest} replace />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar />

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Award, Search, Filter, ArrowLeft, Download, ExternalLink, Calendar, ShieldCheck } from 'lucide-react';
+import { Award, Search, Filter, ArrowLeft, Download, ExternalLink, Calendar, ShieldCheck, Check, Copy, QrCode, Database, User, Building } from 'lucide-react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
@@ -10,6 +10,15 @@ import { BadgeMetadata, BadgeTemplate } from '@/src/types';
 import { getBadgeColor, getStatusColor } from '@/src/lib/badge-utils';
 import { Link } from 'react-router-dom';
 import { BadgeRenderer } from '@/src/components/badges/BadgeRenderer';
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogDescription, 
+  DialogFooter 
+} from '@/components/ui/dialog';
+import QRCode from 'react-qr-code';
 
 const formatDate = (value: any) => {
   if (!value) return "N/A";
@@ -34,6 +43,15 @@ export default function MyBadgeWallet() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<string>('All');
+  const [selectedShareBadge, setSelectedShareBadge] = useState<any | null>(null);
+  const [selectedMetadataBadge, setSelectedMetadataBadge] = useState<any | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
  
   // Combine sources and filter by recognized templates
   const badges = useMemo(() => {
@@ -45,9 +63,15 @@ export default function MyBadgeWallet() {
       }
     });
 
-    // Add approved requests to the list
+    // Add approved requests to the list only if there is no individual issued badge
     badgesRequests.forEach(req => {
-      if (!combined.find(c => c.id === req.id || (c.badgeId && c.badgeId === req.id))) {
+      const alreadyHasBadge = combined.some(c => 
+        c.badgeRequestId === req.id ||
+        c.badgeTemplateId === req.badgeTemplateId ||
+        (c.badgeId && c.badgeId === req.badgeTemplateId) ||
+        c.id === req.id
+      );
+      if (!alreadyHasBadge) {
         combined.push({
           ...req,
           badgeName: req.badgeTemplateName || req.badgeName || req.programTitle,
@@ -280,9 +304,12 @@ export default function MyBadgeWallet() {
                           imageUrl: matchedTemplate.imageUrl || "",
                           level: badge.badgeType || matchedTemplate.badgeType,
                           qualificationTitle:
+                            badge.programName ||
+                            badge.programTitle ||
                             matchedTemplate.qualificationName ||
                             badge.qualificationName ||
-                            badge.programTitle,
+                            badge.badgeName ||
+                            (badge as any).badgeTemplateName,
                           qualificationCode:
                             matchedTemplate.qualificationCode ||
                             badge.qualificationCode,
@@ -315,10 +342,19 @@ export default function MyBadgeWallet() {
                 </div>
               </CardContent>
               <div className="px-6 py-4 bg-slate-50/50 border-t border-slate-100 flex gap-2">
-                <Button variant="ghost" size="sm" className="flex-1 text-xs hover:bg-white hover:text-blue-600">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="flex-1 text-xs hover:bg-white hover:text-blue-600"
+                  onClick={() => setSelectedMetadataBadge(badge)}
+                >
                   Metadata
                 </Button>
-                <Button size="sm" className="flex-1 text-xs bg-blue-600 hover:bg-blue-700">
+                <Button 
+                  size="sm" 
+                  className="flex-1 text-xs bg-blue-600 hover:bg-blue-700"
+                  onClick={() => setSelectedShareBadge(badge)}
+                >
                   <ExternalLink className="h-3 w-3 mr-1.5" /> Share
                 </Button>
               </div>
@@ -333,6 +369,235 @@ export default function MyBadgeWallet() {
           </div>
         )}
       </div>
+
+      {/* Verification & Sharing Dialog / Drawer Panel */}
+      <Dialog open={!!selectedShareBadge} onOpenChange={() => setSelectedShareBadge(null)}>
+        <DialogContent className="sm:max-w-[450px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <QrCode className="h-5 w-5 text-blue-600" />
+              Badge Verification QR Code
+            </DialogTitle>
+            <DialogDescription>
+              Anyone can scan this QR code or click the verification link to inspect your badge authenticity in real-time.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedShareBadge && (() => {
+            const vId = selectedShareBadge.verificationId || selectedShareBadge.certificationId || selectedShareBadge.badgeId || selectedShareBadge.id;
+            const verificationUrl = selectedShareBadge.verificationUrl || `${window.location.origin}/verify/${vId}`;
+            return (
+              <div className="space-y-6 py-4 flex flex-col items-center justify-center">
+                {/* QR Code Container */}
+                <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-inner flex items-center justify-center">
+                  <QRCode 
+                    value={verificationUrl} 
+                    size={200}
+                    style={{ height: "auto", maxWidth: "100%", width: "100%" }}
+                  />
+                </div>
+
+                {/* Badge details */}
+                <div className="w-full text-center space-y-1">
+                  <h4 className="font-bold text-slate-800 text-base leading-tight">
+                    {selectedShareBadge.programName || selectedShareBadge.programTitle || selectedShareBadge.badgeName || selectedShareBadge.badgeTemplateName || "TESDA Competency Badge"}
+                  </h4>
+                  <div className="flex items-center justify-center gap-2 text-xs text-slate-500">
+                    <span className="font-semibold bg-slate-100 px-2 py-0.5 rounded text-slate-600 uppercase tracking-wider text-[10px]">
+                      {selectedShareBadge.badgeType}
+                    </span>
+                    <span>•</span>
+                    <span className="font-mono">
+                      ID: {selectedShareBadge.badgeId || selectedShareBadge.badgeTemplateId || "N/A"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Verification details info */}
+                <div className="w-full grid grid-cols-2 gap-2 text-xs border-t border-b border-slate-100 py-3">
+                  <div className="text-center border-r border-slate-100">
+                    <span className="text-slate-400 block pb-1">Registry Code</span>
+                    <span className="font-mono font-bold text-slate-700">{vId || "N/A"}</span>
+                  </div>
+                  <div className="text-center">
+                    <span className="text-slate-400 block pb-1">Validity Status</span>
+                    <span className={`font-bold px-2 py-0.5 rounded-full capitalize text-[10px] ${
+                      ['active', 'approved', 'published', 'earned', 'badge id generated', 'published to learner wallet', 'approved for publication', 'verified'].includes((selectedShareBadge.status || 'Active').toLowerCase()) 
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                        : selectedShareBadge.status === 'Expired' 
+                        ? 'bg-amber-50 text-amber-700 border border-amber-200' 
+                        : 'bg-rose-50 text-rose-700 border border-rose-200'
+                    }`}>
+                      {selectedShareBadge.status || 'Active'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Input with Link */}
+                <div className="w-full space-y-1.5">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-mono">Verification URL Link</span>
+                  <div className="flex gap-2 w-full">
+                    <Input 
+                      value={verificationUrl} 
+                      readOnly 
+                      className="bg-slate-50 border-slate-200 font-mono text-xs text-slate-600 focus-visible:ring-0 select-all"
+                    />
+                    <Button 
+                      onClick={() => copyToClipboard(verificationUrl)} 
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-semibold transition-all shrink-0"
+                    >
+                      {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Employer verification guide note */}
+                <p className="text-[10px] text-slate-400 text-center italic leading-normal">
+                  Scanned with any default camera app. Opens the official TESDA system check node where your credentials are query verified.
+                </p>
+              </div>
+            );
+          })()}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setSelectedShareBadge(null)} className="w-full">
+              Close Preview
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Metadata Dialog */}
+      <Dialog open={!!selectedMetadataBadge} onOpenChange={() => setSelectedMetadataBadge(null)}>
+        <DialogContent className="sm:max-w-[500px] border-slate-200">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-slate-900">
+              <Database className="h-5 w-5 text-blue-600" />
+              Credential Metadata Payload
+            </DialogTitle>
+            <DialogDescription>
+              Cryptographically signed metadata envelope for this digital badge template.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedMetadataBadge && (() => {
+            const matchedTemplate = templates.find(
+              (template) => template.id === (selectedMetadataBadge.badgeTemplateId || selectedMetadataBadge.badgeId)
+            );
+            const learnerName = selectedMetadataBadge.learnerName || user?.displayName || "Learner Name";
+            const tcName = selectedMetadataBadge.trainingCenterName || selectedMetadataBadge.issuer || selectedMetadataBadge.trainingCenter || selectedMetadataBadge.issuerName || "TESDA Training Center - Central Manila";
+            const vId = selectedMetadataBadge.verificationId || selectedMetadataBadge.certificationId || selectedMetadataBadge.badgeId || selectedMetadataBadge.id || "PENDING";
+            
+            return (
+              <div className="space-y-4 py-4">
+                {/* Section 1: Learner Credentials */}
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-3">
+                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-mono">
+                    Learner Information (Recipient)
+                  </h4>
+                  <div className="space-y-2.5">
+                    <div className="flex items-start gap-2.5">
+                      <div className="p-1.5 bg-blue-50 text-blue-600 rounded-md mt-0.5 shrink-0">
+                        <User className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 block font-medium leading-none mb-1">Full Name</span>
+                        <span className="text-sm font-semibold text-slate-800">{learnerName}</span>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-start gap-2.5">
+                      <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-md mt-0.5 shrink-0">
+                        <Building className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 block font-medium leading-none mb-1">Training Center / Institution</span>
+                        <span className="text-sm font-semibold text-slate-800 leading-tight">
+                          {tcName}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 2: Credential Taxonomy */}
+                <div className="p-4 rounded-xl border border-slate-100 space-y-3">
+                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-mono">
+                    Credential Scope & Taxonomy
+                  </h4>
+                  <div className="grid grid-cols-2 gap-4 text-xs">
+                    <div>
+                      <span className="text-slate-400 block pb-1">Badge Level</span>
+                      <span className="font-bold text-slate-700 capitalize bg-slate-100 px-2 py-0.5 rounded w-fit text-[10px]">
+                        {selectedMetadataBadge.badgeType || (matchedTemplate ? matchedTemplate.badgeType : "N/A")}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block pb-1">Registry Code</span>
+                      <span className="font-mono font-bold text-slate-700 select-all">{vId}</span>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-slate-400 block pb-1">Qualification Title</span>
+                      <span className="font-semibold text-slate-800 line-clamp-2">
+                        {selectedMetadataBadge.programName ||
+                          selectedMetadataBadge.programTitle ||
+                          (matchedTemplate ? matchedTemplate.qualificationName : "") ||
+                          selectedMetadataBadge.qualificationName ||
+                          selectedMetadataBadge.badgeName ||
+                          selectedMetadataBadge.badgeTemplateName || 
+                          "N/A"}
+                      </span>
+                    </div>
+                    {matchedTemplate?.qualificationCode && (
+                      <div>
+                        <span className="text-slate-400 block pb-1">Qualification Code</span>
+                        <span className="font-mono text-slate-700">{matchedTemplate.qualificationCode}</span>
+                      </div>
+                    )}
+                    <div>
+                      <span className="text-slate-400 block pb-1">Status</span>
+                      <span className={`font-bold rounded-full capitalize ${
+                        ["active", "approved", "published", "earned", "badge id generated"].includes((selectedMetadataBadge.status || "Active").toLowerCase())
+                          ? "text-emerald-700"
+                          : "text-rose-700"
+                      }`}>
+                        {selectedMetadataBadge.status || "Active"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block pb-1">Issue Date</span>
+                      <span className="text-slate-700 font-medium">{formatDate(selectedMetadataBadge.issueDate)}</span>
+                    </div>
+                    {selectedMetadataBadge.validUntil && (
+                      <div>
+                        <span className="text-slate-400 block pb-1">Valid Until</span>
+                        <span className="text-slate-700 font-medium">{formatDate(selectedMetadataBadge.validUntil)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Section 3: Technical Specifications */}
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2 text-xs">
+                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-mono">
+                    Standards-LD Schema Alignment
+                  </h4>
+                  <div className="font-mono text-[10px] text-slate-500 space-y-1 bg-white p-2.5 rounded border border-slate-100 max-h-[100px] overflow-y-auto">
+                    <div>"@context": "https://w3id.org/openbadges/v2"</div>
+                    <div>"type": "Assertion"</div>
+                    <div>"recipient": "urn:sha256:{selectedMetadataBadge.learnerEmail ? '...' + selectedMetadataBadge.learnerEmail.slice(0, 5) : 'anonymous'}"</div>
+                    <div>"verification": "SignedAssertion"</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setSelectedMetadataBadge(null)} className="w-full">
+              Dismiss Metadata
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

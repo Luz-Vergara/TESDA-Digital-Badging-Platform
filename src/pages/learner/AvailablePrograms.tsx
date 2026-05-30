@@ -6,6 +6,10 @@ import {
   where, 
   onSnapshot, 
   addDoc, 
+  getDoc,
+  getDocs,
+  updateDoc,
+  doc,
   serverTimestamp 
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
@@ -66,16 +70,119 @@ export default function AvailablePrograms() {
 
     setIsSubmitting(true);
     try {
-      const payload: Partial<Enrollment> & { badgeTemplateId?: string, badgeType?: string, programTitle?: string } = {
-        learnerId: user.uid,
-        learnerName: userProfile.name,
+      let assignedDistrictId = 'demo-district-office'; // default fallback
+      let assignedDistrictName = 'Demo District Office - National Capital Region';
+      let trainingCenterOrgId = selectedProgram.trainingCenterId || '';
+      let trainingCenterOrgName = selectedProgram.trainingCenterName || '';
+
+      // 1. Fetch training center organization record to find its District Office
+      const orgsRef = collection(db, 'organizations');
+      let foundOrg: any = null;
+
+      if (trainingCenterOrgId) {
+        try {
+          const directSnap = await getDoc(doc(db, 'organizations', trainingCenterOrgId));
+          if (directSnap.exists() && directSnap.data().type === 'TrainingCenter') {
+            foundOrg = { id: directSnap.id, ...directSnap.data() };
+          }
+        } catch (e) {
+          console.error("Direct org lookup failed", e);
+        }
+      }
+
+      if (!foundOrg) {
+        const qTc = query(orgsRef, where('type', '==', 'TrainingCenter'));
+        const qSnap = await getDocs(qTc);
+        const match = qSnap.docs.find(doc => 
+          doc.id === trainingCenterOrgId || 
+          doc.data().name === trainingCenterOrgName || 
+          (doc.data().id && doc.data().id === trainingCenterOrgId)
+        );
+        if (match) {
+          foundOrg = { id: match.id, ...match.data() };
+        }
+      }
+
+      if (foundOrg) {
+        trainingCenterOrgId = foundOrg.id;
+        trainingCenterOrgName = foundOrg.name || trainingCenterOrgName;
+        if (foundOrg.assignedDistrictId) {
+          assignedDistrictId = foundOrg.assignedDistrictId;
+          const distDoc = await getDoc(doc(db, 'organizations', assignedDistrictId));
+          if (distDoc.exists()) {
+            assignedDistrictName = distDoc.data().name || assignedDistrictName;
+          }
+        }
+      }
+
+      // 2. Check if a learner record already exists for this user email, if so update/connect it, else create it
+      const learnersRef = collection(db, 'learners');
+      const qLearner = query(learnersRef, where('email', '==', user.email));
+      const learnerSnap = await getDocs(qLearner);
+      
+      let learnerId = '';
+      const nameParts = (userProfile.name || user.displayName || 'Learner').split(' ');
+      const firstName = nameParts[0] || 'Learner';
+      const lastName = nameParts.slice(1).join(' ') || 'User';
+
+      const learnerPayload: any = {
+        firstName: firstName,
+        lastName: lastName,
+        email: user.email || '',
+        contactNumber: userProfile.contactNumber || '',
+        qualification: selectedProgram.programTitle || '',
+        trainingCenterId: trainingCenterOrgId || selectedProgram.trainingCenterId,
+        trainingCenterName: trainingCenterOrgName || selectedProgram.trainingCenterName,
+        organizationId: trainingCenterOrgId || selectedProgram.trainingCenterId,
+        organizationName: trainingCenterOrgName || selectedProgram.trainingCenterName,
+        programOfferingId: selectedProgram.id,
+        programTitle: selectedProgram.programTitle || '',
+        programBatchId: '', // Learner just applies to the program
+        districtOfficeId: assignedDistrictId,
+        districtOfficeName: assignedDistrictName,
+        status: 'Applied',
+        updatedAt: serverTimestamp()
+      };
+
+      if (!learnerSnap.empty) {
+        // Update existing learner record
+        const learnerDoc = learnerSnap.docs[0];
+        learnerId = learnerDoc.id;
+        await updateDoc(doc(db, 'learners', learnerId), learnerPayload);
+      } else {
+        // Create new learner record
+        const newLearnerDoc = await addDoc(collection(db, 'learners'), {
+          ...learnerPayload,
+          createdAt: serverTimestamp()
+        });
+        learnerId = newLearnerDoc.id;
+      }
+
+      // 3. Create the enrollment payload with complete associations
+      const payload: Partial<Enrollment> & { 
+        badgeTemplateId?: string; 
+        badgeType?: string; 
+        programTitle?: string;
+        trainingCenterName?: string;
+        organizationId?: string;
+        organizationName?: string;
+        districtOfficeId?: string;
+        districtOfficeName?: string;
+      } = {
+        learnerId: learnerId,
+        learnerName: userProfile.name || `${firstName} ${lastName}`,
         learnerEmail: user.email || '',
-        trainingCenterId: selectedProgram.trainingCenterId,
+        trainingCenterId: trainingCenterOrgId || selectedProgram.trainingCenterId,
+        trainingCenterName: trainingCenterOrgName || selectedProgram.trainingCenterName,
+        organizationId: trainingCenterOrgId || selectedProgram.trainingCenterId,
+        organizationName: trainingCenterOrgName || selectedProgram.trainingCenterName,
         programOfferingId: selectedProgram.id,
         badgeTemplateId: selectedProgram.badgeTemplateId || '',
         badgeType: selectedProgram.badgeType || '',
         programTitle: selectedProgram.programTitle || '',
         programBatchId: '', // Learner just applies to the program
+        districtOfficeId: assignedDistrictId,
+        districtOfficeName: assignedDistrictName,
         enrollmentStatus: 'Applied',
         completionStatus: 'Not Started',
         dateApplied: serverTimestamp() as any,

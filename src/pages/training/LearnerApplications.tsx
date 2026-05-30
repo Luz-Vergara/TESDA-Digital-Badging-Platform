@@ -6,6 +6,8 @@ import {
   where, 
   onSnapshot, 
   updateDoc, 
+  getDoc,
+  getDocs,
   doc, 
   serverTimestamp 
 } from 'firebase/firestore';
@@ -113,11 +115,65 @@ export default function LearnerApplications() {
           dateEnrolled: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
+
+        // Sync matched learner's record with the accepted batch and status
+        if (enr.learnerId) {
+          try {
+            await updateDoc(doc(db, 'learners', enr.learnerId), {
+              programBatchId: selectedBatch.id,
+              batchName: selectedBatch.batchName || '',
+              status: 'Enrolled',
+              updatedAt: serverTimestamp()
+            });
+          } catch (e) {
+            console.warn("Learner update by ID failed, falling back to email query", e);
+            const lq = query(collection(db, 'learners'), where('email', '==', enr.learnerEmail));
+            const lSnap = await getDocs(lq);
+            if (!lSnap.empty) {
+              await updateDoc(doc(db, 'learners', lSnap.docs[0].id), {
+                programBatchId: selectedBatch.id,
+                batchName: selectedBatch.batchName || '',
+                status: 'Enrolled',
+                updatedAt: serverTimestamp()
+              });
+            }
+          }
+        } else if (enr.learnerEmail) {
+          const lq = query(collection(db, 'learners'), where('email', '==', enr.learnerEmail));
+          const lSnap = await getDocs(lq);
+          if (!lSnap.empty) {
+            await updateDoc(doc(db, 'learners', lSnap.docs[0].id), {
+              programBatchId: selectedBatch.id,
+              batchName: selectedBatch.batchName || '',
+              status: 'Enrolled',
+              updatedAt: serverTimestamp()
+            });
+          }
+        }
       } else {
         await updateDoc(doc(db, 'enrollments', enrollmentId), {
           enrollmentStatus: 'Rejected',
           updatedAt: serverTimestamp()
         });
+
+        const enr = enrollments.find(e => e.id === enrollmentId);
+        if (enr && enr.learnerId) {
+          try {
+            await updateDoc(doc(db, 'learners', enr.learnerId), {
+              status: 'Rejected',
+              updatedAt: serverTimestamp()
+            });
+          } catch (e) {
+            const lq = query(collection(db, 'learners'), where('email', '==', enr.learnerEmail));
+            const lSnap = await getDocs(lq);
+            if (!lSnap.empty) {
+              await updateDoc(doc(db, 'learners', lSnap.docs[0].id), {
+                status: 'Rejected',
+                updatedAt: serverTimestamp()
+              });
+            }
+          }
+        }
       }
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, 'enrollments');

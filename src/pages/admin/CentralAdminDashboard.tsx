@@ -9,7 +9,11 @@ import {
   Activity,
   ShieldCheck,
   ArrowUpRight,
-  ArrowDownRight
+  ArrowDownRight,
+  Search,
+  Filter,
+  MapPin,
+  GraduationCap
 } from 'lucide-react';
 import { collection, query, onSnapshot, limit, orderBy } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
@@ -41,6 +45,12 @@ export default function CentralAdminDashboard() {
   const [recentLogs, setRecentLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Connection-Aware Learner Registry State
+  const [learners, setLearners] = useState<any[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedDistrict, setSelectedDistrict] = useState('All');
+  const [selectedCenter, setSelectedCenter] = useState('All');
+
   useEffect(() => {
     if (!isAuthReady || !userProfile) return;
     
@@ -54,6 +64,7 @@ export default function CentralAdminDashboard() {
 
     const unsubLearners = onSnapshot(collection(db, 'learners'), (snap) => {
       setStats(prev => ({ ...prev, totalLearners: snap.size }));
+      setLearners(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (err) => {
       console.warn('Silent permission error on learners:', err.message);
     });
@@ -326,6 +337,184 @@ export default function CentralAdminDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* United Learner Registry Component */}
+      <Card className="border-slate-200 shadow-sm mt-8">
+        <CardHeader className="border-b border-slate-150/60 pb-5">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <CardTitle className="text-xl flex items-center gap-2">
+                <GraduationCap className="h-6 w-6 text-blue-600" />
+                United Learner Registry
+              </CardTitle>
+              <CardDescription>
+                System-wide view of enrolled/applied learners and their active institutional connections.
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200/50 font-medium">
+                {learners.length} Active Profiles
+              </Badge>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-6">
+          {/* Controls Bar */}
+          <div className="grid md:grid-cols-3 gap-4 mb-6">
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search name, email, program..."
+                className="pl-9 pr-4 py-2 w-full text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+
+            {/* Filter by District Office */}
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-slate-400 shrink-0" />
+              <select
+                className="text-sm border border-slate-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white w-full"
+                value={selectedDistrict}
+                onChange={(e) => setSelectedDistrict(e.target.value)}
+              >
+                <option value="All">All District Offices</option>
+                {Array.from(new Set(learners.map(l => l.districtOfficeName || l.districtOfficeId).filter(Boolean))).map((district: any) => (
+                  <option key={district} value={district}>{district}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Filter by Training Center */}
+            <div className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-slate-400 shrink-0" />
+              <select
+                className="text-sm border border-slate-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white w-full"
+                value={selectedCenter}
+                onChange={(e) => setSelectedCenter(e.target.value)}
+              >
+                <option value="All">All Training Centers</option>
+                {Array.from(new Set(learners.map(l => l.trainingCenterName || l.trainingCenterId).filter(Boolean))).map((center: any) => (
+                  <option key={center} value={center}>{center}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Unified Connections Table */}
+          <div className="rounded-xl border border-slate-100 overflow-hidden bg-white shadow-inner">
+            <Table>
+              <TableHeader className="bg-slate-50">
+                <TableRow>
+                  <TableHead className="font-semibold text-xs text-slate-600 uppercase tracking-wider pl-6 py-3">Learner Profile</TableHead>
+                  <TableHead className="font-semibold text-xs text-slate-600 uppercase tracking-wider py-3">Program & Batch</TableHead>
+                  <TableHead className="font-semibold text-xs text-slate-600 uppercase tracking-wider py-3">Connected Training Center</TableHead>
+                  <TableHead className="font-semibold text-xs text-slate-600 uppercase tracking-wider py-3">Assigned District Office</TableHead>
+                  <TableHead className="font-semibold text-xs text-slate-600 uppercase tracking-wider text-center py-3">Enrollment Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {learners.filter(l => {
+                  const fullName = `${l.firstName || ''} ${l.lastName || ''}`.toLowerCase();
+                  const email = (l.email || '').toLowerCase();
+                  const qual = (l.qualification || l.programTitle || '').toLowerCase();
+                  const tc = (l.trainingCenterName || '').toLowerCase();
+                  
+                  const matchesSearch = 
+                    fullName.includes(searchTerm.toLowerCase()) || 
+                    email.includes(searchTerm.toLowerCase()) || 
+                    qual.includes(searchTerm.toLowerCase()) ||
+                    tc.includes(searchTerm.toLowerCase());
+
+                  const matchesDistrict = selectedDistrict === 'All' || l.districtOfficeId === selectedDistrict || l.districtOfficeName === selectedDistrict;
+                  const matchesCenter = selectedCenter === 'All' || l.trainingCenterId === selectedCenter || l.trainingCenterName === selectedCenter;
+
+                  return matchesSearch && matchesDistrict && matchesCenter;
+                }).length > 0 ? (
+                  learners.filter(l => {
+                    const fullName = `${l.firstName || ''} ${l.lastName || ''}`.toLowerCase();
+                    const email = (l.email || '').toLowerCase();
+                    const qual = (l.qualification || l.programTitle || '').toLowerCase();
+                    const tc = (l.trainingCenterName || '').toLowerCase();
+                    
+                    const matchesSearch = 
+                      fullName.includes(searchTerm.toLowerCase()) || 
+                      email.includes(searchTerm.toLowerCase()) || 
+                      qual.includes(searchTerm.toLowerCase()) ||
+                      tc.includes(searchTerm.toLowerCase());
+
+                    const matchesDistrict = selectedDistrict === 'All' || l.districtOfficeId === selectedDistrict || l.districtOfficeName === selectedDistrict;
+                    const matchesCenter = selectedCenter === 'All' || l.trainingCenterId === selectedCenter || l.trainingCenterName === selectedCenter;
+
+                    return matchesSearch && matchesDistrict && matchesCenter;
+                  }).map((l) => (
+                    <TableRow key={l.id} className="hover:bg-slate-50/40 transition-colors">
+                      <TableCell className="pl-6 py-4">
+                        <div className="flex flex-col">
+                          <span className="font-bold text-slate-900">{l.firstName} {l.lastName}</span>
+                          <span className="text-xs text-slate-500 font-mono italic">{l.email}</span>
+                          {l.contactNumber && <span className="text-[10px] text-slate-400">{l.contactNumber}</span>}
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-4">
+                        <div className="flex flex-col">
+                          <span className="text-sm font-semibold text-blue-900 leading-snug">{l.qualification || l.programTitle || "General Track"}</span>
+                          <span className="text-[10px] text-slate-500 font-medium">
+                            Batch: <span className="text-slate-700 italic font-bold">{l.batchName || "Applied Option"}</span>
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-4">
+                        <div className="flex items-center gap-2">
+                          <div className="p-1 rounded-full bg-blue-50 text-blue-600">
+                            <Building2 className="h-3.5 w-3.5" />
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-sm font-semibold text-slate-800 leading-tight">{l.trainingCenterName || "Unassigned"}</span>
+                            <span className="text-[10px] font-mono text-slate-400">ID: {l.trainingCenterId || l.organizationId || "N/A"}</span>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-4">
+                        <div className="flex items-center gap-2">
+                          <div className="p-1 rounded-full bg-purple-50 text-purple-600">
+                            <MapPin className="h-3.5 w-3.5" />
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-sm font-semibold text-slate-800 leading-tight">{l.districtOfficeName || "Oversight Headquarters"}</span>
+                            <span className="text-[10px] font-mono text-slate-400">ID: {l.districtOfficeId || "N/A"}</span>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-center py-4">
+                        <Badge 
+                          className={
+                            l.status === 'Enrolled' 
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300' 
+                              : l.status === 'Applied' 
+                              ? 'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 hover:border-blue-300' 
+                              : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                          }
+                        >
+                          {l.status || 'Active'}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={5} className="h-32 text-center text-slate-500">
+                      No matching registered learners with connected institutions found.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

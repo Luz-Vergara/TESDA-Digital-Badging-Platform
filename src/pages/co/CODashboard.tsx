@@ -135,6 +135,8 @@ export default function CODashboard() {
 
     await updateStatus(selectedRequest.id, 'Badge ID Generated', {
       certificationId: certId,
+      verificationId: certId, // Synchronized with certificationId for badge overlays & verification
+      badgeId: certId,        // Synchronized with certificationId for unified badge schemas
       badgeGeneratedAt: serverTimestamp(),
       badgeGeneratedBy: user?.displayName || user?.email || 'CO Officer',
       issueDate: serverTimestamp(),
