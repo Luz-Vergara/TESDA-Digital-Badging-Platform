@@ -32,6 +32,7 @@ export default function LearnerDashboard() {
   const [batches, setBatches] = useState<any[]>([]);
 
   const [showComingSoon, setShowComingSoon] = useState(false);
+  const [myRplSubmissions, setMyRplSubmissions] = useState<any[]>([]);
 
   // Combine badges from both email, ID queries, and approved requests
   const activeBadges = useMemo(() => {
@@ -181,11 +182,19 @@ export default function LearnerDashboard() {
       console.error("Dashboard Requests Error:", error);
     });
 
+    const qRpl = query(collection(db, 'rplApplications'), where('learnerId', '==', user.uid));
+    const unsubRpl = onSnapshot(qRpl, (snapshot) => {
+      setMyRplSubmissions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (err) => {
+      console.error("Dashboard RPL Submissions Error:", err);
+    });
+
     return () => {
       unsubEmail();
       unsubId();
       unsubRequests();
       unsubTemplates();
+      unsubRpl();
     };
   }, [user?.email, user?.uid, isAuthReady]);
 
@@ -471,6 +480,71 @@ export default function LearnerDashboard() {
       <div className="grid lg:grid-cols-3 gap-8">
         {/* Main Content - Recent Badges */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Ongoing RPL Applications */}
+          {myRplSubmissions.length > 0 && (
+            <div className="space-y-4 pb-4 border-b border-slate-200">
+              <div className="flex justify-between items-center">
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-1.5">
+                  <Award className="h-5 w-5 text-purple-600 shrink-0" />
+                  Recognition of Prior Learning (RPL) Submissions
+                </h3>
+                <Link to="/learner/rpl">
+                  <Button variant="outline" size="sm" className="text-xs h-7 border-slate-200 hover:bg-purple-50 hover:text-purple-700 font-semibold">
+                    Open Trackers
+                  </Button>
+                </Link>
+              </div>
+              <div className="grid grid-cols-1 gap-3">
+                {myRplSubmissions.map((app) => (
+                  <Card key={app.id} className="border-slate-150 shadow-sm bg-purple-50/10 hover:border-purple-200 transition-all overflow-hidden">
+                    <div className="h-0.5 bg-purple-500 w-full" />
+                    <CardContent className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[10px] uppercase font-mono tracking-wider font-bold text-slate-400">
+                            Ref: {app.id?.substring(0, 8)}...
+                          </span>
+                          <Badge className="bg-purple-100 text-purple-800 border-none hover:bg-purple-100 text-[9px] font-bold px-1.5 py-0 shrink-0">
+                            RPL Entry
+                          </Badge>
+                          <Badge className={`text-[9px] font-bold px-2 py-0 border shrink-0 ${
+                            app.status === 'Assessment Completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                            app.status === 'Eligible for Assessment' || app.status === 'Ready for Assessment Endorsement' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                            app.status === 'Returned to TC' || app.status === 'Not Eligible' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                            app.status === 'Additional Documents Requested' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-50 text-slate-600 border-slate-200'
+                          }`}>
+                            {app.status}
+                          </Badge>
+                        </div>
+                        <h4 className="font-bold text-sm text-slate-800 line-clamp-1">
+                          [{app.qualificationCode}] {app.qualificationName}
+                        </h4>
+                        <p className="text-xs text-slate-500">
+                          Assigned Hub: <span className="font-semibold text-slate-700">{app.trainingCenterName}</span>
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-3 shrink-0 self-end md:self-auto">
+                        <div className="text-right hidden md:block">
+                          <p className="text-[9px] text-slate-450 font-mono">UPDATED</p>
+                          <p className="text-xs font-semibold text-slate-600">
+                            {app.updatedAt ? new Date(app.updatedAt.seconds * 1000).toLocaleDateString(undefined, {month: 'short', day: 'numeric', year: 'numeric'}) : 'Just Now'}
+                          </p>
+                        </div>
+                        <Link to="/learner/rpl">
+                          <Button size="sm" className="bg-purple-600 text-white hover:bg-purple-700 text-xs font-semibold flex items-center gap-1 px-3 h-8">
+                            Check Status
+                            <ArrowRight className="h-3.5 w-3.5" />
+                          </Button>
+                        </Link>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-between items-center">
             <h2 className="text-xl font-bold text-slate-900">Recent Badges</h2>
             <Link to="/learner/wallet">

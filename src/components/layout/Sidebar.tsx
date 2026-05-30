@@ -76,6 +76,7 @@ export default function Sidebar({ role }: SidebarProps) {
       return [
         ...common,
         { name: 'Available Programs', href: '/learner/programs', icon: Search },
+        { name: 'Apply for RPL', href: '/learner/rpl', icon: ShieldCheck },
         { name: 'My Applications', href: '/learner/applications', icon: ClipboardList },
         { name: 'My Enrollments', href: '/learner/enrollments', icon: Users },
         { name: 'My Badge Wallet', href: '/learner/wallet', icon: Wallet },
@@ -146,6 +147,7 @@ export default function Sidebar({ role }: SidebarProps) {
       return [
         ...common,
         { name: 'Learners', href: '/trainingcenter/learners', icon: Users },
+        { name: 'RPL Applications', href: '/trainingcenter/rpl', icon: ShieldCheck },
         { name: 'Programs Offered', href: '/trainingcenter/programs', icon: Layers },
         { name: 'Batches / Classes', href: '/trainingcenter/batches', icon: Layers },
         { name: 'Learner Applications', href: '/trainingcenter/applications', icon: Building2 },
@@ -160,7 +162,7 @@ export default function Sidebar({ role }: SidebarProps) {
         { name: 'Learner Search', href: '/assessmentcenter/search', icon: Search },
         { name: 'Learner Profiles', href: '/assessmentcenter/profiles', icon: Users },
         { name: 'Assessment Records', href: '/assessmentcenter/records', icon: FileText },
-        { name: 'RPL Records', href: '/assessmentcenter/rpl', icon: ClipboardList },
+        { name: 'RPL-Endorsed Candidates', href: '/assessmentcenter/rpl', icon: ClipboardList },
         { name: 'Submit Badge Request', href: '/assessmentcenter/submit', icon: Plus },
         { name: 'Submission Tracking', href: '/assessmentcenter/tracking', icon: TrendingUp },
       ];

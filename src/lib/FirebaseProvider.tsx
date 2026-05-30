@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
+import { demoAccountGroups } from '../config/demoAccounts';
 import { auth, db } from './firebase';
 
 interface FirebaseContextType {
@@ -80,6 +81,66 @@ async function seedDemoTemplatesAndData() {
       hierarchyVisible: true,
       status: 'Approved',
       isDemo: true
+    },
+    {
+      id: 'demo-template-skilled-1',
+      badgeName: 'Web Development - Front-end Development CoC',
+      qualificationName: 'Web Development NC III',
+      qualificationCode: 'WD-NCIII-2026',
+      badgeType: 'Skilled',
+      credentialLevel: 'Certificate of Competency',
+      relatedCompetency: 'Develop interactive responsive interfaces',
+      description: 'Demonstrates skilled competency in client-side programming, HTML5/CSS3, and responsive frameworks',
+      criteria: 'Successful completion of front-end portfolio verification and audit',
+      validityMonths: 36,
+      alignment: 'PQF Level 4',
+      tags: ['Web', 'Front-end', 'HTML'],
+      issuableBy: ['AssessmentCenter', 'CertificationOffice'],
+      requiresApproval: true,
+      displayOrder: 3,
+      hierarchyVisible: true,
+      status: 'Approved',
+      isDemo: true
+    },
+    {
+      id: 'demo-template-skilled-2',
+      badgeName: 'Vector Graphics Creation CoC',
+      qualificationName: 'Visual Graphic Design NC III',
+      qualificationCode: 'VGD-NCIII-2026',
+      badgeType: 'Skilled',
+      credentialLevel: 'Certificate of Competency',
+      relatedCompetency: 'Create vector media for branding and distribution',
+      description: 'Demonstrates skilled competency in vector illustration, illustration assets, and branding graphics',
+      criteria: 'Successful completion of vector design competency audit',
+      validityMonths: 36,
+      alignment: 'PQF Level 4',
+      tags: ['Design', 'Vector', 'Branding'],
+      issuableBy: ['AssessmentCenter', 'CertificationOffice'],
+      requiresApproval: true,
+      displayOrder: 3,
+      hierarchyVisible: true,
+      status: 'Approved',
+      isDemo: true
+    },
+    {
+      id: 'demo-template-master-2',
+      badgeName: 'Web Development NC III',
+      qualificationName: 'Web Development NC III',
+      qualificationCode: 'WD-NCIII-2026',
+      badgeType: 'Master',
+      credentialLevel: 'National Certificate',
+      relatedCompetency: 'End-to-end full-stack web architectures, deployment, database management',
+      description: 'Demonstrates end-to-end mastery in full-stack web application development and system architectures',
+      criteria: 'Completion of high-performance full-stack web qualification standard assessment',
+      validityMonths: 60,
+      alignment: 'PQF Level 5',
+      tags: ['Web', 'Full-stack', 'Systems'],
+      issuableBy: ['CertificationOffice'],
+      requiresApproval: true,
+      displayOrder: 4,
+      hierarchyVisible: true,
+      status: 'Approved',
+      isDemo: true
     }
   ];
 
@@ -93,6 +154,309 @@ async function seedDemoTemplatesAndData() {
         updatedAt: serverTimestamp() 
       });
     }
+  }
+
+  // Ensure standard demo organizations exist
+  const demoOrgs = [
+    {
+      id: 'demo-training-center',
+      name: 'Demo Training Center - Manila',
+      type: 'TrainingCenter',
+      email: 'training1@demo.com',
+      location: 'Manila, Philippines',
+      assignedDistrictId: 'demo-district-office',
+      status: 'Active',
+      isDemo: true,
+    },
+    {
+      id: 'demo-assessment-center',
+      name: 'Demo Assessment Center - Manila',
+      type: 'AssessmentCenter',
+      email: 'assessment@demo.com',
+      location: 'Manila, Philippines',
+      assignedDistrictId: 'demo-district-office',
+      status: 'Active',
+      isDemo: true,
+    },
+    {
+      id: 'demo-district-office',
+      name: 'Demo District Office - National Capital Region',
+      type: 'DistrictOffice',
+      email: 'district@demo.com',
+      location: 'Manila, Philippines',
+      status: 'Active',
+      isDemo: true,
+    }
+  ];
+
+  for (const org of demoOrgs) {
+    const orgRef = doc(db, 'organizations', org.id);
+    const orgDoc = await getDoc(orgRef);
+    if (!orgDoc.exists()) {
+      await setDoc(orgRef, {
+        ...org,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+    }
+  }
+
+  // Ensure standard demo offerings exist
+  const demoOfferings = [
+    {
+      id: 'demo-offering-cloud',
+      programTitle: 'Cloud Computing Fundamentals',
+      programType: 'Full Qualification',
+      qualificationName: 'Cloud Computing Fundamentals',
+      qualificationCode: 'CCF-2026',
+      badgeTemplateId: 'demo-template-2',
+      badgeTemplateName: 'Cloud Computing Fundamentals',
+      badgeType: 'Expert',
+      deliveryMode: 'Blended',
+      status: 'Active',
+      trainingCenterId: 'demo-training-center',
+      trainingCenterName: 'Demo Training Center - Manila',
+      isDemo: true,
+    },
+    {
+      id: 'demo-offering-css',
+      programTitle: 'Computer Systems Servicing NC II',
+      programType: 'Full Qualification',
+      qualificationName: 'Computer Systems Servicing NC II',
+      qualificationCode: 'CSS-NCII-2026',
+      badgeTemplateId: 'demo-template-1',
+      badgeTemplateName: 'Computer Systems Servicing NC II',
+      badgeType: 'Master',
+      deliveryMode: 'On-site',
+      status: 'Active',
+      trainingCenterId: 'demo-training-center',
+      trainingCenterName: 'Demo Training Center - Manila',
+      isDemo: true,
+    },
+    {
+      id: 'demo-offering-web',
+      programTitle: 'Web Development NC III',
+      programType: 'Full Qualification',
+      qualificationName: 'Web Development NC III',
+      qualificationCode: 'WD-NCIII-2026',
+      badgeTemplateId: 'demo-template-master-2',
+      badgeTemplateName: 'Web Development NC III',
+      badgeType: 'Master',
+      deliveryMode: 'Online',
+      status: 'Active',
+      trainingCenterId: 'demo-training-center',
+      trainingCenterName: 'Demo Training Center - Manila',
+      isDemo: true,
+    }
+  ];
+
+  for (const offering of demoOfferings) {
+    const offeringRef = doc(db, 'programOfferings', offering.id);
+    const offeringDoc = await getDoc(offeringRef);
+    if (!offeringDoc.exists()) {
+      await setDoc(offeringRef, {
+        ...offering,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+    }
+  }
+
+  // Ensure standard demo batches exist
+  const demoBatches = [
+    {
+      id: 'demo-batch-cloud-1',
+      programOfferingId: 'demo-offering-cloud',
+      batchName: 'Cloud Computing - Batch 1',
+      startDate: '2026-06-01',
+      endDate: '2026-07-31',
+      trainerName: 'Engr. Juan Dela Cruz',
+      maxSlots: 25,
+      status: 'Open',
+      badgeTemplateId: 'demo-template-2',
+      trainingCenterId: 'demo-training-center',
+      isDemo: true,
+    },
+    {
+      id: 'demo-batch-css-1',
+      programOfferingId: 'demo-offering-css',
+      batchName: 'CSS NC II - Batch A',
+      startDate: '2026-05-01',
+      endDate: '2026-06-30',
+      trainerName: 'Mrs. Maria Santos',
+      maxSlots: 20,
+      status: 'Ongoing',
+      badgeTemplateId: 'demo-template-1',
+      trainingCenterId: 'demo-training-center',
+      isDemo: true,
+    }
+  ];
+
+  for (const batch of demoBatches) {
+    const batchRef = doc(db, 'programBatches', batch.id);
+    const batchDoc = await getDoc(batchRef);
+    if (!batchDoc.exists()) {
+      await setDoc(batchRef, {
+        ...batch,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+    }
+  }
+
+  // Ensure standard demo badge request exists for District Office flow testing
+  const reqRef = doc(db, 'badgeRequests', 'demo-request-1');
+  const reqDoc = await getDoc(reqRef);
+  if (!reqDoc.exists()) {
+    await setDoc(reqRef, {
+      id: 'demo-request-1',
+      requestType: 'Batch',
+      trainingCenterId: 'demo-training-center',
+      trainingCenterName: 'Demo Training Center - Manila',
+      programOfferingId: 'demo-offering-css',
+      programTitle: 'Computer Systems Servicing NC II',
+      learnerIds: ['demo-learner2-uid-placeholder'],
+      learnerNames: ['Maria Santos (Demo)'],
+      badgeTemplateId: 'demo-template-1',
+      badgeTemplateName: 'Computer Systems Servicing NC II',
+      badgeType: 'Master',
+      districtOfficeId: 'demo-district-office',
+      districtOfficeName: 'Demo District Office - National Capital Region',
+      status: 'Pending Review',
+      isDemo: true,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+  }
+}
+
+async function seedLearnerWorkflowData(uid: string, email: string, name: string) {
+  try {
+    const isLearner1 = email.toLowerCase().includes('learner@demo.com') || email.toLowerCase() === 'learner@demo.com';
+    const isLearner2 = email.toLowerCase().includes('learner2@demo.com') || email.toLowerCase() === 'learner2@demo.com';
+
+    if (!isLearner1 && !isLearner2) return;
+
+    // 1. Ensure Learner profile exists in learners collection
+    const learnerDocRef = doc(db, 'learners', uid);
+    const learnerSnap = await getDoc(learnerDocRef);
+    if (!learnerSnap.exists()) {
+      const nameParts = name.split(' ');
+      const firstName = nameParts[0] || 'Demo';
+      const lastName = nameParts.slice(1).join(' ') || 'Learner';
+
+      await setDoc(learnerDocRef, {
+        id: uid,
+        firstName,
+        lastName,
+        email,
+        contactNumber: '09170000000',
+        qualification: isLearner1 ? 'Cloud Computing Fundamentals' : 'Computer Systems Servicing NC II',
+        trainingCenterId: 'demo-training-center',
+        trainingCenterName: 'Demo Training Center - Manila',
+        organizationId: 'demo-training-center',
+        organizationName: 'Demo Training Center - Manila',
+        districtOfficeId: 'demo-district-office',
+        districtOfficeName: 'Demo District Office - National Capital Region',
+        status: isLearner1 ? 'Applied' : 'Enrolled',
+        isDemo: true,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+    }
+
+    if (isLearner1) {
+      // Seed first enrollment for learner@demo.com
+      const enrDocRef1 = doc(db, 'enrollments', `demo-enr-learner1-cloud-${uid}`);
+      const enrSnap1 = await getDoc(enrDocRef1);
+      if (!enrSnap1.exists()) {
+        await setDoc(enrDocRef1, {
+          id: `demo-enr-learner1-cloud-${uid}`,
+          learnerId: uid,
+          learnerName: name,
+          learnerEmail: email,
+          trainingCenterId: 'demo-training-center',
+          trainingCenterName: 'Demo Training Center - Manila',
+          organizationId: 'demo-training-center',
+          organizationName: 'Demo Training Center - Manila',
+          programOfferingId: 'demo-offering-cloud',
+          badgeTemplateId: 'demo-template-2',
+          badgeType: 'Expert',
+          programTitle: 'Cloud Computing Fundamentals',
+          programBatchId: 'demo-batch-cloud-1',
+          districtOfficeId: 'demo-district-office',
+          districtOfficeName: 'Demo District Office - National Capital Region',
+          enrollmentStatus: 'Enrolled',
+          completionStatus: 'In Progress',
+          dateApplied: serverTimestamp(),
+          isDemo: true,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      }
+
+      // Seed second enrollment for learner@demo.com (Applied status)
+      const enrDocRef2 = doc(db, 'enrollments', `demo-enr-learner1-css-${uid}`);
+      const enrSnap2 = await getDoc(enrDocRef2);
+      if (!enrSnap2.exists()) {
+        await setDoc(enrDocRef2, {
+          id: `demo-enr-learner1-css-${uid}`,
+          learnerId: uid,
+          learnerName: name,
+          learnerEmail: email,
+          trainingCenterId: 'demo-training-center',
+          trainingCenterName: 'Demo Training Center - Manila',
+          organizationId: 'demo-training-center',
+          organizationName: 'Demo Training Center - Manila',
+          programOfferingId: 'demo-offering-css',
+          badgeTemplateId: 'demo-template-1',
+          badgeType: 'Master',
+          programTitle: 'Computer Systems Servicing NC II',
+          programBatchId: 'demo-batch-css-1',
+          districtOfficeId: 'demo-district-office',
+          districtOfficeName: 'Demo District Office - National Capital Region',
+          enrollmentStatus: 'Applied',
+          completionStatus: 'Not Started',
+          dateApplied: serverTimestamp(),
+          isDemo: true,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      }
+    }
+
+    if (isLearner2) {
+      // Seed enrollment for learner2@demo.com
+      const enrDocRef3 = doc(db, 'enrollments', `demo-enr-learner2-css-${uid}`);
+      const enrSnap3 = await getDoc(enrDocRef3);
+      if (!enrSnap3.exists()) {
+        await setDoc(enrDocRef3, {
+          id: `demo-enr-learner2-css-${uid}`,
+          learnerId: uid,
+          learnerName: name,
+          learnerEmail: email,
+          trainingCenterId: 'demo-training-center',
+          trainingCenterName: 'Demo Training Center - Manila',
+          organizationId: 'demo-training-center',
+          organizationName: 'Demo Training Center - Manila',
+          programOfferingId: 'demo-offering-css',
+          badgeTemplateId: 'demo-template-1',
+          badgeType: 'Master',
+          programTitle: 'Computer Systems Servicing NC II',
+          programBatchId: 'demo-batch-css-1',
+          districtOfficeId: 'demo-district-office',
+          districtOfficeName: 'Demo District Office - National Capital Region',
+          enrollmentStatus: 'Enrolled',
+          completionStatus: 'Completed',
+          dateApplied: serverTimestamp(),
+          isDemo: true,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      }
+    }
+  } catch (error) {
+    console.error("Error seeding learner-specific workflow data:", error);
   }
 }
 
@@ -173,13 +537,32 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             }
           }
 
+          let office = '';
+          if (role === 'TrainingCenter') {
+            office = 'Demo Training Center - Manila';
+          } else if (role === 'AssessmentCenter') {
+            office = 'Demo Assessment Center - Manila';
+          } else if (role === 'DistrictOffice') {
+            office = 'Demo District Office - National Capital Region';
+          } else if (role === 'qso_admin') {
+            office = 'Central QSO';
+          } else if (role === 'co_admin') {
+            office = 'Certification Office';
+          } else if (role === 'icto_admin') {
+            office = 'ICTO Central';
+          } else if (role === 'Admin') {
+            office = 'TESDA Main';
+          }
+
           let profile = userDoc.exists() ? userDoc.data() : null;
           
           const demoProfile = {
             uid: currentUser.uid,
-            name: currentUser.displayName || `Demo ${role === 'co_admin' ? 'Certification Officer' : role === 'qso_admin' ? 'QSO Admin' : role === 'icto_admin' ? 'ICTO Admin' : role.replace(/([A-Z])/g, ' $1').trim()}`,
+            // Respect existing name if present, otherwise map from demo accounts or fallback
+            name: profile?.name || currentUser.displayName || demoAccountGroups.flatMap(g => g.accounts).find(acc => acc.email.toLowerCase() === currentUser.email?.toLowerCase())?.label || `Demo ${role === 'co_admin' ? 'Certification Officer' : role === 'qso_admin' ? 'QSO Admin' : role === 'icto_admin' ? 'ICTO Admin' : role.replace(/([A-Z])/g, ' $1').trim()}`,
             email: currentUser.email,
             role: role,
+            office: office || null,
             status: 'Active',
             isDemo: true,
             organizationId: organizationId || null,
@@ -194,6 +577,9 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           // Seed standard demo templates so UI functions perfectly
           try {
             await seedDemoTemplatesAndData();
+            if (role === 'Learner') {
+              await seedLearnerWorkflowData(currentUser.uid, currentUser.email || '', demoProfile.name);
+            }
           } catch (e) {
             console.error("Error seeding demo templates:", e);
           }

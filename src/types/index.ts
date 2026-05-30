@@ -336,3 +336,79 @@ export interface AssessmentRecord {
   createdAt: any;
 }
 
+
+export type RPLStatus =
+  | 'For Training Center Assignment'
+  | 'Submitted'
+  | 'For Evidence Review'
+  | 'For Competency Mapping'
+  | 'For Gap Training'
+  | 'Ready for Assessment Endorsement'
+  | 'Endorsed to Assessment Center'
+  | 'Eligible for Assessment'
+  | 'Returned to TC'
+  | 'Additional Documents Requested'
+  | 'Not Eligible'
+  | 'Assessment Completed';
+
+export interface RPLEvidence {
+  id: string;
+  title: string;
+  url: string;
+  description: string;
+  status: 'Pending' | 'Accepted' | 'Needs More Evidence' | 'Rejected';
+  remarks?: string;
+}
+
+export interface RPLCompetencyReview {
+  id: string;
+  competencyName: string;
+  competencyCode: string;
+  evidenceIds: string[]; // references RPLEvidence items mapped to this competency
+  status: 'Pending' | 'Credited through RPL' | 'For Gap Training' | 'For Demonstration' | 'Needs Additional Evidence' | 'Not Credited';
+  remarks?: string;
+}
+
+export interface RPLApplication {
+  id: string;
+  learnerId: string;
+  learnerName: string;
+  learnerEmail: string;
+  trainingCenterId: string;
+  trainingCenterName: string;
+  assessmentCenterId?: string;
+  assessmentCenterName?: string;
+  districtOfficeId?: string;
+  qualificationId?: string;
+  qualificationName: string;
+  qualificationCode: string;
+  targetCredential: 'Certificate of Competency' | 'National Certificate';
+  applicationType: 'Enrolled Learner' | 'Walk-in RPL';
+  status: RPLStatus;
+  workExperienceSummary: string;
+  yearsExperience: number;
+  evidence: RPLEvidence[];
+  competencyReviews: RPLCompetencyReview[];
+  gapTrainingRequired: boolean;
+  gapTrainingStatus: 'None' | 'In Progress' | 'Completed';
+  endorsedToAssessmentCenter: boolean;
+  endorsedAt?: any;
+  createdAt: any;
+  updatedAt: any;
+  
+  // Assessment Center Evaluation fields
+  eligibilityChecklist?: {
+    endorsedByTC: boolean;
+    evidenceReviewed: boolean;
+    creditedListed: boolean;
+    remainingCompetenciesIdentified: boolean;
+    gapTrainingStatusChecked: boolean;
+    targetCredentialVerified: boolean;
+    documentsComplete: boolean;
+    eligibleForAssessment: boolean;
+  };
+  eligibilityStatus?: 'Approve for Assessment Schedule' | 'Return to Training Center' | 'Request Additional Documents' | 'Not Eligible';
+  eligibilityRemarks?: string;
+}
+
+

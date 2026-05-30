@@ -23,7 +23,8 @@ import {
   AlertCircle,
   MoreVertical,
   Download,
-  Info
+  Info,
+  Loader2
 } from 'lucide-react';
 import { 
   collection, 
@@ -69,7 +70,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { AssessmentRecord, BadgeRequest, Learner, Organization, BadgeTemplate } from '@/src/types';
+import { AssessmentRecord, BadgeRequest, Learner, Organization, BadgeTemplate, RPLApplication } from '@/src/types';
 import { motion, AnimatePresence } from 'motion/react';
 
 type DashboardView = 'overview' | 'search' | 'profiles' | 'assessment-records' | 'rpl-records' | 'submit-request' | 'tracking' | 'notifications';
@@ -303,7 +304,7 @@ export default function AssessmentDashboard() {
             />
           )}
           {currentView === 'assessment-records' && <RecordsView organization={organization} type="assessment" />}
-          {currentView === 'rpl-records' && <RecordsView organization={organization} type="rpl" />}
+          {currentView === 'rpl-records' && <RPLEndorsedCandidatesAndRecordsView organization={organization} templates={templates} />}
           {currentView === 'submit-request' && (
             <SubmitRequestView 
               organization={organization} 
@@ -1077,6 +1078,557 @@ function LearnerProfileView({
           </Card>
         </div>
       </div>
+    </div>
+  );
+}
+
+function RPLEndorsedCandidatesAndRecordsView({ organization, templates }: { organization: any, templates: BadgeTemplate[] }) {
+  const [subTab, setSubTab] = useState<'endorsed' | 'history'>('endorsed');
+  const [candidates, setCandidates] = useState<RPLApplication[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Selected candidate overlay
+  const [selectedCandidate, setSelectedCandidate] = useState<RPLApplication | null>(null);
+  const [isEvalOpen, setIsEvalOpen] = useState(false);
+  const [remarks, setRemarks] = useState('');
+
+  // Checklist state
+  const [checklist, setChecklist] = useState({
+    endorsedByTC: false,
+    evidenceReviewed: false,
+    creditedListed: false,
+    remainingCompetenciesIdentified: false,
+    gapTrainingStatusChecked: false,
+    targetCredentialVerified: false,
+    documentsComplete: false,
+    eligibleForAssessment: false,
+  });
+
+  // Assessor record state
+  const [recordingResult, setRecordingResult] = useState(false);
+  const [assessorForm, setAssessorForm] = useState({
+    assessorName: '',
+    assessmentDate: new Date().toISOString().split('T')[0],
+    result: 'Passed / Competent' as 'Passed / Competent' | 'Failed / Not Yet Competent',
+    remarks: '',
+  });
+
+  // Load candidates
+  useEffect(() => {
+    if (!organization?.id) return;
+    const q = query(
+      collection(db, 'rplApplications')
+    );
+
+    const unsub = onSnapshot(q, (snapshot) => {
+      const all = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RPLApplication));
+      // Candidates endorsed to this center
+      const matched = all.filter(app => {
+        const matchesAC = app.assessmentCenterId === organization.id || 
+                          app.assessmentCenterName === organization.name ||
+                          app.status === 'Endorsed to Assessment Center' ||
+                          app.status === 'Eligible for Assessment' ||
+                          app.status === 'Returned to TC' ||
+                          app.status === 'Additional Documents Requested' ||
+                          app.status === 'Not Eligible' ||
+                          app.status === 'Assessment Completed';
+        return matchesAC;
+      });
+      setCandidates(matched);
+      setLoading(false);
+    }, (err) => {
+      console.error(err);
+      setLoading(false);
+    });
+
+    return unsub;
+  }, [organization]);
+
+  const handleOpenEval = (cand: RPLApplication) => {
+    setSelectedCandidate(cand);
+    setChecklist({
+      endorsedByTC: cand.status === 'Endorsed to Assessment Center' || cand.endorsedToAssessmentCenter,
+      evidenceReviewed: cand.evidence.length > 0,
+      creditedListed: cand.competencyReviews.some(c => c.status === 'Credited through RPL'),
+      remainingCompetenciesIdentified: cand.competencyReviews.some(c => c.status !== 'Credited through RPL'),
+      gapTrainingStatusChecked: cand.gapTrainingStatus === 'Completed' || !cand.gapTrainingRequired,
+      targetCredentialVerified: !!cand.targetCredential,
+      documentsComplete: cand.evidence.every(e => e.status === 'Accepted'),
+      eligibleForAssessment: cand.status === 'Eligible for Assessment',
+    });
+    setRemarks(cand.eligibilityRemarks || '');
+    setRecordingResult(false);
+    setIsEvalOpen(true);
+  };
+
+  const handleStatusAction = async (actionClass: RPLApplication['eligibilityStatus'], destStatus: RPLApplication['status']) => {
+    if (!selectedCandidate) return;
+
+    try {
+      const docRef = doc(db, 'rplApplications', selectedCandidate.id);
+      await updateDoc(docRef, {
+        status: destStatus,
+        eligibilityStatus: actionClass,
+        eligibilityRemarks: remarks,
+        eligibilityChecklist: checklist,
+        updatedAt: serverTimestamp()
+      });
+
+      setSelectedCandidate(prev => prev ? {
+        ...prev,
+        status: destStatus,
+        eligibilityStatus: actionClass,
+        eligibilityRemarks: remarks,
+        eligibilityChecklist: checklist
+      } : null);
+
+      setIsEvalOpen(false);
+      alert(`Success! Status changed to "${destStatus}".`);
+    } catch (e) {
+      console.error(e);
+      alert('Error updating status.');
+    }
+  };
+
+  const handleRecordAssessment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCandidate || !assessorForm.assessorName.trim()) {
+      alert('Please fill in the Assessor Name.');
+      return;
+    }
+
+    try {
+      // 1. Create Assessment Record
+      const newRecord: any = {
+        organizationId: organization.id,
+        districtOfficeId: organization.assignedDistrictId || 'demo-district-office',
+        learnerId: selectedCandidate.learnerId,
+        learnerName: selectedCandidate.learnerName,
+        qualification: selectedCandidate.qualificationName,
+        assessmentDate: assessorForm.assessmentDate,
+        pathway: 'Recognition of Prior Learning (RPL)',
+        result: assessorForm.result,
+        remarks: assessorForm.remarks || `RPL competency assessment executed by ${assessorForm.assessorName}.`,
+        assessorName: assessorForm.assessorName,
+        evidenceRef: selectedCandidate.evidence[0]?.url || 'Portfolio',
+        createdAt: serverTimestamp(),
+        rplData: {
+          applicationNumber: selectedCandidate.id,
+          yearsExperience: selectedCandidate.yearsExperience,
+          workExperienceSummary: selectedCandidate.workExperienceSummary,
+          portfolioUrl: selectedCandidate.evidence[0]?.url || 'Portfolio',
+          evidenceType: 'Portfolio Evidence Upload',
+          competencyMapping: 'Standard mapped competencies through Accredited TC',
+          evaluationNotes: assessorForm.remarks || 'Success'
+        }
+      };
+
+      await addDoc(collection(db, 'assessmentRecords'), newRecord);
+
+      // 2. Try to mark learner profile status completed if passed
+      try {
+        const qL = query(collection(db, 'learners'), where('email', '==', selectedCandidate.learnerEmail));
+        const qSnap = await getDocs(qL);
+        if (!qSnap.empty) {
+          const lDoc = qSnap.docs[0];
+          await updateDoc(doc(db, 'learners', lDoc.id), { status: 'Completed' });
+        }
+      } catch (ler) {
+        console.warn("Learner document not found, skipping status patch: ", ler);
+      }
+
+      // 3. Mark RPL Application status Completed
+      const docRef = doc(db, 'rplApplications', selectedCandidate.id);
+      await updateDoc(docRef, {
+        status: 'Assessment Completed',
+        updatedAt: serverTimestamp()
+      });
+
+      setIsEvalOpen(false);
+      setSelectedCandidate(null);
+      alert('Assessment Result successfully saved! Candidate completed.');
+    } catch (err) {
+      console.error(err);
+      alert('Error recording assessment outcome.');
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+            <Award className="h-6 w-6 text-indigo-600" />
+            RPL Assessment Operations Center
+          </h1>
+          <p className="text-slate-500 text-xs">
+            Review prior learning portfolio claims from endorsed institutions and register official results.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg">
+          <Button
+            variant={subTab === 'endorsed' ? 'default' : 'ghost'}
+            size="sm"
+            className="text-xs transition-shadow"
+            onClick={() => setSubTab('endorsed')}
+          >
+            RPL-Endorsed Candidates
+          </Button>
+          <Button
+            variant={subTab === 'history' ? 'default' : 'ghost'}
+            size="sm"
+            className="text-xs transition-shadow"
+            onClick={() => setSubTab('history')}
+          >
+            RPL Historical Archives
+          </Button>
+        </div>
+      </div>
+
+      {subTab === 'history' ? (
+        <RecordsView organization={organization} type="rpl" />
+      ) : (
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-sm font-bold flex items-center gap-1.5 text-slate-800">
+              <ClipboardList className="h-4 w-4 text-indigo-600" />
+              Active Triage Queue
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Accredited portfolios currently transferred and open for official skills challenge testing.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            {loading ? (
+              <div className="flex flex-col items-center justify-center p-12 text-slate-400 font-mono text-xs">
+                <Loader2 className="h-6 w-6 animate-spin text-indigo-600 mb-2" />
+                Retrieving active candidates...
+              </div>
+            ) : candidates.length === 0 ? (
+              <div className="p-12 text-center text-slate-400 text-xs border-t border-slate-100">
+                No active RPL-Endorsed candidates in evaluation currently.
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Candidate</TableHead>
+                    <TableHead>Target Standard</TableHead>
+                    <TableHead>Endorser Training Center</TableHead>
+                    <TableHead>Verification Status</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {candidates.map((cand) => (
+                    <TableRow key={cand.id}>
+                      <TableCell>
+                        <div className="space-y-0.5">
+                          <p className="font-bold text-slate-800 text-xs">{cand.learnerName}</p>
+                          <p className="text-[10px] text-slate-500 font-mono select-all text-sm">{cand.learnerEmail}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs font-medium text-slate-700">
+                        [{cand.qualificationCode}] {cand.qualificationName} ({cand.targetCredential})
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-500">{cand.trainingCenterName}</TableCell>
+                      <TableCell>
+                        <Badge className="text-[10px]" variant={
+                          cand.status === 'Eligible for Assessment' ? 'default' :
+                          cand.status === 'Assessment Completed' ? 'emerald' :
+                          cand.status === 'Returned to TC' ? 'destructive' :
+                          'secondary'
+                        }>
+                          {cand.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button 
+                          size="xs" 
+                          variant="outline" 
+                          className="bg-white text-xs px-2.5 h-8 font-semibold border-slate-200 text-slate-700 font-sans"
+                          onClick={() => handleOpenEval(cand)}
+                        >
+                          Evaluate Eligibility
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Candidate Eligibility Evaluation Dialog */}
+      {selectedCandidate && (
+        <Dialog open={isEvalOpen} onOpenChange={() => setIsEvalOpen(false)}>
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto border-slate-200">
+            <DialogHeader className="border-b border-slate-50 pb-3">
+              <DialogTitle className="text-slate-950 font-extrabold text-base flex items-center gap-1.5">
+                <ShieldCheck className="h-5 w-5 text-indigo-600" />
+                RPL Eligibility Verification
+              </DialogTitle>
+              <DialogDescription className="text-xs">
+                Candidate: <strong>{selectedCandidate.learnerName}</strong> | Standard: <strong>{selectedCandidate.qualificationName}</strong>
+              </DialogDescription>
+            </DialogHeader>
+
+            {!recordingResult ? (
+              <div className="space-y-6 py-4">
+                {/* Section 1: Endorser mapping details */}
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-xs space-y-2">
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div><span className="text-slate-400 block font-mono text-[9px] uppercase font-bold">Endorsement Source:</span> <strong className="text-slate-700">{selectedCandidate.trainingCenterName}</strong></div>
+                    <div><span className="text-slate-400 block font-mono text-[9px] uppercase font-bold">Target Badge Type:</span> <strong className="text-slate-700">{selectedCandidate.targetCredential}</strong></div>
+                  </div>
+                  <Separator className="my-1.5" />
+                  <div>
+                    <span className="text-slate-400 block font-mono text-[9px] uppercase font-bold leading-normal">Candidate Experience Declarations:</span>
+                    <p className="text-slate-600 font-medium whitespace-pre-wrap mt-0.5 leading-relaxed">
+                      "{selectedCandidate.workExperienceSummary}" ({selectedCandidate.yearsExperience} Year{selectedCandidate.yearsExperience > 1 ? 's' : ''} Occupational History)
+                    </p>
+                  </div>
+                </div>
+
+                {/* Section 2: Interactive Eligibility checklist */}
+                <div className="border border-slate-100 rounded-xl p-4 bg-white space-y-3">
+                  <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider font-mono">
+                    Evaluation Tick-Off (8 Quality Vouchers)
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <label className="flex items-start gap-2 p-1 hover:bg-slate-50/50 rounded cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="rounded border-slate-300 mt-0.5"
+                        checked={checklist.endorsedByTC} 
+                        onChange={(e) => setChecklist(prev => ({ ...prev, endorsedByTC: e.target.checked }))} 
+                      />
+                      <span className="text-slate-600">RPL application is endorsed by Training Center</span>
+                    </label>
+
+                    <label className="flex items-start gap-2 p-1 hover:bg-slate-50/50 rounded cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="rounded border-slate-300 mt-0.5"
+                        checked={checklist.evidenceReviewed} 
+                        onChange={(e) => setChecklist(prev => ({ ...prev, evidenceReviewed: e.target.checked }))} 
+                      />
+                      <span className="text-slate-600">Evidence portfolio was reviewed</span>
+                    </label>
+
+                    <label className="flex items-start gap-2 p-1 hover:bg-slate-50/50 rounded cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="rounded border-slate-300 mt-0.5"
+                        checked={checklist.creditedListed} 
+                        onChange={(e) => setChecklist(prev => ({ ...prev, creditedListed: e.target.checked }))} 
+                      />
+                      <span className="text-slate-600">Credited competencies are listed</span>
+                    </label>
+
+                    <label className="flex items-start gap-2 p-1 hover:bg-slate-50/50 rounded cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="rounded border-slate-300 mt-0.5"
+                        checked={checklist.remainingCompetenciesIdentified} 
+                        onChange={(e) => setChecklist(prev => ({ ...prev, remainingCompetenciesIdentified: e.target.checked }))} 
+                      />
+                      <span className="text-slate-600">Remaining competencies for assessment are identified</span>
+                    </label>
+
+                    <label className="flex items-start gap-2 p-1 hover:bg-slate-50/50 rounded cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="rounded border-slate-300 mt-0.5"
+                        checked={checklist.gapTrainingStatusChecked} 
+                        onChange={(e) => setChecklist(prev => ({ ...prev, gapTrainingStatusChecked: e.target.checked }))} 
+                      />
+                      <span className="text-slate-600">Gap training is completed or not applicable</span>
+                    </label>
+
+                    <label className="flex items-start gap-2 p-1 hover:bg-slate-50/50 rounded cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="rounded border-slate-300 mt-0.5"
+                        checked={checklist.targetCredentialVerified} 
+                        onChange={(e) => setChecklist(prev => ({ ...prev, targetCredentialVerified: e.target.checked }))} 
+                      />
+                      <span className="text-slate-600">Target credential is identified: COC or NC</span>
+                    </label>
+
+                    <label className="flex items-start gap-2 p-1 hover:bg-slate-50/50 rounded cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="rounded border-slate-300 mt-0.5"
+                        checked={checklist.documentsComplete} 
+                        onChange={(e) => setChecklist(prev => ({ ...prev, documentsComplete: e.target.checked }))} 
+                      />
+                      <span className="text-slate-600">Required assessment documents are complete</span>
+                    </label>
+
+                    <label className="flex items-start gap-2 p-1 hover:bg-slate-50/50 rounded cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="rounded border-slate-300 mt-0.5"
+                        checked={checklist.eligibleForAssessment} 
+                        onChange={(e) => setChecklist(prev => ({ ...prev, eligibleForAssessment: e.target.checked }))} 
+                      />
+                      <span className="text-slate-600 font-bold text-indigo-700">Learner is eligible for assessment scheduling</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Section 3: Remarks and Decision buttons */}
+                <div className="space-y-4 border-t border-slate-100 pt-4">
+                  <div className="space-y-1">
+                    <Label className="text-xs font-bold text-slate-700">Eligibility Comments / Internal Remarks</Label>
+                    <Textarea 
+                      placeholder="Comment on document quality, schedule proposals, or missing files details to communicate back with center..."
+                      value={remarks}
+                      className="bg-white"
+                      onChange={(e) => setRemarks(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button 
+                      size="sm" 
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
+                      onClick={() => handleStatusAction('Approve for Assessment Schedule', 'Eligible for Assessment')}
+                    >
+                      Approve for Assessment Schedule
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      className="text-stone-700 hover:bg-slate-100 font-bold"
+                      onClick={() => handleStatusAction('Return to Training Center', 'Returned to TC')}
+                    >
+                      Return to Training Center
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      className="text-amber-800 hover:bg-amber-50 border-amber-200 font-bold"
+                      onClick={() => handleStatusAction('Request Additional Documents', 'Additional Documents Requested')}
+                    >
+                      Request Additional Documents
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="destructive"
+                      className="bg-rose-600 font-bold text-white hover:bg-rose-700"
+                      onClick={() => handleStatusAction('Not Eligible', 'Not Eligible')}
+                    >
+                      Not Eligible
+                    </Button>
+                  </div>
+
+                  {/* Immediate Competency Assessment Recorder trigger */}
+                  {(selectedCandidate.status === 'Eligible for Assessment') && (
+                    <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-center justify-between gap-4 mt-6">
+                      <div className="space-y-0.5 text-xs text-amber-800">
+                        <span className="font-bold block">Schedule Authorized</span>
+                        <p className="text-[11px] text-amber-700">Competency check is approved. Record the final score directly into the repository.</p>
+                      </div>
+                      <Button 
+                        size="sm" 
+                        className="bg-amber-600 text-white font-bold h-9"
+                        onClick={() => setRecordingResult(true)}
+                      >
+                        Record Assessor Record Now
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              /* Inline Assessor result registration panel */
+              <form onSubmit={handleRecordAssessment} className="space-y-4 py-4 text-xs font-sans">
+                <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl space-y-1.5">
+                  <span className="text-[10px] font-bold text-slate-400 font-mono tracking-wider block uppercase">Selected Target Standard:</span>
+                  <p className="font-bold text-slate-800 text-sm">{selectedCandidate.qualificationName} ({selectedCandidate.qualificationCode})</p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 col-span-2">
+                  <div className="space-y-1.5">
+                    <Label className="font-semibold text-slate-700">Official Assessor Name</Label>
+                    <Input 
+                      placeholder="e.g. Inspector Manuel Quezon"
+                      required
+                      className="bg-white text-xs"
+                      value={assessorForm.assessorName}
+                      onChange={(e) => setAssessorForm(prev => ({ ...prev, assessorName: e.target.value }))}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="font-semibold text-slate-700">Assessment Executed Date</Label>
+                    <Input 
+                      type="date"
+                      className="bg-white text-xs font-mono"
+                      value={assessorForm.assessmentDate}
+                      onChange={(e) => setAssessorForm(prev => ({ ...prev, assessmentDate: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 col-span-2">
+                  <Label className="font-semibold text-slate-700">Evaluator Assessment Outcome</Label>
+                  <Select 
+                    value={assessorForm.result} 
+                    onValueChange={(val: any) => setAssessorForm(prev => ({ ...prev, result: val }))}
+                  >
+                    <SelectTrigger className="w-full bg-white text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="text-xs">
+                      <SelectItem value="Passed / Competent">Passed / Competent</SelectItem>
+                      <SelectItem value="Failed / Not Yet Competent">Failed / Not Yet Competent</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5 col-span-2">
+                  <Label className="font-semibold text-slate-700">Assessor Detailed Remarks / Justification</Label>
+                  <Textarea 
+                    placeholder="Provide details on demonstration correctness, interview outcomes, or completed portfolio justifications..."
+                    rows={3}
+                    className="bg-white text-xs"
+                    value={assessorForm.remarks}
+                    onChange={(e) => setAssessorForm(prev => ({ ...prev, remarks: e.target.value }))}
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                  <Button 
+                    type="button" 
+                    variant="ghost" 
+                    onClick={() => setRecordingResult(false)}
+                  >
+                    Cancel / Go Back
+                  </Button>
+                  <Button 
+                    type="submit" 
+                    className="bg-gradient-to-r from-indigo-600 to-emerald-600 text-white font-bold h-9"
+                  >
+                    Verify & Submit Assessment Outcome
+                  </Button>
+                </div>
+              </form>
+            )}
+
+            <DialogFooter className="border-t border-slate-50 pt-2">
+              <Button variant="ghost" onClick={() => setIsEvalOpen(false)} className="w-full">
+                Close Verification Page
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

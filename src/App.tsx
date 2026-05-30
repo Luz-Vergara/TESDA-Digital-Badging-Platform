@@ -6,6 +6,7 @@ import Login from './pages/public/Login';
 import Verification from './pages/employer/Verification';
 import LearnerDashboard from './pages/learner/LearnerDashboard';
 import AvailablePrograms from './pages/learner/AvailablePrograms';
+import ApplyRPL from './pages/learner/ApplyRPL';
 import MyApplications from './pages/learner/MyApplications';
 import MyEnrollments from './pages/learner/MyEnrollments';
 import MyBadgeWallet from './pages/learner/MyBadgeWallet';
@@ -36,6 +37,7 @@ import ProgramBatches from './pages/training/ProgramBatches';
 import LearnerApplications from './pages/training/LearnerApplications';
 import UCCompletions from './pages/training/UCCompletions';
 import BadgeRequests from './pages/training/BadgeRequests';
+import RPLApplications from './pages/training/RPLApplications';
 import AssessmentDashboard from './pages/assessment/AssessmentDashboard';
 import DashboardLayout from './components/layout/DashboardLayout';
 
@@ -54,6 +56,7 @@ export default function App() {
           <Route path="/learner" element={<DashboardLayout role="Learner" />}>
             <Route index element={<LearnerDashboard />} />
             <Route path="programs" element={<AvailablePrograms />} />
+            <Route path="rpl" element={<ApplyRPL />} />
             <Route path="applications" element={<MyApplications />} />
             <Route path="enrollments" element={<MyEnrollments />} />
             <Route path="wallet" element={<MyBadgeWallet />} />
@@ -116,6 +119,7 @@ export default function App() {
           <Route path="/trainingcenter" element={<DashboardLayout role="TrainingCenter" />}>
             <Route index element={<TrainingDashboard />} />
             <Route path="learners" element={<LearnerManagement />} />
+            <Route path="rpl" element={<RPLApplications />} />
             <Route path="programs" element={<ProgramOfferings />} />
             <Route path="batches" element={<ProgramBatches />} />
             <Route path="applications" element={<LearnerApplications />} />

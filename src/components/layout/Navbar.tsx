@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import DemoAccountLauncher from '@/src/components/demo/DemoAccountLauncher';
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = React.useState(false);
@@ -79,6 +80,7 @@ export default function Navbar() {
               </Link>
             ))}
             <div className="flex items-center gap-3 pl-4 border-l border-slate-200">
+              <DemoAccountLauncher />
               {user ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger
@@ -132,6 +134,7 @@ export default function Navbar() {
                         }
                       />
                     </DropdownMenuGroup>
+                    
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleLogout} className="text-rose-600 cursor-pointer">
                       <LogOut className="mr-2 h-4 w-4" />
@@ -198,6 +201,9 @@ export default function Navbar() {
             </Link>
           ))}
           <div className="pt-4 flex flex-col gap-2">
+            <div className="px-3 pb-2 border-b border-slate-100/60 mb-1 flex justify-start">
+              <DemoAccountLauncher />
+            </div>
             {user ? (
               <>
                 <Link to={getDashboardLink()} onClick={() => setIsOpen(false)}>

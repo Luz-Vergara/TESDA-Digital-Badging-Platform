@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Shield, User, Building2, Briefcase, Lock, FileCheck, LayoutDashboard, LogOut } from 'lucide-react';
 import { signInWithPopup, GoogleAuthProvider, signOut, signInWithEmailAndPassword } from 'firebase/auth';
 import { auth, db } from '@/src/lib/firebase';
@@ -11,6 +11,7 @@ import { useFirebase, getDemoRoleByEmail } from '@/src/lib/FirebaseProvider';
 
 export default function Login() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const { user, userProfile, logout } = useFirebase();
 
@@ -18,6 +19,20 @@ export default function Login() {
   const [demoPassword, setDemoPassword] = useState('');
   const [isDemoSubmitting, setIsDemoSubmitting] = useState(false);
   const [isDemoLoginOpen, setIsDemoLoginOpen] = useState(false);
+
+  useEffect(() => {
+    const emailParam = searchParams.get('email');
+    if (emailParam) {
+      setDemoEmail(emailParam);
+      setIsDemoLoginOpen(true);
+      setTimeout(() => {
+        const passInput = document.querySelector('input[type="password"]');
+        if (passInput) {
+          (passInput as HTMLInputElement).focus();
+        }
+      }, 300);
+    }
+  }, [searchParams]);
 
   const handleDemoLogin = async (e: React.FormEvent) => {
     e.preventDefault();
