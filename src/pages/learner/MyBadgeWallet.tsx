@@ -331,7 +331,7 @@ export default function MyBadgeWallet() {
                     <span className="text-slate-400 flex items-center gap-1.5">
                       <Calendar className="h-3 w-3" /> Status
                     </span>
-                    <span className="text-slate-700 font-medium truncate max-w-[120px]">{badge.status}</span>
+                    <span className="text-slate-700 font-medium truncate max-w-[120px]">{badge.status === 'Approved' ? 'Active' : badge.status}</span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-slate-400 flex items-center gap-1.5">
@@ -385,7 +385,7 @@ export default function MyBadgeWallet() {
 
           {selectedShareBadge && (() => {
             const vId = selectedShareBadge.verificationId || selectedShareBadge.certificationId || selectedShareBadge.badgeId || selectedShareBadge.id;
-            const verificationUrl = selectedShareBadge.verificationUrl || `${window.location.origin}/verify/${vId}`;
+            const verificationUrl = `${window.location.origin}/verify/${vId}`;
             return (
               <div className="space-y-6 py-4 flex flex-col items-center justify-center">
                 {/* QR Code Container */}
@@ -428,7 +428,7 @@ export default function MyBadgeWallet() {
                         ? 'bg-amber-50 text-amber-700 border border-amber-200' 
                         : 'bg-rose-50 text-rose-700 border border-rose-200'
                     }`}>
-                      {selectedShareBadge.status || 'Active'}
+                      {selectedShareBadge.status === 'Approved' ? 'Active' : (selectedShareBadge.status || 'Active')}
                     </span>
                   </div>
                 </div>
@@ -560,7 +560,7 @@ export default function MyBadgeWallet() {
                           ? "text-emerald-700"
                           : "text-rose-700"
                       }`}>
-                        {selectedMetadataBadge.status || "Active"}
+                        {selectedMetadataBadge.status === 'Approved' ? 'Active' : (selectedMetadataBadge.status || "Active")}
                       </span>
                     </div>
                     <div>

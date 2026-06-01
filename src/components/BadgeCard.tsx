@@ -21,8 +21,8 @@ export default function BadgeCard({ badge, onViewDetails }: BadgeCardProps) {
             <Award className="h-6 w-6" />
           </div>
           <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 rounded-full border border-slate-100">
-            <div className={`w-2 h-2 rounded-full ${getStatusColor(badge.status)}`} />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{badge.status}</span>
+            <div className={`w-2 h-2 rounded-full ${getStatusColor((badge.status as string) === 'Approved' ? 'Active' : badge.status)}`} />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{(badge.status as string) === 'Approved' ? 'Active' : badge.status}</span>
           </div>
         </div>
         

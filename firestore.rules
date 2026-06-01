@@ -185,13 +185,23 @@ service cloud.firestore {
     }
 
     match /badgeRequests/{requestId} {
-      allow read: if isSignedIn() && (
+      allow get: if isSignedIn() && (
         isAdmin() || 
-        isDistrictMatch(resource.data.get('districtOfficeId', '')) ||
-        resource.data.trainingCenterId == request.auth.uid ||
-        (resource.data.get('learnerIds', []) != null && request.auth.uid in resource.data.learnerIds) ||
+        (resource != null && isDistrictMatch(resource.data.get('districtOfficeId', ''))) ||
+        (resource != null && resource.data.trainingCenterId == request.auth.uid) ||
+        (resource != null && resource.data.get('learnerIds', []) != null && request.auth.uid in resource.data.learnerIds) ||
         isExistingDemo()
       );
+      
+      allow list: if isSignedIn() && (
+        isAdmin() || 
+        isDistrictOffice() ||
+        isTrainingCenter() ||
+        isAssessmentCenter() ||
+        isQSO() ||
+        getUserData().get('isDemo', false) == true
+      );
+      
       allow create: if isTrainingCenter() || isAssessmentCenter() || isAdmin() || isIncomingDemo();
       allow update: if (isDistrictOffice() && isDistrictMatch(existing().get('districtOfficeId', ''))) || isAdmin() || (isQSO() && isValidBadgeRequest(incoming())) || isIncomingDemo();
       allow delete: if isAdmin() || isExistingDemo();

@@ -494,6 +494,7 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             assignedDistrictId = 'demo-district-office';
           } else if (role === 'DistrictOffice') {
             organizationId = 'demo-district-office';
+            assignedDistrictId = 'demo-district-office';
           }
 
           // Force setup of demo organization if active

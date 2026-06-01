@@ -24,6 +24,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import Navbar from '@/src/components/layout/Navbar';
 import { getBadgeColor } from '@/src/lib/badge-utils';
+import { BadgeRenderer } from '@/src/components/badges/BadgeRenderer';
 
 export default function Verification() {
   const { verificationId: urlVerificationId } = useParams();
@@ -89,7 +90,7 @@ export default function Verification() {
   };
 
   // Robust badge lookup that searches by verificationId, certificationId, badgeId, and document ID fallback!
-  const getBadgeDetails = async (targetId: string): Promise<any> => {
+  const getRawBadgeDetails = async (targetId: string): Promise<any> => {
     const rawId = targetId.trim();
     if (!rawId) return null;
     const uppercaseId = rawId.toUpperCase();
@@ -241,6 +242,39 @@ export default function Verification() {
     }
 
     return null;
+  };
+
+  const getBadgeDetails = async (targetId: string): Promise<any> => {
+    const badge = await getRawBadgeDetails(targetId);
+    if (!badge) return null;
+
+    if (badge.badgeTemplateId) {
+      try {
+        const templDoc = await getDoc(doc(db, 'badgeTemplates', badge.badgeTemplateId));
+        if (templDoc.exists()) {
+          badge.templateData = { id: templDoc.id, ...templDoc.data() };
+        }
+      } catch (err) {
+        console.warn("Failed to fetch matched badge template doc", err);
+      }
+    }
+
+    if (!badge.templateData) {
+      try {
+        const templateName = badge.badgeTemplateName || badge.programTitle || badge.badgeName || badge.qualificationName || '';
+        if (templateName) {
+          const q = query(collection(db, 'badgeTemplates'), where('badgeName', '==', templateName));
+          const snap = await getDocs(q);
+          if (!snap.empty) {
+            badge.templateData = { id: snap.docs[0].id, ...snap.docs[0].data() };
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to fetch matching template by name", err);
+      }
+    }
+
+    return badge;
   };
 
   // Auto-verify if verification ID comes from URl / QR code
@@ -444,6 +478,29 @@ export default function Verification() {
                   <span className="font-mono text-xs font-bold bg-white/10 px-3 py-1.5 rounded-lg border border-white/5 text-blue-200">
                     {result.verificationId}
                   </span>
+                </div>
+              </div>
+
+              {/* Verified Digital Badge Design Visualization */}
+              <div className="bg-slate-50 py-8 px-4 border-b border-slate-100 flex flex-col items-center justify-center gap-3">
+                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-widest font-mono">Official Digital Badge Certification Visualization</span>
+                <div className="flex justify-gradient justify-center items-center overflow-x-auto w-full max-w-full p-2">
+                  <BadgeRenderer 
+                    scale={0.7}
+                    data={{
+                      id: result.id,
+                      name: result.badgeTemplateName || result.programTitle || '',
+                      learnerName: result.learnerName || result.badgeHolder || 'Learner Candidate',
+                      issueDate: formatDate(result.issueDate),
+                      validUntil: result.expiryDate ? formatDate(result.expiryDate) : 'N/A',
+                      verificationId: result.verificationId || result.id,
+                      imageUrl: result.templateData?.imageUrl || '',
+                      level: result.badgeType || result.templateData?.badgeType || 'Proficient',
+                      qualificationTitle: result.programTitle || result.badgeTemplateName || result.qualificationName || '',
+                      qualificationCode: result.qualificationCode || result.templateData?.qualificationCode || '',
+                      templateConfig: result.templateData?.templateConfig
+                    }}
+                  />
                 </div>
               </div>
 

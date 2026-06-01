@@ -811,17 +811,14 @@ function HierarchyGroup({ title, level, items, allBadges, colorClass, maxSlots, 
       </div>
       
       <div className={cn(
-        "flex flex-wrap justify-center gap-4 w-full",
-        compact ? "max-w-4xl" : ""
+        "grid gap-4 w-full",
+        compact ? "grid-cols-4" : "grid-cols-1 justify-items-center"
       )}>
         {slots.map((_, idx) => {
           const badge = items[idx];
           if (!badge) {
             return (
-              <div key={idx} className={cn(
-                "relative",
-                compact ? "w-[12%] min-w-[140px]" : "w-[40%] min-w-[200px]"
-              )}>
+              <div key={idx} className="relative">
                 <div className="p-4 rounded-2xl border-2 border-dashed border-slate-100 bg-slate-50/30 flex items-center justify-center h-full min-h-[90px]">
                    <div className="text-center opacity-20">
                      <Award className="h-5 w-5 mx-auto mb-1 text-slate-300" />
@@ -890,10 +887,7 @@ function HierarchyGroup({ title, level, items, allBadges, colorClass, maxSlots, 
           }
 
           return (
-            <div key={badge.id} className={cn(
-              "relative",
-              compact ? "w-[12%] min-w-[140px]" : "w-[40%] min-w-[200px]"
-            )}>
+            <div key={badge.id} className="relative">
               <motion.div 
                 whileHover={{ scale: 1.02, translateY: -2 }}
                 onClick={() => setSelectedBadge({ 

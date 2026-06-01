@@ -127,6 +127,7 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
           ucTitle: (request as any).badgeTemplateName || request.templateDetails?.badgeName || offering.programTitle,
           verificationUrl,
           qrPayload,
+          isDemo: (request as any).isDemo || false,
           metadata: {
             batchId: request.programBatchId,
             programTitle: (request as any).programTitle || offering.programTitle,
