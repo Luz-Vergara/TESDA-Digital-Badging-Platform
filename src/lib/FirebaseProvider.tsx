@@ -334,8 +334,11 @@ async function seedLearnerWorkflowData(uid: string, email: string, name: string)
   try {
     const isLearner1 = email.toLowerCase().includes('learner@demo.com') || email.toLowerCase() === 'learner@demo.com';
     const isLearner2 = email.toLowerCase().includes('learner2@demo.com') || email.toLowerCase() === 'learner2@demo.com';
+    const isLearner3 = email.toLowerCase().includes('learner3@demo.com') || email.toLowerCase() === 'learner3@demo.com';
+    const isLearner4 = email.toLowerCase().includes('learner4@demo.com') || email.toLowerCase() === 'learner4@demo.com';
+    const isLearner5 = email.toLowerCase().includes('learner5@demo.com') || email.toLowerCase() === 'learner5@demo.com';
 
-    if (!isLearner1 && !isLearner2) return;
+    if (!isLearner1 && !isLearner2 && !isLearner3 && !isLearner4 && !isLearner5) return;
 
     // 1. Ensure Learner profile exists in learners collection
     const learnerDocRef = doc(db, 'learners', uid);
@@ -345,20 +348,30 @@ async function seedLearnerWorkflowData(uid: string, email: string, name: string)
       const firstName = nameParts[0] || 'Demo';
       const lastName = nameParts.slice(1).join(' ') || 'Learner';
 
+      let qualification = 'Computer Systems Servicing NC II';
+      let status = 'Enrolled';
+      if (isLearner1) {
+        qualification = 'Cloud Computing Fundamentals';
+        status = 'Applied';
+      } else if (isLearner4) {
+        qualification = 'Cloud Computing Fundamentals';
+        status = 'Completed';
+      }
+
       await setDoc(learnerDocRef, {
         id: uid,
         firstName,
         lastName,
         email,
         contactNumber: '09170000000',
-        qualification: isLearner1 ? 'Cloud Computing Fundamentals' : 'Computer Systems Servicing NC II',
+        qualification,
         trainingCenterId: 'demo-training-center',
         trainingCenterName: 'Demo Training Center - Manila',
         organizationId: 'demo-training-center',
         organizationName: 'Demo Training Center - Manila',
         districtOfficeId: 'demo-district-office',
         districtOfficeName: 'Demo District Office - National Capital Region',
-        status: isLearner1 ? 'Applied' : 'Enrolled',
+        status,
         isDemo: true,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
@@ -448,6 +461,127 @@ async function seedLearnerWorkflowData(uid: string, email: string, name: string)
           districtOfficeName: 'Demo District Office - National Capital Region',
           enrollmentStatus: 'Enrolled',
           completionStatus: 'Completed',
+          dateApplied: serverTimestamp(),
+          isDemo: true,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      }
+    }
+
+    if (isLearner3) {
+      // Seed enrollment for learner3@demo.com
+      const enrDocRef4 = doc(db, 'enrollments', `demo-enr-learner3-css-${uid}`);
+      const enrSnap4 = await getDoc(enrDocRef4);
+      if (!enrSnap4.exists()) {
+        await setDoc(enrDocRef4, {
+          id: `demo-enr-learner3-css-${uid}`,
+          learnerId: uid,
+          learnerName: name,
+          learnerEmail: email,
+          trainingCenterId: 'demo-training-center',
+          trainingCenterName: 'Demo Training Center - Manila',
+          organizationId: 'demo-training-center',
+          organizationName: 'Demo Training Center - Manila',
+          programOfferingId: 'demo-offering-css',
+          badgeTemplateId: 'demo-template-1',
+          badgeType: 'Master',
+          programTitle: 'Computer Systems Servicing NC II',
+          programBatchId: 'demo-batch-css-1',
+          districtOfficeId: 'demo-district-office',
+          districtOfficeName: 'Demo District Office - National Capital Region',
+          enrollmentStatus: 'Enrolled',
+          completionStatus: 'In Progress',
+          dateApplied: serverTimestamp(),
+          isDemo: true,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      }
+    }
+
+    if (isLearner4) {
+      // Seed enrollment for learner4@demo.com
+      const enrDocRef5 = doc(db, 'enrollments', `demo-enr-learner4-cloud-${uid}`);
+      const enrSnap5 = await getDoc(enrDocRef5);
+      if (!enrSnap5.exists()) {
+        await setDoc(enrDocRef5, {
+          id: `demo-enr-learner4-cloud-${uid}`,
+          learnerId: uid,
+          learnerName: name,
+          learnerEmail: email,
+          trainingCenterId: 'demo-training-center',
+          trainingCenterName: 'Demo Training Center - Manila',
+          organizationId: 'demo-training-center',
+          organizationName: 'Demo Training Center - Manila',
+          programOfferingId: 'demo-offering-cloud',
+          badgeTemplateId: 'demo-template-2',
+          badgeType: 'Expert',
+          programTitle: 'Cloud Computing Fundamentals',
+          programBatchId: 'demo-batch-cloud-1',
+          districtOfficeId: 'demo-district-office',
+          districtOfficeName: 'Demo District Office - National Capital Region',
+          enrollmentStatus: 'Enrolled',
+          completionStatus: 'Completed',
+          dateApplied: serverTimestamp(),
+          isDemo: true,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      }
+    }
+
+    if (isLearner5) {
+      // Seed both enrollments for learner5@demo.com
+      const enrDocRef6 = doc(db, 'enrollments', `demo-enr-learner5-cloud-${uid}`);
+      const enrSnap6 = await getDoc(enrDocRef6);
+      if (!enrSnap6.exists()) {
+        await setDoc(enrDocRef6, {
+          id: `demo-enr-learner5-cloud-${uid}`,
+          learnerId: uid,
+          learnerName: name,
+          learnerEmail: email,
+          trainingCenterId: 'demo-training-center',
+          trainingCenterName: 'Demo Training Center - Manila',
+          organizationId: 'demo-training-center',
+          organizationName: 'Demo Training Center - Manila',
+          programOfferingId: 'demo-offering-cloud',
+          badgeTemplateId: 'demo-template-2',
+          badgeType: 'Expert',
+          programTitle: 'Cloud Computing Fundamentals',
+          programBatchId: 'demo-batch-cloud-1',
+          districtOfficeId: 'demo-district-office',
+          districtOfficeName: 'Demo District Office - National Capital Region',
+          enrollmentStatus: 'Enrolled',
+          completionStatus: 'In Progress',
+          dateApplied: serverTimestamp(),
+          isDemo: true,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      }
+
+      const enrDocRef7 = doc(db, 'enrollments', `demo-enr-learner5-css-${uid}`);
+      const enrSnap7 = await getDoc(enrDocRef7);
+      if (!enrSnap7.exists()) {
+        await setDoc(enrDocRef7, {
+          id: `demo-enr-learner5-css-${uid}`,
+          learnerId: uid,
+          learnerName: name,
+          learnerEmail: email,
+          trainingCenterId: 'demo-training-center',
+          trainingCenterName: 'Demo Training Center - Manila',
+          organizationId: 'demo-training-center',
+          organizationName: 'Demo Training Center - Manila',
+          programOfferingId: 'demo-offering-css',
+          badgeTemplateId: 'demo-template-1',
+          badgeType: 'Master',
+          programTitle: 'Computer Systems Servicing NC II',
+          programBatchId: 'demo-batch-css-1',
+          districtOfficeId: 'demo-district-office',
+          districtOfficeName: 'Demo District Office - National Capital Region',
+          enrollmentStatus: 'Applied',
+          completionStatus: 'Not Started',
           dateApplied: serverTimestamp(),
           isDemo: true,
           createdAt: serverTimestamp(),

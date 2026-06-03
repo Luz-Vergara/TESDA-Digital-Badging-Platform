@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '@/src/lib/firebase';
-import { collection, addDoc, getDocs, query, where, serverTimestamp, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where, serverTimestamp, onSnapshot, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { getDocs as rawGetDocs, deleteDoc as rawDeleteDoc } from '@firebase/firestore';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -21,6 +22,155 @@ export default function ApplyRPL() {
   const [activeTab, setActiveTab2] = useState<'apply' | 'tracking'>('apply');
   const [myApps, setMyApps] = useState<RPLApplication[]>([]);
   const [myAppsLoading, setMyAppsLoading] = useState(true);
+  const [deletingDemo, setDeletingDemo] = useState(false);
+  const [deleteSuccess, setDeleteSuccess] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const handleDeleteDemoRPLData = async () => {
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      // Auto reset the confirmation prompt after 5 seconds if not tapped again
+      setTimeout(() => {
+        setConfirmDelete(false);
+      }, 5000);
+      return;
+    }
+
+    setConfirmDelete(false);
+    setDeletingDemo(true);
+    setDeleteError('');
+    setDeleteSuccess('');
+    
+    let rplCount = 0;
+    let arCount = 0;
+    let brCount = 0;
+    let ibCount = 0;
+    let colDeletions = 0;
+    const failures: string[] = [];
+
+    try {
+      console.log("Inherent safety checklist: Initiating permanent deletion of demo RPL records with isDemo === true...");
+
+      // 1. Delete rplApplications where isDemo === true
+      try {
+        const rplSnap = await rawGetDocs(query(collection(db, 'rplApplications'), where('isDemo', '==', true)));
+        for (const d of rplSnap.docs) {
+          const data = d.data();
+          if (data.isDemo === true) {
+            console.log(`[Safety Verified] Deleting rplApplications doc ID: ${d.id}`, data);
+            await rawDeleteDoc(doc(db, 'rplApplications', d.id));
+            rplCount++;
+          }
+        }
+      } catch (err: any) {
+        console.error("Error deleting rplApplications:", err);
+        failures.push(`rplApplications (${err.message || err})`);
+      }
+
+      // 2. Delete assessmentRecords where isDemo === true and pathway === 'Recognition of Prior Learning (RPL)'
+      try {
+        const arSnap = await rawGetDocs(query(collection(db, 'assessmentRecords'), where('isDemo', '==', true)));
+        for (const d of arSnap.docs) {
+          const data = d.data();
+          if (data.isDemo === true && data.pathway === 'Recognition of Prior Learning (RPL)') {
+            console.log(`[Safety Verified] Deleting assessmentRecords doc ID: ${d.id}`, data);
+            await rawDeleteDoc(doc(db, 'assessmentRecords', d.id));
+            arCount++;
+          }
+        }
+      } catch (err: any) {
+        console.error("Error deleting assessmentRecords:", err);
+        failures.push(`assessmentRecords (${err.message || err})`);
+      }
+
+      // 3. Delete badgeRequests where isDemo === true and related to RPL
+      try {
+        const brSnap = await rawGetDocs(query(collection(db, 'badgeRequests'), where('isDemo', '==', true)));
+        for (const d of brSnap.docs) {
+          const data = d.data();
+          const hasRplKeywords = data.issuancePath === 'RPL' || 
+                                data.remarks?.includes('RPL') || 
+                                data.reviewRemarks?.includes('RPL') ||
+                                data.badgeTemplateId?.includes('rpl') ||
+                                data.id?.includes('rpl');
+          if (data.isDemo === true && hasRplKeywords) {
+            console.log(`[Safety Verified] Deleting badgeRequests doc ID: ${d.id}`, data);
+            await rawDeleteDoc(doc(db, 'badgeRequests', d.id));
+            brCount++;
+          }
+        }
+      } catch (err: any) {
+        console.error("Error deleting badgeRequests:", err);
+        failures.push(`badgeRequests (${err.message || err})`);
+      }
+
+      // 4. Delete issuedBadges where isDemo === true and related to RPL
+      try {
+        const ibSnap = await rawGetDocs(query(collection(db, 'issuedBadges'), where('isDemo', '==', true)));
+        for (const d of ibSnap.docs) {
+          const data = d.data();
+          const isRplBadge = data.pathway === 'RPL' || 
+                             data.issuancePath === 'RPL' || 
+                             data.evidenceUrl?.includes('rpl') || 
+                             d.id.startsWith('demo-request-rpl');
+          if (data.isDemo === true && isRplBadge) {
+            console.log(`[Safety Verified] Deleting issuedBadges doc ID: ${d.id}`, data);
+            await rawDeleteDoc(doc(db, 'issuedBadges', d.id));
+            ibCount++;
+          }
+        }
+      } catch (err: any) {
+        console.error("Error deleting issuedBadges:", err);
+        failures.push(`issuedBadges (${err.message || err})`);
+      }
+
+      // 5. Delete potential dynamic collections linked to RPL
+      const extraCollections = [
+        'rplStatusLogs', 'rplNotifications', 'rplChecklists', 'rplAttachments', 'rplDashboardQueue'
+      ];
+      for (const col of extraCollections) {
+        try {
+          const snap = await rawGetDocs(collection(db, col));
+          for (const d of snap.docs) {
+            const data = d.data();
+            if (data.isDemo === true) {
+              console.log(`[Safety Verified] Deleting extra collection doc ${col}/${d.id}`, data);
+              await rawDeleteDoc(doc(db, col, d.id));
+              colDeletions++;
+            }
+          }
+        } catch (e: any) {
+          // Dynamic collection may not exist, skip silently
+        }
+      }
+
+      // 6. Persist a deletion marker flag in user profile
+      if (user?.uid) {
+        try {
+          const userDocRef = doc(db, 'users', user.uid);
+          await updateDoc(userDocRef, { rplDemoDataDeleted: true });
+        } catch (err) {
+          console.error("Error saving rplDemoDataDeleted flag in profile:", err);
+        }
+      }
+
+      if (failures.length > 0) {
+        setDeleteError(`Completed with warnings. Some collections failed to clear: ${failures.join(', ')}. Successfully deleted: ${rplCount} application(s), ${arCount} assessment record(s), ${brCount} badge request(s), ${ibCount} issued badge(s), and ${colDeletions} extra records.`);
+      } else {
+        setDeleteSuccess(`Permanently deleted demo RPL records from Firebase: ${rplCount} application(s), ${arCount} assessment record(s), ${brCount} badge request(s), ${ibCount} issued badge(s), and ${colDeletions} related logs/notifications. Your demo account starts fresh!`);
+      }
+
+      setTimeout(() => {
+        setDeleteSuccess('');
+      }, 7000);
+    } catch (err: any) {
+      console.error("Critical error inside handleDeleteDemoRPLData:", err);
+      setDeleteError(err.message || "Failed to clear demo RPL records.");
+    } finally {
+      setDeletingDemo(false);
+    }
+  };
 
   // Loading states
   const [loading, setLoading] = useState(false);
@@ -283,6 +433,16 @@ export default function ApplyRPL() {
       // Add to Firestore rplApplications
       await addDoc(collection(db, 'rplApplications'), rplPayload);
 
+      // Reset the deletion marker in user profile on new manual submission
+      if (user?.uid) {
+        try {
+          const userDocRef = doc(db, 'users', user.uid);
+          await updateDoc(userDocRef, { rplDemoDataDeleted: false });
+        } catch (err) {
+          console.error("Error resetting rplDemoDataDeleted status on manual submit: ", err);
+        }
+      }
+
       setSuccessMessage('Congratulations! Your RPL application portfolio has been submitted successfully to TESDA.');
       
       // Navigate/Redirect back to wallet or application hub after short delay
@@ -322,6 +482,26 @@ export default function ApplyRPL() {
         </p>
       </div>
 
+      {deleteSuccess && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-start gap-3 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+          <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <h4 className="text-sm font-semibold text-emerald-900 animate-pulse">Success</h4>
+            <p className="text-xs text-emerald-700 leading-relaxed font-medium">{deleteSuccess}</p>
+          </div>
+        </div>
+      )}
+
+      {deleteError && (
+        <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-start gap-3 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+          <AlertCircle className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <h4 className="text-sm font-semibold text-rose-900">Deletion Warning / Error</h4>
+            <p className="text-xs text-rose-700 leading-relaxed font-medium">{deleteError}</p>
+          </div>
+        </div>
+      )}
+
       {/* Dynamic Tab Switcher */}
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
         <Button
@@ -347,6 +527,38 @@ export default function ApplyRPL() {
             </span>
           )}
         </Button>
+
+        {userProfile?.isDemo && (
+          <Button
+            type="button"
+            variant={confirmDelete ? "warning" as any : "destructive"}
+            onClick={handleDeleteDemoRPLData}
+            disabled={deletingDemo}
+            className={`text-xs font-semibold h-8 rounded-lg md:ml-auto flex items-center gap-1.5 transition-all duration-300 ${
+              confirmDelete 
+                ? 'bg-amber-600 hover:bg-amber-700 text-white animate-pulse px-3 ring-2 ring-amber-300 ring-offset-1' 
+                : 'bg-rose-600 hover:bg-rose-700 text-white'
+            }`}
+            id="btn-delete-demo-rpl"
+          >
+            {deletingDemo ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Deleting Demo RPL Data...
+              </>
+            ) : confirmDelete ? (
+              <>
+                <AlertCircle className="h-3.5 w-3.5 animate-bounce" />
+                Confirm Deletion? Click Again
+              </>
+            ) : (
+              <>
+                <Trash className="h-3.5 w-3.5" />
+                Delete Demo RPL Data
+              </>
+            )}
+          </Button>
+        )}
       </div>
 
       {activeTab === 'tracking' ? (

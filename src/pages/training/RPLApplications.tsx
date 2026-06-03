@@ -356,19 +356,23 @@ export default function RPLApplications() {
           />
         </div>
 
-        {/* Tab Buttons bar */}
-        <div className="flex items-center gap-1.5 self-start overflow-x-auto w-full md:w-auto pb-1 md:pb-0">
-          {['All', 'Submitted', 'For Evidence Review', 'For Competency Mapping', 'For Gap Training', 'Ready for Assessment Endorsement', 'Endorsed'].map((t) => (
-            <Button
-              key={t}
-              variant={activeTab === t ? 'default' : 'outline'}
-              className="text-xs shrink-0 bg-white"
-              size="sm"
-              onClick={() => setActiveTab(t)}
-            >
-              {t}
-            </Button>
-          ))}
+        {/* Status Dropdown Filter */}
+        <div className="flex items-center gap-2 w-full md:w-auto self-start md:self-center">
+          <Label htmlFor="status-filter" className="text-xs font-semibold text-slate-500 whitespace-nowrap">Filter by Status:</Label>
+          <Select value={activeTab} onValueChange={setActiveTab}>
+            <SelectTrigger id="status-filter" className="w-full md:w-[270px] text-xs bg-white border-slate-200 h-9 font-medium text-slate-700">
+              <SelectValue placeholder="Filter by Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="All">All Statuses</SelectItem>
+              <SelectItem value="Submitted">Submitted (Walk-in / Draft)</SelectItem>
+              <SelectItem value="For Evidence Review">For Evidence Review</SelectItem>
+              <SelectItem value="For Competency Mapping">For Competency Mapping</SelectItem>
+              <SelectItem value="For Gap Training">For Gap Training</SelectItem>
+              <SelectItem value="Ready for Assessment Endorsement">Ready for Assessment Endorsement</SelectItem>
+              <SelectItem value="Endorsed">Endorsed to Assessment Center</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 

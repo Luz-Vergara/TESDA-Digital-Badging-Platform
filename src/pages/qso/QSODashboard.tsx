@@ -22,28 +22,60 @@ export default function QSODashboard() {
   const { isAuthReady } = useFirebase();
   const [stats, setStats] = useState({
     totalTemplates: 0,
-    activeStandards: 0,
-    pendingValidations: 0,
-    alignmentScore: 0
+    totalIssuedBadges: 0,
+    hierarchiesDefined: 4,
+    recentUpdate: '',
+    issuedAnalytics: [] as any[]
   });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!isAuthReady) return;
 
+    // Fetch Templates
     const unsubTemplates = onSnapshot(collection(db, 'badgeTemplates'), (snap) => {
+      const templates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const latestUpdate = templates.sort((a: any, b: any) => 
+        (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0)
+      )[0]?.name || 'None';
+      
       setStats(prev => ({ 
         ...prev, 
         totalTemplates: snap.size,
-        activeStandards: snap.docs.filter(d => d.data().status === 'Approved').length,
-        alignmentScore: 94
+        recentUpdate: latestUpdate
       }));
-      setLoading(false);
-    }, (err) => {
-      handleFirestoreError(err, OperationType.GET, 'badgeTemplates');
     });
 
-    return () => unsubTemplates();
+    // Fetch Issued Badges (for Analytics)
+    const unsubIssued = onSnapshot(collection(db, 'issuedBadges'), (snap) => {
+      const badges = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      
+      // Calculate Analytics (Prototype logic)
+      const analyticsMap: any = {};
+      badges.forEach((b: any) => {
+        const tId = b.badgeTemplateId || b.templateId || 'Unknown';
+        if (!analyticsMap[tId]) {
+          analyticsMap[tId] = { templateName: b.templateName || tId, count: 0, statuses: new Set() };
+        }
+        analyticsMap[tId].count++;
+        analyticsMap[tId].statuses.add(b.status || 'Pending');
+      });
+
+      const analytics = Object.entries(analyticsMap).map(([id, data]: any) => ({
+        id,
+        name: data.templateName,
+        count: data.count,
+        status: Array.from(data.statuses).join(', ')
+      }));
+
+      setStats(prev => ({ ...prev, totalIssuedBadges: snap.size, issuedAnalytics: analytics }));
+      setLoading(false);
+    });
+
+    return () => {
+      unsubTemplates();
+      unsubIssued();
+    };
   }, [isAuthReady]);
 
   if (loading) {
@@ -73,16 +105,16 @@ export default function QSODashboard() {
       <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
           { label: 'Badge Templates', value: stats.totalTemplates, icon: Award, color: 'text-blue-600', bg: 'bg-blue-50' },
-          { label: 'Active Standards', value: stats.activeStandards, icon: FileCode, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-          { label: 'Hierarchies Defined', value: 4, icon: Layers, color: 'text-purple-600', bg: 'bg-purple-50' },
-          { label: 'Alignment Score', value: `${stats.alignmentScore}%`, icon: BadgeCheck, color: 'text-amber-600', bg: 'bg-amber-50' },
+          { label: 'Hierarchies Defined', value: stats.hierarchiesDefined, icon: Layers, color: 'text-purple-600', bg: 'bg-purple-50' },
+          { label: 'Issued Badges', value: stats.totalIssuedBadges, icon: BadgeCheck, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+          { label: 'Recent Update', value: stats.recentUpdate, icon: FileText, color: 'text-amber-600', bg: 'bg-amber-50' },
         ].map((stat) => (
           <Card key={stat.label} className="border-slate-200 shadow-sm">
             <CardContent className="p-6">
               <div className={`p-2 rounded-lg ${stat.bg} ${stat.color} w-fit mb-4`}>
                 <stat.icon className="h-5 w-5" />
               </div>
-              <p className="text-2xl font-bold text-slate-900">{stat.value}</p>
+              <p className="text-xl font-bold text-slate-900 truncate" title={stat.value as string}>{stat.value}</p>
               <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mt-1">{stat.label}</p>
             </CardContent>
           </Card>
@@ -99,11 +131,11 @@ export default function QSODashboard() {
             <CardDescription>Manage qualification alignments and template validation.</CardDescription>
           </CardHeader>
           <CardContent className="grid sm:grid-cols-2 gap-4">
-            <Link to="/qso/metadata" className="block">
+            <Link to="/qso/templates" className="block">
               <div className="p-4 rounded-xl border border-slate-200 hover:border-blue-200 hover:bg-blue-50/30 transition-all group">
-                <FileCode className="h-8 w-8 text-blue-600 mb-3" />
+                <Award className="h-8 w-8 text-blue-600 mb-3" />
                 <h3 className="font-bold text-slate-900 flex items-center justify-between">
-                  Metadata Standards
+                  Badge Templates
                   <ArrowRight className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
                 </h3>
                 <p className="text-xs text-slate-500 mt-1 text-pretty">Define properties and structure for all digital badges.</p>
@@ -119,32 +151,31 @@ export default function QSODashboard() {
                 <p className="text-xs text-slate-500 mt-1 text-pretty">Configure levels from Proficient to Master across qualifications.</p>
               </div>
             </Link>
-            <Link to="/qso/alignment" className="block">
-              <div className="p-4 rounded-xl border border-slate-200 hover:border-emerald-200 hover:bg-emerald-50/30 transition-all group">
-                <BadgeCheck className="h-8 w-8 text-emerald-600 mb-3" />
-                <h3 className="font-bold text-slate-900 flex items-center justify-between">
-                  Qualification Alignment
-                  <ArrowRight className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
-                </h3>
-                <p className="text-xs text-slate-500 mt-1 text-pretty">Map badges to training regulations and standards.</p>
-              </div>
-            </Link>
-            <Link to="/qso/conventions" className="block">
-              <div className="p-4 rounded-xl border border-slate-200 hover:border-amber-200 hover:bg-amber-50/30 transition-all group">
-                <FileText className="h-8 w-8 text-amber-600 mb-3" />
-                <h3 className="font-bold text-slate-900 flex items-center justify-between">
-                  Naming Conventions
-                  <ArrowRight className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
-                </h3>
-                <p className="text-xs text-slate-500 mt-1 text-pretty">Enforce consistent badge naming for all offices.</p>
-              </div>
-            </Link>
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200">
+        <Card className="border-slate-200 lg:col-span-3">
           <CardHeader>
-            <CardTitle className="text-lg">Recent Standards Logs</CardTitle>
+            <CardTitle className="text-lg">Issued Badge Analytics</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {stats.issuedAnalytics.map((item: any) => (
+                <div key={item.id} className="flex items-center justify-between p-3 rounded-lg border border-slate-100 hover:bg-slate-50">
+                  <div>
+                    <p className="font-bold text-sm text-slate-900">{item.name}</p>
+                    <p className="text-xs text-slate-500">Status: {item.status}</p>
+                  </div>
+                  <Badge variant="secondary" className="px-3 py-1 text-xs">{item.count} Issued</Badge>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-slate-200 lg:col-span-3">
+          <CardHeader>
+            <CardTitle className="text-lg">Recent Activity Logs</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {[

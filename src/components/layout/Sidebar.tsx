@@ -100,10 +100,7 @@ export default function Sidebar({ role }: SidebarProps) {
       return [
         ...common,
         { name: 'Badge Templates', href: '/qso/templates', icon: Award },
-        { name: 'Metadata Standards', href: '/qso/metadata', icon: FileCode },
         { name: 'Badge Hierarchy', href: '/qso/hierarchy', icon: Layers },
-        { name: 'Qualification Alignment', href: '/qso/alignment', icon: BadgeCheck },
-        { name: 'Naming Conventions', href: '/qso/conventions', icon: FileText },
       ];
     }
 

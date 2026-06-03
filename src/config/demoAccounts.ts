@@ -32,6 +32,12 @@ export const demoAccountGroups: DemoAccountGroup[] = [
     dashboardPath: "/trainingcenter",
     accounts: [
       {
+        id: "demo-training-main",
+        label: "Demo Training Center",
+        email: "training@demo.com",
+        organizationName: "Demo Training Center"
+      },
+      {
         id: "demo-training-1",
         label: "Demo Training Center 1",
         email: "training1@demo.com",
@@ -65,13 +71,28 @@ export const demoAccountGroups: DemoAccountGroup[] = [
     accounts: [
       {
         id: "demo-learner-1",
-        label: "Demo Learner 1",
+        label: "Demo Learner 1 (Juan Dela Cruz)",
         email: "learner@demo.com"
       },
       {
         id: "demo-learner-2",
-        label: "Demo Learner 2",
+        label: "Demo Learner 2 (Maria Santos)",
         email: "learner2@demo.com"
+      },
+      {
+        id: "demo-learner-3",
+        label: "Demo Learner 3 (Jose Rizal)",
+        email: "learner3@demo.com"
+      },
+      {
+        id: "demo-learner-4",
+        label: "Demo Learner 4 (Andres Bonifacio)",
+        email: "learner4@demo.com"
+      },
+      {
+        id: "demo-learner-5",
+        label: "Demo Learner 5 (Emilio Aguinaldo)",
+        email: "learner5@demo.com"
       }
     ]
   },

@@ -82,6 +82,7 @@ service cloud.firestore {
              data.status in ['Enrolled', 'Completed', 'Dropped'];
     }
 
+    // Since many fields may be omitted/optional in client-written documents, we use soft checks
     function isValidAssessmentRecord(data) {
       return data.keys().hasAll(['learnerId', 'qualification', 'pathway', 'result', 'organizationId']) &&
              data.pathway in ['National Competency Assessment', 'Recognition of Prior Learning (RPL)'] &&
@@ -211,6 +212,7 @@ service cloud.firestore {
     match /assessmentRecords/{recordId} {
       allow read: if isSignedIn();
       allow write: if isAssessmentCenter() || isAdmin() || isIncomingDemo();
+      allow delete: if isAdmin() || isExistingDemo();
     }
 
     match /rplApplications/{appId} {

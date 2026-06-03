@@ -998,238 +998,244 @@ export default function BadgeTemplates() {
                 )}
 
                 {designerTemplateId ? (
-                  <div className="flex flex-col items-center">
-                    {/* The canvas frame wrapper */}
-                    <div className="relative border-4 border-slate-800 rounded-2xl p-2 bg-slate-950 shadow-2xl mt-4">
-                      <BadgeRenderer
-                        scale={0.88}
-                        data={{
-                          id: 'designer-temp-preview',
-                          name: 'Designer Standard Preview',
-                          learnerName: 'DEMO RECIPIENT FULL NAME',
-                          issueDate: '05/21/2026',
-                          validUntil: '05/21/2029',
-                          verificationId: 'TESDA-NC3-A89102',
-                          imageUrl: designerImgUrl,
-                          level: templates.find(t => t.id === designerTemplateId)?.badgeType || 'Expert',
-                          qualificationTitle: testTitle,
-                          qualificationCode: templates.find(t => t.id === designerTemplateId)?.qualificationCode || 'ICT-AMP-23',
-                          templateConfig: designerConfig
-                        }}
-                      />
+                  <div className="flex flex-col xl:flex-row items-center xl:items-start gap-8 w-full justify-center mt-4">
+                    {/* Left side: Canvas & Tips */}
+                    <div className="flex flex-col items-center shrink-0">
+                      {/* The canvas frame wrapper */}
+                      <div className="relative border-4 border-slate-800 rounded-2xl p-2 bg-slate-950 shadow-2xl">
+                        <BadgeRenderer
+                          scale={0.88}
+                          data={{
+                            id: 'designer-temp-preview',
+                            name: 'Designer Standard Preview',
+                            learnerName: 'DEMO RECIPIENT FULL NAME',
+                            issueDate: '05/21/2026',
+                            validUntil: '05/21/2029',
+                            verificationId: 'TESDA-NC3-A89102',
+                            imageUrl: designerImgUrl,
+                            level: templates.find(t => t.id === designerTemplateId)?.badgeType || 'Expert',
+                            qualificationTitle: testTitle,
+                            qualificationCode: templates.find(t => t.id === designerTemplateId)?.qualificationCode || 'ICT-AMP-23',
+                            templateConfig: designerConfig
+                          }}
+                        />
 
-                      {/* Overlaid Guideline overlays */}
-                      {designerImgUrl ? (
-                        <div 
-                          className="absolute inset-0 pointer-events-none"
-                          style={{ width: `${500 * 0.88}px`, height: `${500 * 0.88}px`, margin: '12px' }}
-                        >
-                          {/* Symmetrical central guidelines */}
-                          <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-emerald-500/20" />
-                          <div className="absolute inset-y-0 left-1/2 border-l border-dashed border-emerald-500/20" />
-
-                          {/* Interactive boundary clicks on selected elements */}
-                          {Object.entries(designerConfig).map(([key, config]: [string, any]) => {
-                            if (key === 'fitMode' || !config || config.enabled === false) return null;
-                            const isSelected = activeField === key;
-                            const size = key === 'qr' ? (config.size || 70) * 0.88 : 16;
-                            
-                            return (
-                              <div 
-                                key={key}
-                                className={`absolute pointer-events-auto cursor-pointer rounded transition-all flex items-center justify-center ${
-                                  isSelected 
-                                    ? 'border-2 border-dashed border-emerald-550 bg-emerald-500/25 shadow-lg scale-105 z-25' 
-                                    : 'border border-emerald-450/40 bg-emerald-400/5 hover:border-emerald-500 hover:bg-emerald-450/15'
-                                }`}
-                                style={{
-                                  left: `${config.x}%`,
-                                  top: `${config.y}%`,
-                                  width: key === 'qr' ? `${size}px` : 'auto',
-                                  height: key === 'qr' ? `${size}px` : '32px',
-                                  padding: key === 'qr' ? '0' : '2px 8px',
-                                  transform: 'translate(-50%, -50%)',
-                                }}
-                                title={`Click to drag coordinate sliders for ${key}`}
-                                onClick={() => setActiveField(key)}
-                              >
-                                {key !== 'qr' && (
-                                  <span className={`text-[9px] font-bold select-none truncate ${isSelected ? 'text-white bg-emerald-600 px-1 py-0.5 rounded shadow-sm text-center font-extrabold' : 'text-slate-300 bg-slate-800/80 px-1.5 py-0.5 rounded text-center'}`}>
-                                    {key === 'name' ? 'Learner Name' : key === 'qualificationTitle' ? 'Title' : key === 'qualificationCode' ? 'Code' : key === 'validUntil' ? 'Expiry Date' : key}
-                                  </span>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : null}
-                    </div>
-
-                    {/* Active Layout Placeholder Selector Chips */}
-                    <div className="w-full max-w-xl mt-6 space-y-2">
-                      <Label className="text-[11px] font-bold uppercase text-slate-400 flex items-center justify-center gap-1.5">
-                        <Sparkles className="h-3.5 w-3.5 text-emerald-400" />
-                        Select Active Layout Placeholder Variable
-                      </Label>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 bg-slate-800/60 p-1.5 rounded-lg border border-slate-750/80">
-                        {[
-                          { id: 'name', label: 'Learner Name' },
-                          { id: 'qualificationTitle', label: 'Qualific. Title' },
-                          { id: 'qualificationCode', label: 'Qualific. Code' },
-                          { id: 'level', label: 'Badge Level' },
-                          { id: 'date', label: 'Issue Date' },
-                          { id: 'validUntil', label: 'Expiry Date' },
-                          { id: 'id', label: 'Credential ID' },
-                          { id: 'qr', label: 'QR Secure Code' }
-                        ].map(field => (
-                          <button
-                            key={field.id}
-                            type="button"
-                            className={`text-[11px] py-1.5 px-2 rounded font-medium text-center transition-all ${
-                              activeField === field.id 
-                                ? 'bg-emerald-600 text-white shadow-sm font-extrabold' 
-                                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                            }`}
-                            onClick={() => setActiveField(field.id)}
+                        {/* Overlaid Guideline overlays */}
+                        {designerImgUrl ? (
+                          <div 
+                            className="absolute inset-0 pointer-events-none"
+                            style={{ width: `${500 * 0.88}px`, height: `${500 * 0.88}px`, margin: '12px' }}
                           >
-                            {field.label}
-                          </button>
-                        ))}
+                            {/* Symmetrical central guidelines */}
+                            <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-emerald-500/20" />
+                            <div className="absolute inset-y-0 left-1/2 border-l border-dashed border-emerald-500/20" />
+
+                            {/* Interactive boundary clicks on selected elements */}
+                            {Object.entries(designerConfig).map(([key, config]: [string, any]) => {
+                              if (key === 'fitMode' || !config || config.enabled === false) return null;
+                              const isSelected = activeField === key;
+                              const size = key === 'qr' ? (config.size || 70) * 0.88 : 16;
+                              
+                              return (
+                                <div 
+                                  key={key}
+                                  className={`absolute pointer-events-auto cursor-pointer rounded transition-all flex items-center justify-center ${
+                                    isSelected 
+                                      ? 'border-2 border-dashed border-emerald-550 bg-emerald-500/25 shadow-lg scale-105 z-25' 
+                                      : 'border border-emerald-450/40 bg-emerald-400/5 hover:border-emerald-500 hover:bg-emerald-450/15'
+                                  }`}
+                                  style={{
+                                    left: `${config.x}%`,
+                                    top: `${config.y}%`,
+                                    width: key === 'qr' ? `${size}px` : 'auto',
+                                    height: key === 'qr' ? `${size}px` : '32px',
+                                    padding: key === 'qr' ? '0' : '2px 8px',
+                                    transform: 'translate(-50%, -50%)',
+                                  }}
+                                  title={`Click to drag coordinate sliders for ${key}`}
+                                  onClick={() => setActiveField(key)}
+                                >
+                                  {key !== 'qr' && (
+                                    <span className={`text-[9px] font-bold select-none truncate ${isSelected ? 'text-white bg-emerald-600 px-1 py-0.5 rounded shadow-sm text-center font-extrabold' : 'text-slate-300 bg-slate-800/80 px-1.5 py-0.5 rounded text-center'}`}>
+                                      {key === 'name' ? 'Learner Name' : key === 'qualificationTitle' ? 'Title' : key === 'qualificationCode' ? 'Code' : key === 'validUntil' ? 'Expiry Date' : key}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-6 flex flex-col items-center text-center max-w-sm">
+                        <span className="text-white text-xs font-bold flex items-center gap-1.5 mb-1 bg-slate-800 px-2.5 py-1 rounded-full border border-slate-750">
+                          <Sliders className="h-4 w-4 text-emerald-400" />
+                          Interactive Coordinate Overlay Guides
+                        </span>
+                        <p className="text-[11px] text-slate-400">
+                          Click directly on any translucent label overlay on the badge preview above to select that variable, then configure its sliders.
+                        </p>
                       </div>
                     </div>
 
-                    {/* Coordinate Parameter / Slide controls for Active Layout Selection */}
-                    {designerConfig[activeField] && (
-                      <div className="w-full max-w-xl mt-5 p-5 bg-slate-800/40 rounded-xl border border-slate-755/90 space-y-4 text-left">
-                        <div className="flex items-center justify-between border-b border-slate-750/50 pb-3">
-                          <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">
-                            {activeField === 'name' ? 'Learner Name' : activeField === 'qualificationTitle' ? 'Qualification Title' : activeField === 'qualificationCode' ? 'Qualification Code' : activeField === 'qr' ? 'QR Code Security' : activeField} Options & Parameters
-                          </span>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              id="designer-field-enabled"
-                              checked={designerConfig[activeField]?.enabled !== false}
-                              onChange={(e) => updateFieldPosition(activeField, { enabled: e.target.checked })}
-                              className="rounded text-emerald-600 bg-slate-900 border-slate-700 cursor-pointer h-4 w-4"
-                            />
-                            <Label htmlFor="designer-field-enabled" className="text-xs cursor-pointer select-none text-slate-300 font-semibold">Visible on Badge</Label>
-                          </div>
+                    {/* Right side: Field Selectors & Sliders */}
+                    <div className="flex-1 w-full max-w-md space-y-4">
+                      {/* Active Layout Placeholder Selector Chips */}
+                      <div className="w-full space-y-2">
+                        <Label className="text-[11px] font-bold uppercase text-slate-400 flex items-center gap-1.5">
+                          <Sparkles className="h-3.5 w-3.5 text-emerald-400" />
+                          Select Active Layout Placeholder Variable
+                        </Label>
+                        <div className="grid grid-cols-2 gap-1.5 bg-slate-800/60 p-1.5 rounded-lg border border-slate-750/80">
+                          {[
+                            { id: 'name', label: 'Learner Name' },
+                            { id: 'qualificationTitle', label: 'Qualific. Title' },
+                            { id: 'qualificationCode', label: 'Qualific. Code' },
+                            { id: 'level', label: 'Badge Level' },
+                            { id: 'date', label: 'Issue Date' },
+                            { id: 'validUntil', label: 'Expiry Date' },
+                            { id: 'id', label: 'Credential ID' },
+                            { id: 'qr', label: 'QR Secure Code' }
+                          ].map(field => (
+                            <button
+                              key={field.id}
+                              type="button"
+                              className={`text-[11px] py-1.5 px-2 rounded font-medium text-center transition-all ${
+                                activeField === field.id 
+                                  ? 'bg-emerald-600 text-white shadow-sm font-extrabold' 
+                                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                              }`}
+                              onClick={() => setActiveField(field.id)}
+                            >
+                              {field.label}
+                            </button>
+                          ))}
                         </div>
+                      </div>
 
-                        {designerConfig[activeField]?.enabled !== false && (
-                          <div className="space-y-4">
-                            {/* Horizontal X Slider */}
-                            <div className="space-y-1">
-                              <div className="flex justify-between text-xs">
-                                <span className="text-slate-400 font-medium">Horizontal Coordinate (X Position)</span>
-                                <span className="font-mono text-emerald-400 font-bold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-900/55">{designerConfig[activeField]?.x || 50}%</span>
-                              </div>
-                              <input 
-                                type="range" 
-                                min="0" 
-                                max="100" 
-                                value={designerConfig[activeField]?.x || 50} 
-                                onChange={(e) => updateFieldPosition(activeField, { x: parseInt(e.target.value) })}
-                                className="w-full cursor-pointer accent-emerald-500 h-1 bg-slate-700 rounded-lg"
+                      {/* Coordinate Parameter / Slide controls for Active Layout Selection */}
+                      {designerConfig[activeField] && (
+                        <div className="w-full p-5 bg-slate-800/40 rounded-xl border border-slate-755/90 space-y-4 text-left animate-fade-in">
+                          <div className="flex items-center justify-between border-b border-slate-750/50 pb-3">
+                            <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                              {activeField === 'name' ? 'Learner Name' : activeField === 'qualificationTitle' ? 'Qualification Title' : activeField === 'qualificationCode' ? 'Qualification Code' : activeField === 'qr' ? 'QR Code Security' : activeField} Options & Parameters
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                id="designer-field-enabled"
+                                checked={designerConfig[activeField]?.enabled !== false}
+                                onChange={(e) => updateFieldPosition(activeField, { enabled: e.target.checked })}
+                                className="rounded text-emerald-600 bg-slate-900 border-slate-700 cursor-pointer h-4 w-4"
                               />
+                              <Label htmlFor="designer-field-enabled" className="text-xs cursor-pointer select-none text-slate-300 font-semibold">Visible on Badge</Label>
                             </div>
+                          </div>
 
-                            {/* Vertical Y Slider */}
-                            <div className="space-y-1">
-                              <div className="flex justify-between text-xs">
-                                <span className="text-slate-400 font-medium">Vertical Coordinate (Y Position)</span>
-                                <span className="font-mono text-emerald-400 font-bold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-900/55">{designerConfig[activeField]?.y || 50}%</span>
-                              </div>
-                              <input 
-                                type="range" 
-                                min="0" 
-                                max="100" 
-                                value={designerConfig[activeField]?.y || 50} 
-                                onChange={(e) => updateFieldPosition(activeField, { y: parseInt(e.target.value) })}
-                                className="w-full cursor-pointer accent-emerald-500 h-1 bg-slate-700 rounded-lg"
-                              />
-                            </div>
-
-                            {/* Font sizing slider for non-QR elements */}
-                            {activeField !== 'qr' && (
+                          {designerConfig[activeField]?.enabled !== false && (
+                            <div className="space-y-4">
+                              {/* Horizontal X Slider */}
                               <div className="space-y-1">
-                                <div className="flex justify-between text-xs font-medium">
-                                  <span className="text-slate-400">Font Dimension Size</span>
-                                  <span className="font-mono text-emerald-400 font-extrabold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-900/55">{designerConfig[activeField]?.fontSize || '1.1rem'}</span>
+                                <div className="flex justify-between text-xs">
+                                  <span className="text-slate-400 font-medium">Horizontal Coordinate (X Position)</span>
+                                  <span className="font-mono text-emerald-400 font-bold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-900/55">{designerConfig[activeField]?.x || 50}%</span>
                                 </div>
                                 <input 
                                   type="range" 
-                                  min="5" 
-                                  max="30" 
-                                  step="1"
-                                  value={Math.round(parseFloat(designerConfig[activeField]?.fontSize || '1.1rem') * 10)} 
-                                  onChange={(e) => updateFieldPosition(activeField, { fontSize: `${parseFloat(e.target.value) / 10}rem` })}
+                                  min="0" 
+                                  max="100" 
+                                  value={designerConfig[activeField]?.x || 50} 
+                                  onChange={(e) => updateFieldPosition(activeField, { x: parseInt(e.target.value) })}
                                   className="w-full cursor-pointer accent-emerald-500 h-1 bg-slate-700 rounded-lg"
                                 />
                               </div>
-                            )}
 
-                            {/* Color Selector */}
-                            {activeField !== 'qr' && (
+                              {/* Vertical Y Slider */}
                               <div className="space-y-1">
-                                <div className="flex justify-between text-xs font-medium">
-                                  <span className="text-slate-400">Font Color Override</span>
-                                  <span className="font-mono text-slate-300 font-bold bg-slate-900 px-2 py-0.5 rounded border border-slate-750">{designerConfig[activeField]?.color || '#111827'}</span>
+                                <div className="flex justify-between text-xs">
+                                  <span className="text-slate-400 font-medium">Vertical Coordinate (Y Position)</span>
+                                  <span className="font-mono text-emerald-400 font-bold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-900/55">{designerConfig[activeField]?.y || 50}%</span>
                                 </div>
-                                <div className="flex items-center gap-2.5">
+                                <input 
+                                  type="range" 
+                                  min="0" 
+                                  max="100" 
+                                  value={designerConfig[activeField]?.y || 50} 
+                                  onChange={(e) => updateFieldPosition(activeField, { y: parseInt(e.target.value) })}
+                                  className="w-full cursor-pointer accent-emerald-500 h-1 bg-slate-700 rounded-lg"
+                                />
+                              </div>
+
+                              {/* Font sizing slider for non-QR elements */}
+                              {activeField !== 'qr' && (
+                                <div className="space-y-1">
+                                  <div className="flex justify-between text-xs font-medium">
+                                    <span className="text-slate-400">Font Dimension Size</span>
+                                    <span className="font-mono text-emerald-400 font-extrabold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-900/55">{designerConfig[activeField]?.fontSize || '1.1rem'}</span>
+                                  </div>
                                   <input 
-                                    type="color" 
-                                    value={designerConfig[activeField]?.color || '#111827'} 
-                                    onChange={(e) => updateFieldPosition(activeField, { color: e.target.value })}
-                                    className="h-8 w-12 border border-slate-700 rounded cursor-pointer p-0 bg-transparent"
+                                    type="range" 
+                                    min="5" 
+                                    max="30" 
+                                    step="1"
+                                    value={Math.round(parseFloat(designerConfig[activeField]?.fontSize || '1.1rem') * 10)} 
+                                    onChange={(e) => updateFieldPosition(activeField, { fontSize: `${parseFloat(e.target.value) / 10}rem` })}
+                                    className="w-full cursor-pointer accent-emerald-500 h-1 bg-slate-700 rounded-lg"
                                   />
-                                  <div className="grid grid-cols-5 gap-1.5 flex-1">
-                                    {['#111827', '#1e1b4b', '#0038a8', '#047857', '#b45309', '#ffffff', '#e2e8f0', '#ef4444', '#3b82f6', '#10b981'].map(presetColor => (
-                                      <button
-                                        key={presetColor}
-                                        type="button"
-                                        className="h-5.5 w-5.5 rounded-full border border-slate-700 shadow-sm"
-                                        style={{ backgroundColor: presetColor }}
-                                        onClick={() => updateFieldPosition(activeField, { color: presetColor })}
-                                        title={presetColor}
-                                      />
-                                    ))}
+                                </div>
+                              )}
+
+                              {/* Color Selector */}
+                              {activeField !== 'qr' && (
+                                <div className="space-y-1">
+                                  <div className="flex justify-between text-xs font-medium">
+                                    <span className="text-slate-400">Font Color Override</span>
+                                    <span className="font-mono text-slate-300 font-bold bg-slate-900 px-2 py-0.5 rounded border border-slate-750">{designerConfig[activeField]?.color || '#111827'}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2.5">
+                                    <input 
+                                      type="color" 
+                                      value={designerConfig[activeField]?.color || '#111827'} 
+                                      onChange={(e) => updateFieldPosition(activeField, { color: e.target.value })}
+                                      className="h-8 w-12 border border-slate-700 rounded cursor-pointer p-0 bg-transparent"
+                                    />
+                                    <div className="grid grid-cols-5 gap-1.5 flex-1">
+                                      {['#111827', '#1e1b4b', '#0038a8', '#047857', '#b45309', '#ffffff', '#e2e8f0', '#ef4444', '#3b82f6', '#10b981'].map(presetColor => (
+                                        <button
+                                          key={presetColor}
+                                          type="button"
+                                          className="h-5.5 w-5.5 rounded-full border border-slate-700 shadow-sm"
+                                          style={{ backgroundColor: presetColor }}
+                                          onClick={() => updateFieldPosition(activeField, { color: presetColor })}
+                                          title={presetColor}
+                                        />
+                                      ))}
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            )}
+                              )}
 
-                            {/* QR Dimension controls */}
-                            {activeField === 'qr' && (
-                              <div className="space-y-1">
-                                <div className="flex justify-between text-xs font-semibold">
-                                  <span className="text-slate-400">QR Code Dimensions (Scale)</span>
-                                  <span className="font-mono text-emerald-400 font-bold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-900/55">{designerConfig[activeField]?.size || 70}px</span>
+                              {/* QR Dimension controls */}
+                              {activeField === 'qr' && (
+                                <div className="space-y-1">
+                                  <div className="flex justify-between text-xs font-semibold">
+                                    <span className="text-slate-400">QR Code Dimensions (Scale)</span>
+                                    <span className="font-mono text-emerald-400 font-bold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-900/55">{designerConfig[activeField]?.size || 70}px</span>
+                                  </div>
+                                  <input 
+                                    type="range" 
+                                    min="40" 
+                                    max="150" 
+                                    value={designerConfig[activeField]?.size || 70} 
+                                    onChange={(e) => updateFieldPosition(activeField, { size: parseInt(e.target.value) })}
+                                    className="w-full cursor-pointer accent-emerald-500 h-1 bg-slate-700 rounded-lg"
+                                  />
                                 </div>
-                                <input 
-                                  type="range" 
-                                  min="40" 
-                                  max="150" 
-                                  value={designerConfig[activeField]?.size || 70} 
-                                  onChange={(e) => updateFieldPosition(activeField, { size: parseInt(e.target.value) })}
-                                  className="w-full cursor-pointer accent-emerald-500 h-1 bg-slate-700 rounded-lg"
-                                />
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="mt-6 flex flex-col items-center text-center max-w-sm">
-                      <span className="text-white text-xs font-bold flex items-center gap-1.5 mb-1 bg-slate-800 px-2.5 py-1 rounded-full border border-slate-750">
-                        <Sliders className="h-4 w-4 text-emerald-400" />
-                        Interactive Coordinate Overlay Guides
-                      </span>
-                      <p className="text-[11px] text-slate-400">
-                        Click directly on any translucent label overlay on the badge preview above to select that variable, then configure its sliders.
-                      </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ) : (
