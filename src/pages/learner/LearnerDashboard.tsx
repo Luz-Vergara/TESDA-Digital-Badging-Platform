@@ -53,8 +53,12 @@ export default function LearnerDashboard() {
         c.id === req.id
       );
       if (!alreadyHasBadge) {
+        const summaryItem = req.issuedBadgeSummary?.find((s: any) => s.learnerId === user?.uid);
         combined.push({
           ...req,
+          id: summaryItem?.issuedBadgeId || req.id,
+          badgeId: summaryItem?.badgeId || req.badgeId || '',
+          verificationId: summaryItem?.verificationId || req.verificationId || '',
           badgeName: req.badgeTemplateName || req.badgeName || req.programTitle,
           status: 'Approved' // Treat as approved/earned
         });
@@ -64,7 +68,7 @@ export default function LearnerDashboard() {
     // Filter to only include badges that match a known template
     return combined.filter(badge => {
       const bId = badge.badgeTemplateId || badge.badgeId;
-      const matchedTemplate = templates.find(t => t.id === bId);
+      let matchedTemplate = templates.find(t => t.id === bId);
       
       // Fallback: title match with aggressive normalization
       const normalize = (s: string) => {
@@ -78,18 +82,10 @@ export default function LearnerDashboard() {
       
       const bTitleNorm = normalize(badge.programTitle || badge.badgeName || badge.badgeTemplateName || '');
       
-      let finalMatch = null;
-      if (bId && matchedTemplate) {
-        finalMatch = matchedTemplate;
-      } else {
-        if (!bTitleNorm) return false;
-        
-        // Exact normalized match
-        finalMatch = templates.find(t => normalize(t.badgeName || '') === bTitleNorm);
-
-        if (!finalMatch) {
-          // Fuzzy Match: Significant overlap
-          finalMatch = templates.find(t => {
+      if (!matchedTemplate && bTitleNorm) {
+        matchedTemplate = templates.find(t => normalize(t.badgeName || '') === bTitleNorm);
+        if (!matchedTemplate) {
+          matchedTemplate = templates.find(t => {
             const tTitleNorm = normalize(t.badgeName || '');
             if (!tTitleNorm) return false;
             const bWords = bTitleNorm.split(' ').filter(w => w.length >= 2);
@@ -100,17 +96,11 @@ export default function LearnerDashboard() {
         }
       }
 
-      if (finalMatch) {
-         // Attach template metadata if missing
-         if (!badge.badgeType) badge.badgeType = finalMatch.badgeType;
-         if (!badge.badgeName) badge.badgeName = finalMatch.badgeName;
-         
-         // Strict Type Check for COC/NC
-         const bType = badge.badgeType;
-         const tType = finalMatch.badgeType;
-         if (tType === 'Skilled' || tType === 'Master') {
-           return bType === tType || (bType === 'COC' && tType === 'Skilled') || (bType === 'Qualification' && tType === 'Master');
-         }
+      if (matchedTemplate) {
+         // Attach template metadata
+         if (!badge.badgeType) badge.badgeType = matchedTemplate.badgeType;
+         if (!badge.badgeName) badge.badgeName = matchedTemplate.badgeName;
+         badge.template = matchedTemplate;
          return true;
       }
       
@@ -120,7 +110,7 @@ export default function LearnerDashboard() {
       const dateB = b.issueDate?.seconds || b.submittedAt?.seconds || 0;
       return dateB - dateA;
     });
-  }, [badgesEmail, badgesId, badgesRequests, templates]);
+  }, [badgesEmail, badgesId, badgesRequests, templates, user]);
 
   useEffect(() => {
     if (!isAuthReady || !user?.email) {
@@ -556,7 +546,7 @@ export default function LearnerDashboard() {
             <div className="grid md:grid-cols-2 gap-6">
               {activeBadges.slice(0, 6).map((badge) => (
                 <div key={badge.id}>
-                  <BadgeCard badge={badge} />
+                  <BadgeCard badge={badge} template={badge.template} />
                 </div>
               ))}
             </div>

@@ -72,8 +72,13 @@ export default function MyBadgeWallet() {
         c.id === req.id
       );
       if (!alreadyHasBadge) {
+        // Find if this specific learner has an issued badge in summary
+        const summaryItem = req.issuedBadgeSummary?.find((s: any) => s.learnerId === user?.uid);
         combined.push({
           ...req,
+          id: summaryItem?.issuedBadgeId || req.id,
+          badgeId: summaryItem?.badgeId || req.badgeId || '',
+          verificationId: summaryItem?.verificationId || req.verificationId || '',
           badgeName: req.badgeTemplateName || req.badgeName || req.programTitle,
           status: 'Approved' // Treat as earned for wallet
         });
@@ -89,7 +94,7 @@ export default function MyBadgeWallet() {
     // Filter to only include badges that match a known template
     return filtered.filter(badge => {
       const bId = badge.badgeTemplateId || badge.badgeId;
-      const matchedTemplate = templates.find(t => t.id === bId);
+      let matchedTemplate = templates.find(t => t.id === bId);
       
       // Fallback: title match with aggressive normalization
       const normalize = (s: string) => {
@@ -103,18 +108,10 @@ export default function MyBadgeWallet() {
       
       const bTitleNorm = normalize(badge.programTitle || badge.badgeName || badge.badgeTemplateName || '');
       
-      let finalMatch = null;
-      if (bId && matchedTemplate) {
-        finalMatch = matchedTemplate;
-      } else {
-        if (!bTitleNorm) return false;
-        
-        // Exact normalized match
-        finalMatch = templates.find(t => normalize(t.badgeName || '') === bTitleNorm);
-
-        if (!finalMatch) {
-          // Fuzzy Match: Significant overlap
-          finalMatch = templates.find(t => {
+      if (!matchedTemplate && bTitleNorm) {
+        matchedTemplate = templates.find(t => normalize(t.badgeName || '') === bTitleNorm);
+        if (!matchedTemplate) {
+          matchedTemplate = templates.find(t => {
             const tTitleNorm = normalize(t.badgeName || '');
             if (!tTitleNorm) return false;
             const bWords = bTitleNorm.split(' ').filter(w => w.length >= 2);
@@ -125,27 +122,22 @@ export default function MyBadgeWallet() {
         }
       }
 
-      if (finalMatch) {
-         // Attach template metadata if missing
-         if (!badge.badgeType) badge.badgeType = finalMatch.badgeType;
-         if (!badge.badgeName) badge.badgeName = finalMatch.badgeName;
-         
-         // Strict Type Check for COC/NC
-         const bType = badge.badgeType;
-         const tType = finalMatch.badgeType;
-         if (tType === 'Skilled' || tType === 'Master') {
-           return bType === tType || (bType === 'COC' && tType === 'Skilled') || (bType === 'Qualification' && tType === 'Master');
-         }
+      if (matchedTemplate) {
+         // Attach template metadata
+         if (!badge.badgeType) badge.badgeType = matchedTemplate.badgeType;
+         if (!badge.badgeName) badge.badgeName = matchedTemplate.badgeName;
+         if (!badge.qualificationCode) badge.qualificationCode = matchedTemplate.qualificationCode;
+         if (!badge.qualificationName) badge.qualificationName = matchedTemplate.qualificationName;
          return true;
       }
       
       return false;
     }).sort((a, b) => {
-      const dateA = a.issueDate?.seconds || a.submittedAt?.seconds || 0;
-      const dateB = b.issueDate?.seconds || b.submittedAt?.seconds || 0;
+      const dateA = a.issueDate?.seconds || a.dateIssued?.seconds || a.submittedAt?.seconds || 0;
+      const dateB = b.issueDate?.seconds || b.dateIssued?.seconds || b.submittedAt?.seconds || 0;
       return dateB - dateA;
     });
-  }, [badgesEmail, badgesId, badgesRequests, templates]);
+  }, [badgesEmail, badgesId, badgesRequests, templates, user]);
 
   useEffect(() => {
     if (!isAuthReady || !user) {
@@ -283,9 +275,19 @@ export default function MyBadgeWallet() {
                       <Award className="h-5 w-5" />
                     </div>
                     <div className="flex items-center gap-1.5 px-2 py-0.5 bg-slate-50 rounded-full border border-slate-100">
-                      <div className={`w-1.5 h-1.5 rounded-full ${badge.publishedToLearner ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                      <div className={`w-1.5 h-1.5 rounded-full ${
+                        (badge.publishedToLearner || badge.status === 'Approved' || badge.status === 'Active' || badge.status === 'Badge ID Generated')
+                          ? 'bg-emerald-500' 
+                          : badge.status === 'Submitted to CO' 
+                            ? 'bg-blue-500' 
+                            : 'bg-amber-500'
+                      }`} />
                       <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                        {badge.publishedToLearner ? 'Published' : (badge.status === 'Submitted to CO' ? 'CO Review' : 'Pending')}
+                        {badge.publishedToLearner || badge.status === 'Approved' || badge.status === 'Active' || badge.status === 'Badge ID Generated'
+                          ? 'Published' 
+                          : badge.status === 'Submitted to CO' 
+                            ? 'CO Review' 
+                            : 'Pending'}
                       </span>
                     </div>
                   </div>
@@ -298,9 +300,9 @@ export default function MyBadgeWallet() {
                           id: badge.id,
                           name: matchedTemplate.badgeName,
                           learnerName: badge.learnerName || user?.displayName || "Learner Name",
-                          issueDate: formatDate(badge.issueDate),
-                          validUntil: formatDate(badge.validUntil),
-                          verificationId: badge.verificationId || (badge as any).certificationId || "PENDING",
+                          issueDate: formatDate(badge.issueDate || badge.dateIssued),
+                          validUntil: formatDate(badge.validUntil || badge.expiryDate),
+                          verificationId: badge.verificationId || (badge as any).certificationId || badge.badgeId || badge.id || "PENDING",
                           imageUrl: matchedTemplate.imageUrl || "",
                           level: badge.badgeType || matchedTemplate.badgeType,
                           qualificationTitle:
@@ -322,45 +324,63 @@ export default function MyBadgeWallet() {
                   <h3 className="font-bold text-slate-900 mb-1 group-hover:text-blue-600 transition-colors line-clamp-2 min-h-[3rem]">
                     {badge.programName || (badge as any).programTitle || (badge as any).badgeName || (badge as any).badgeTemplateName || "Unnamed Badge"}
                   </h3>
-                <p className="text-[10px] text-slate-500 mb-4 font-bold uppercase tracking-widest bg-slate-100 w-fit px-2 py-0.5 rounded">
-                  {badge.badgeType}
-                </p>
-                
-                <div className="space-y-2 pt-2 border-t border-slate-100">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400 flex items-center gap-1.5">
-                      <Calendar className="h-3 w-3" /> Status
-                    </span>
-                    <span className="text-slate-700 font-medium truncate max-w-[120px]">{badge.status === 'Approved' ? 'Active' : badge.status}</span>
+                  <p className="text-[10px] text-slate-500 mb-4 font-bold uppercase tracking-widest bg-slate-100 w-fit px-2 py-0.5 rounded">
+                    {badge.badgeType}
+                  </p>
+                  
+                  <div className="space-y-2 pt-2 border-t border-slate-100">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400 flex items-center gap-1.5">
+                        <ShieldCheck className="h-3 w-3" /> Official Badge ID
+                      </span>
+                      <span className="text-slate-700 font-mono bg-slate-50 px-1 rounded select-all">{badge.badgeId || 'PENDING'}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400">Issue Date</span>
+                      <span className="text-slate-700 font-medium">{formatDate(badge.issueDate || badge.dateIssued || badge.submittedAt)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400">Expiry Date</span>
+                      <span className="text-slate-700 font-medium">{badge.expiryDate || badge.validUntil ? formatDate(badge.expiryDate || badge.validUntil) : 'None'}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400">District Office</span>
+                      <span className="text-slate-700 font-medium truncate max-w-[150px]">{badge.districtOfficeName || 'District Office'}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400 flex items-center gap-1.5">
+                        <Calendar className="h-3 w-3" /> Status
+                      </span>
+                      <span className={`font-bold text-[10px] uppercase tracking-wider ${
+                        ['active', 'approved', 'published', 'earned', 'badge id generated'].includes((badge.status || 'Active').toLowerCase())
+                          ? 'text-emerald-600'
+                          : 'text-amber-500'
+                      }`}>
+                        {['active', 'approved', 'published', 'earned', 'badge id generated'].includes((badge.status || 'Active').toLowerCase()) ? 'Active' : (badge.status || 'Active')}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400 flex items-center gap-1.5">
-                      <ShieldCheck className="h-3 w-3" /> Badge ID
-                    </span>
-                    <span className="text-slate-700 font-mono bg-slate-50 px-1 rounded">{badge.verificationId || (badge as any).certificationId || 'PENDING'}</span>
-                  </div>
+                </CardContent>
+                <div className="px-6 py-4 bg-slate-50/50 border-t border-slate-100 flex gap-2">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="flex-1 text-xs hover:bg-white hover:text-blue-600"
+                    onClick={() => setSelectedMetadataBadge(badge)}
+                  >
+                    Metadata
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    className="flex-1 text-xs bg-blue-600 hover:bg-blue-700"
+                    onClick={() => setSelectedShareBadge(badge)}
+                  >
+                    <ExternalLink className="h-3 w-3 mr-1.5" /> Share
+                  </Button>
                 </div>
-              </CardContent>
-              <div className="px-6 py-4 bg-slate-50/50 border-t border-slate-100 flex gap-2">
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="flex-1 text-xs hover:bg-white hover:text-blue-600"
-                  onClick={() => setSelectedMetadataBadge(badge)}
-                >
-                  Metadata
-                </Button>
-                <Button 
-                  size="sm" 
-                  className="flex-1 text-xs bg-blue-600 hover:bg-blue-700"
-                  onClick={() => setSelectedShareBadge(badge)}
-                >
-                  <ExternalLink className="h-3 w-3 mr-1.5" /> Share
-                </Button>
-              </div>
-            </Card>
-          );
-        })
+              </Card>
+            );
+          })
         ) : (
           <div className="col-span-full py-12 text-center">
             <Award className="h-12 w-12 text-slate-200 mx-auto mb-4" />
@@ -385,7 +405,7 @@ export default function MyBadgeWallet() {
 
           {selectedShareBadge && (() => {
             const vId = selectedShareBadge.verificationId || selectedShareBadge.certificationId || selectedShareBadge.badgeId || selectedShareBadge.id;
-            const verificationUrl = `${window.location.origin}/verify/${vId}`;
+            const verificationUrl = `${window.location.origin}/#/verify/${vId}`;
             return (
               <div className="space-y-6 py-4 flex flex-col items-center justify-center">
                 {/* QR Code Container */}
@@ -428,7 +448,7 @@ export default function MyBadgeWallet() {
                         ? 'bg-amber-50 text-amber-700 border border-amber-200' 
                         : 'bg-rose-50 text-rose-700 border border-rose-200'
                     }`}>
-                      {selectedShareBadge.status === 'Approved' ? 'Active' : (selectedShareBadge.status || 'Active')}
+                      {['active', 'approved', 'published', 'earned', 'badge id generated'].includes((selectedShareBadge.status || 'Active').toLowerCase()) ? 'Active' : (selectedShareBadge.status || 'Active')}
                     </span>
                   </div>
                 </div>
@@ -468,14 +488,14 @@ export default function MyBadgeWallet() {
 
       {/* Metadata Dialog */}
       <Dialog open={!!selectedMetadataBadge} onOpenChange={() => setSelectedMetadataBadge(null)}>
-        <DialogContent className="sm:max-w-[500px] border-slate-200">
+        <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto border-slate-200">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-slate-900">
               <Database className="h-5 w-5 text-blue-600" />
               Credential Metadata Payload
             </DialogTitle>
             <DialogDescription>
-              Cryptographically signed metadata envelope for this digital badge template.
+              Cryptographically signed metadata envelope and verification details for this digital badge.
             </DialogDescription>
           </DialogHeader>
 
@@ -484,34 +504,49 @@ export default function MyBadgeWallet() {
               (template) => template.id === (selectedMetadataBadge.badgeTemplateId || selectedMetadataBadge.badgeId)
             );
             const learnerName = selectedMetadataBadge.learnerName || user?.displayName || "Learner Name";
-            const tcName = selectedMetadataBadge.trainingCenterName || selectedMetadataBadge.issuer || selectedMetadataBadge.trainingCenter || selectedMetadataBadge.issuerName || "TESDA Training Center - Central Manila";
+            const tcName = selectedMetadataBadge.trainingCenterName || selectedMetadataBadge.issuer || selectedMetadataBadge.issuerName || "TESDA Training Center";
             const vId = selectedMetadataBadge.verificationId || selectedMetadataBadge.certificationId || selectedMetadataBadge.badgeId || selectedMetadataBadge.id || "PENDING";
-            
+            const verificationUrl = `${window.location.origin}/#/verify/${vId}`;
+            const criteria = selectedMetadataBadge.criteria || matchedTemplate?.criteria || "No standard criteria specified.";
+            const evidence = selectedMetadataBadge.evidenceUrl || "";
+
             return (
-              <div className="space-y-4 py-4">
-                {/* Section 1: Learner Credentials */}
+              <div className="space-y-4 py-4 text-slate-800">
+                {/* QR Code section */}
+                <div className="flex flex-col items-center justify-center p-4 bg-slate-50 rounded-xl border border-slate-100">
+                  <QRCode 
+                    value={verificationUrl} 
+                    size={140}
+                  />
+                  <span className="text-[10px] text-slate-400 uppercase tracking-widest font-mono mt-2">Verification QR Code</span>
+                  <a href={verificationUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1 mt-1">
+                    {verificationUrl.slice(0, 45)}... <ExternalLink className="h-3 w-3" />
+                  </a>
+                </div>
+
+                {/* Recipient info */}
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-3">
                   <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-mono">
                     Learner Information (Recipient)
                   </h4>
                   <div className="space-y-2.5">
-                    <div className="flex items-start gap-2.5">
+                    <div className="flex items-start gap-2.5 text-sm">
                       <div className="p-1.5 bg-blue-50 text-blue-600 rounded-md mt-0.5 shrink-0">
                         <User className="h-4 w-4" />
                       </div>
                       <div>
                         <span className="text-[10px] text-slate-400 block font-medium leading-none mb-1">Full Name</span>
-                        <span className="text-sm font-semibold text-slate-800">{learnerName}</span>
+                        <span className="font-semibold text-slate-800">{learnerName}</span>
                       </div>
                     </div>
                     
-                    <div className="flex items-start gap-2.5">
+                    <div className="flex items-start gap-2.5 text-sm">
                       <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-md mt-0.5 shrink-0">
                         <Building className="h-4 w-4" />
                       </div>
                       <div>
                         <span className="text-[10px] text-slate-400 block font-medium leading-none mb-1">Training Center / Institution</span>
-                        <span className="text-sm font-semibold text-slate-800 leading-tight">
+                        <span className="font-semibold text-slate-800 leading-tight">
                           {tcName}
                         </span>
                       </div>
@@ -519,7 +554,38 @@ export default function MyBadgeWallet() {
                   </div>
                 </div>
 
-                {/* Section 2: Credential Taxonomy */}
+                {/* Scope & Criteria */}
+                <div className="p-4 rounded-xl border border-slate-100 space-y-3">
+                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-mono">
+                    Scope, Criteria & Evidence
+                  </h4>
+                  <div className="space-y-3 text-xs">
+                    <div>
+                      <span className="text-slate-400 block font-semibold mb-1">Qualified Title</span>
+                      <span className="text-slate-800 font-medium">
+                        {selectedMetadataBadge.programName || selectedMetadataBadge.programTitle || selectedMetadataBadge.badgeName || "TESDA Credential"}
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-slate-400 block font-semibold mb-1">Earning Criteria</span>
+                      <p className="text-slate-600 leading-relaxed bg-slate-50 p-2.5 rounded border border-slate-100 italic">
+                        {criteria}
+                      </p>
+                    </div>
+
+                    {evidence && (
+                      <div>
+                        <span className="text-slate-400 block font-semibold mb-1">Evidence URL Summary</span>
+                        <a href={evidence} target="_blank" referrerPolicy="no-referrer" rel="noopener noreferrer" className="text-blue-600 font-mono text-[11px] hover:underline flex items-center gap-1">
+                          {evidence} <ExternalLink className="h-3 w-3" />
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Taxonomy details */}
                 <div className="p-4 rounded-xl border border-slate-100 space-y-3">
                   <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-mono">
                     Credential Scope & Taxonomy
@@ -528,64 +594,29 @@ export default function MyBadgeWallet() {
                     <div>
                       <span className="text-slate-400 block pb-1">Badge Level</span>
                       <span className="font-bold text-slate-700 capitalize bg-slate-100 px-2 py-0.5 rounded w-fit text-[10px]">
-                        {selectedMetadataBadge.badgeType || (matchedTemplate ? matchedTemplate.badgeType : "N/A")}
+                        {selectedMetadataBadge.badgeType || "N/A"}
                       </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block pb-1">Official Registry Badge ID</span>
+                      <span className="font-mono font-bold text-slate-700 select-all md:text-xs text-[11px]">{selectedMetadataBadge.badgeId || vId}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 block pb-1">Registry Code</span>
                       <span className="font-mono font-bold text-slate-700 select-all">{vId}</span>
                     </div>
-                    <div className="col-span-2">
-                      <span className="text-slate-400 block pb-1">Qualification Title</span>
-                      <span className="font-semibold text-slate-800 line-clamp-2">
-                        {selectedMetadataBadge.programName ||
-                          selectedMetadataBadge.programTitle ||
-                          (matchedTemplate ? matchedTemplate.qualificationName : "") ||
-                          selectedMetadataBadge.qualificationName ||
-                          selectedMetadataBadge.badgeName ||
-                          selectedMetadataBadge.badgeTemplateName || 
-                          "N/A"}
-                      </span>
-                    </div>
-                    {matchedTemplate?.qualificationCode && (
-                      <div>
-                        <span className="text-slate-400 block pb-1">Qualification Code</span>
-                        <span className="font-mono text-slate-700">{matchedTemplate.qualificationCode}</span>
-                      </div>
-                    )}
                     <div>
-                      <span className="text-slate-400 block pb-1">Status</span>
-                      <span className={`font-bold rounded-full capitalize ${
-                        ["active", "approved", "published", "earned", "badge id generated"].includes((selectedMetadataBadge.status || "Active").toLowerCase())
-                          ? "text-emerald-700"
-                          : "text-rose-700"
-                      }`}>
-                        {selectedMetadataBadge.status === 'Approved' ? 'Active' : (selectedMetadataBadge.status || "Active")}
-                      </span>
+                      <span className="text-slate-400 block pb-1">District Office</span>
+                      <span className="font-semibold text-slate-800">{selectedMetadataBadge.districtOfficeName || 'District Office'}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 block pb-1">Issue Date</span>
-                      <span className="text-slate-700 font-medium">{formatDate(selectedMetadataBadge.issueDate)}</span>
+                      <span className="text-slate-700 font-medium">{formatDate(selectedMetadataBadge.issueDate || selectedMetadataBadge.dateIssued)}</span>
                     </div>
-                    {selectedMetadataBadge.validUntil && (
-                      <div>
-                        <span className="text-slate-400 block pb-1">Valid Until</span>
-                        <span className="text-slate-700 font-medium">{formatDate(selectedMetadataBadge.validUntil)}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Section 3: Technical Specifications */}
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-2 text-xs">
-                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-mono">
-                    Standards-LD Schema Alignment
-                  </h4>
-                  <div className="font-mono text-[10px] text-slate-500 space-y-1 bg-white p-2.5 rounded border border-slate-100 max-h-[100px] overflow-y-auto">
-                    <div>"@context": "https://w3id.org/openbadges/v2"</div>
-                    <div>"type": "Assertion"</div>
-                    <div>"recipient": "urn:sha256:{selectedMetadataBadge.learnerEmail ? '...' + selectedMetadataBadge.learnerEmail.slice(0, 5) : 'anonymous'}"</div>
-                    <div>"verification": "SignedAssertion"</div>
+                    <div>
+                      <span className="text-slate-400 block pb-1">Expiry Date</span>
+                      <span className="text-slate-700 font-medium">{selectedMetadataBadge.expiryDate || selectedMetadataBadge.validUntil ? formatDate(selectedMetadataBadge.expiryDate || selectedMetadataBadge.validUntil) : 'None'}</span>
+                    </div>
                   </div>
                 </div>
               </div>

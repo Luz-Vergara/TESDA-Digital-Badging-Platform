@@ -9,6 +9,7 @@ import {
   getDoc,
   getDocs,
   updateDoc,
+  setDoc,
   doc,
   serverTimestamp 
 } from 'firebase/firestore';
@@ -115,12 +116,8 @@ export default function AvailablePrograms() {
         }
       }
 
-      // 2. Check if a learner record already exists for this user email, if so update/connect it, else create it
-      const learnersRef = collection(db, 'learners');
-      const qLearner = query(learnersRef, where('email', '==', user.email));
-      const learnerSnap = await getDocs(qLearner);
-      
-      let learnerId = '';
+      // 2. Clear learnerId and build payload using user.uid for consistent lookup
+      const learnerId = user.uid;
       const nameParts = (userProfile.name || user.displayName || 'Learner').split(' ');
       const firstName = nameParts[0] || 'Learner';
       const lastName = nameParts.slice(1).join(' ') || 'User';
@@ -129,6 +126,7 @@ export default function AvailablePrograms() {
         firstName: firstName,
         lastName: lastName,
         email: user.email || '',
+        authUid: user.uid,
         contactNumber: userProfile.contactNumber || '',
         qualification: selectedProgram.programTitle || '',
         trainingCenterId: trainingCenterOrgId || selectedProgram.trainingCenterId,
@@ -144,19 +142,11 @@ export default function AvailablePrograms() {
         updatedAt: serverTimestamp()
       };
 
-      if (!learnerSnap.empty) {
-        // Update existing learner record
-        const learnerDoc = learnerSnap.docs[0];
-        learnerId = learnerDoc.id;
-        await updateDoc(doc(db, 'learners', learnerId), learnerPayload);
-      } else {
-        // Create new learner record
-        const newLearnerDoc = await addDoc(collection(db, 'learners'), {
-          ...learnerPayload,
-          createdAt: serverTimestamp()
-        });
-        learnerId = newLearnerDoc.id;
-      }
+      // Use setDoc with merge: true to avoid duplication and use user.uid as Document ID
+      await setDoc(doc(db, 'learners', learnerId), {
+        ...learnerPayload,
+        createdAt: serverTimestamp()
+      }, { merge: true });
 
       // 3. Create the enrollment payload with complete associations
       const payload: Partial<Enrollment> & { 
@@ -168,6 +158,7 @@ export default function AvailablePrograms() {
         organizationName?: string;
         districtOfficeId?: string;
         districtOfficeName?: string;
+        badgeRequestStatus?: string;
       } = {
         learnerId: learnerId,
         learnerName: userProfile.name || `${firstName} ${lastName}`,
@@ -185,6 +176,7 @@ export default function AvailablePrograms() {
         districtOfficeName: assignedDistrictName,
         enrollmentStatus: 'Applied',
         completionStatus: 'Not Started',
+        badgeRequestStatus: 'Not Requested',
         dateApplied: serverTimestamp() as any,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()

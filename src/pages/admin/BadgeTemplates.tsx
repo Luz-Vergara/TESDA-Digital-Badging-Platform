@@ -235,6 +235,8 @@ export default function BadgeTemplates() {
     hierarchyVisible: true,
     status: 'Approved' as BadgeTemplate['status'],
     imageUrl: '',
+    badgeIdPrefix: '',
+    issuingSeries: 'TESDA',
     templateConfig: JSON.stringify({
       name: { x: 50, y: 45, fontSize: "1.45rem", color: "#111827", enabled: true },
       qualificationTitle: { x: 50, y: 58, fontSize: "0.95rem", color: "#111827", enabled: true },
@@ -271,7 +273,7 @@ export default function BadgeTemplates() {
     const t = templates.find(doc => doc.id === designerTemplateId);
     if (t) {
       setDesignerImgUrl(t.imageUrl || '');
-      setTestTitle(t.qualificationName || t.badgeName || 'Determine Traditional Key Poses');
+      setTestTitle(t.badgeName || t.qualificationName || 'Determine Traditional Key Poses');
       if (t.templateConfig && typeof t.templateConfig === 'object') {
         setDesignerConfig(t.templateConfig);
       } else {
@@ -471,6 +473,8 @@ export default function BadgeTemplates() {
       hierarchyVisible: true,
       status: 'Approved',
       imageUrl: '',
+      badgeIdPrefix: '',
+      issuingSeries: 'TESDA',
       templateConfig: JSON.stringify({
         name: { x: 50, y: 45, fontSize: "1.45rem", color: "#111827", enabled: true },
         qualificationTitle: { x: 50, y: 58, fontSize: "0.95rem", color: "#111827", enabled: true },
@@ -504,6 +508,8 @@ export default function BadgeTemplates() {
       hierarchyVisible: template.hierarchyVisible !== undefined ? template.hierarchyVisible : true,
       status: template.status,
       imageUrl: template.imageUrl || '',
+      badgeIdPrefix: template.badgeIdPrefix || '',
+      issuingSeries: template.issuingSeries || 'TESDA',
       templateConfig: template.templateConfig ? JSON.stringify(template.templateConfig, null, 2) : JSON.stringify({
         name: { x: 50, y: 45, fontSize: "1.45rem", color: "#111827", enabled: true },
         qualificationTitle: { x: 50, y: 58, fontSize: "0.95rem", color: "#111827", enabled: true },
@@ -1338,6 +1344,30 @@ export default function BadgeTemplates() {
                   value={formData.qualificationCode}
                   onChange={(e) => setFormData(prev => ({ ...prev, qualificationCode: e.target.value }))}
                   required
+                  className="text-xs"
+                />
+              </div>
+
+              {/* Badge ID Prefix */}
+              <div className="space-y-1.5">
+                <Label htmlFor="badgeIdPrefix" className="text-xs font-semibold text-slate-700">Badge ID Prefix (Optional)</Label>
+                <Input
+                  id="badgeIdPrefix"
+                  placeholder="e.g. CSSNCII-PROF (leave empty for auto)"
+                  value={formData.badgeIdPrefix}
+                  onChange={(e) => setFormData(prev => ({ ...prev, badgeIdPrefix: e.target.value }))}
+                  className="text-xs"
+                />
+              </div>
+
+              {/* Issuing Series */}
+              <div className="space-y-1.5">
+                <Label htmlFor="issuingSeries" className="text-xs font-semibold text-slate-700">Issuing Series</Label>
+                <Input
+                  id="issuingSeries"
+                  placeholder="e.g. TESDA"
+                  value={formData.issuingSeries}
+                  onChange={(e) => setFormData(prev => ({ ...prev, issuingSeries: e.target.value }))}
                   className="text-xs"
                 />
               </div>

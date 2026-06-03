@@ -39,7 +39,8 @@ export default function ApprovalQueue() {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
-    if (!isAuthReady || !user || !userProfile?.organizationId) {
+    const districtId = userProfile?.organizationId || userProfile?.assignedDistrictId;
+    if (!isAuthReady || !user || !districtId) {
       if (isAuthReady) setLoading(false);
       return;
     }
@@ -47,7 +48,7 @@ export default function ApprovalQueue() {
     // Badge Requests for this district
     const q = query(
       collection(db, 'badgeRequests'),
-      where('districtOfficeId', '==', userProfile.organizationId),
+      where('districtOfficeId', '==', districtId),
       where('status', '==', 'Pending Review'),
       orderBy('submittedAt', 'desc')
     );

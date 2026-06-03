@@ -25,9 +25,10 @@ import {
   Users
 } from 'lucide-react';
 import { BadgeRequest, ProgramOffering, Learner, BadgeTemplate, NewIssuedBadge } from '@/src/types';
-import { doc, updateDoc, serverTimestamp, addDoc, collection, getDoc, writeBatch } from 'firebase/firestore';
+import { doc, updateDoc, serverTimestamp, addDoc, collection, getDoc, getDocs, query, where, writeBatch } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
+import { generateOfficialBadgeId } from '@/src/lib/badge-utils';
 
 interface RequestDetailsModalProps {
   request: BadgeRequest | null;
@@ -41,6 +42,7 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [offering, setOffering] = useState<ProgramOffering | null>(null);
+  const [template, setTemplate] = useState<BadgeTemplate | null>(null);
   const [learners, setLearners] = useState<Learner[]>([]);
 
   useEffect(() => {
@@ -49,7 +51,20 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
     const fetchData = async () => {
       try {
         const offDoc = await getDoc(doc(db, 'programOfferings', request.programOfferingId));
-        if (offDoc.exists()) setOffering(offDoc.data() as ProgramOffering);
+        let resolvedOffering: ProgramOffering | null = null;
+        if (offDoc.exists()) {
+          const offData = offDoc.data() as ProgramOffering;
+          setOffering(offData);
+          resolvedOffering = offData;
+        }
+
+        const templateId = request.badgeTemplateId || resolvedOffering?.badgeTemplateId;
+        if (templateId) {
+          const tempDoc = await getDoc(doc(db, 'badgeTemplates', templateId));
+          if (tempDoc.exists()) {
+            setTemplate({ id: tempDoc.id, ...tempDoc.data() } as BadgeTemplate);
+          }
+        }
 
         const learnerDocs = await Promise.all(
           request.learnerIds.map(id => getDoc(doc(db, 'learners', id)))
@@ -77,97 +92,142 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
   };
 
   const handleApprove = async () => {
-    if (!user || !offering) return;
+    if (!user) return;
     setIsSubmitting(true);
     const batch = writeBatch(db);
 
     try {
-      let firstVerificationId = '';
-      let firstBadgeId = '';
+      const issuedBadgeSummary = [];
+      const year = new Date().getFullYear();
+      const districtId = request.districtOfficeId || userProfile?.organizationId || userProfile?.assignedDistrictId || 'demo-district-office';
 
-      // 1. Create IssuedBadge for each learner
+      // Determine template prefix per specifications (Rule B)
+      let prefix = template?.badgeIdPrefix || '';
+      if (!prefix) {
+        const qCode = template?.qualificationCode || request.templateDetails?.qualificationCode || (offering && offering.qualificationCode) || "QUAL";
+        const bType = template?.badgeType || request.badgeType || "PROF";
+        prefix = `${qCode}-${bType}`.toUpperCase();
+      }
+      // Clean prefix to remove non-alphanumeric symbols except dash (Rule 13)
+      prefix = prefix.toUpperCase().replace(/[^A-Z0-9-]/g, '');
+
+      // 1. Create IssuedBadge for each learner sequentially via Firestore transaction counter inside generateOfficialBadgeId
       for (const learner of learners) {
         const verificationId = generateVerificationId();
-        const badgeId = generateBadgeId(request.badgeType);
-        const verificationUrl = `${window.location.origin}/verify/${verificationId}`;
+        const badgeId = await generateOfficialBadgeId(year, districtId, template?.id || request.badgeTemplateId, prefix);
+        const verificationUrl = `${window.location.origin}/#/verify/${verificationId}`;
         const qrPayload = verificationUrl;
-        
-        if (!firstVerificationId) {
-          firstVerificationId = verificationId;
-          firstBadgeId = badgeId;
-        }
 
         const issuedBadgeRef = doc(collection(db, 'issuedBadges'));
-        
+
+        let expiryDate = null;
+        // Check validityMonths from template, default to 36 months if not specified
+        const validityMonths = template?.validityMonths || (request.templateDetails as any)?.validityMonths || 36;
+        const expMs = Date.now() + (Number(validityMonths) * 30 * 24 * 60 * 60 * 1000);
+        expiryDate = new Date(expMs);
+
         const badgeData: any = {
+          badgeId,
           verificationId,
-          badgeId, // Functional Badge ID
-          badgeTemplateId: request.badgeTemplateId,
-          badgeTemplateName: (request as any).badgeTemplateName || request.templateDetails?.badgeName || offering.badgeTemplateName || offering.programTitle,
+          badgeTemplateId: request.badgeTemplateId || template?.id || '',
+          badgeTemplateName: (request as any).badgeTemplateName || request.templateDetails?.badgeName || template?.badgeName || (offering && offering.badgeTemplateName) || (offering && offering.programTitle) || '',
           badgeRequestId: request.id,
+          requestNumber: request.requestNumber || '',
           programOfferingId: request.programOfferingId || '',
-          programTitle: (request as any).programTitle || offering.programTitle,
-          badgeType: request.badgeType,
+          programBatchId: request.programBatchId || '',
+          programTitle: (request as any).programTitle || (offering && offering.programTitle) || template?.badgeName || '',
+          badgeType: request.badgeType || template?.badgeType || 'Proficient',
           learnerId: learner.id,
           learnerName: `${learner.firstName} ${learner.lastName}`,
           learnerEmail: learner.email,
-          trainingCenterId: request.trainingCenterId || '',
-          trainingCenterName: offering.trainingCenterName || (request as any).trainingCenterName,
-          districtOfficeId: request.districtOfficeId || '',
+          trainingCenterId: request.trainingCenterId || (offering && offering.trainingCenterId) || '',
+          trainingCenterName: request.trainingCenterName || (offering && offering.trainingCenterName) || '',
+          districtOfficeId: districtId,
+          districtOfficeName: userProfile?.office || 'District Office',
           issueDate: serverTimestamp() as any,
+          dateIssued: serverTimestamp() as any,
+          validUntil: expiryDate,
+          expiryDate: expiryDate,
           status: 'Active',
           publishedToLearner: true,
           evidenceUrl: request.evidenceUrl || '',
-          qualificationName: (request as any).qualificationName || request.templateDetails?.qualificationName || offering.qualificationName || offering.programTitle,
-          qualificationCode: (request as any).qualificationCode || request.templateDetails?.qualificationCode || offering.qualificationCode,
-          credentialLevel: request.templateDetails?.credentialLevel,
-          criteria: request.templateDetails?.criteria,
-          alignment: request.templateDetails?.alignment,
-          description: request.templateDetails?.description,
-          ucTitle: (request as any).badgeTemplateName || request.templateDetails?.badgeName || offering.programTitle,
+          qualificationName: (request as any).qualificationName || request.templateDetails?.qualificationName || template?.qualificationName || (offering && offering.qualificationName) || '',
+          qualificationCode: (request as any).qualificationCode || request.templateDetails?.qualificationCode || template?.qualificationCode || (offering && offering.qualificationCode) || '',
+          credentialLevel: request.templateDetails?.credentialLevel || template?.credentialLevel || 'Unit of Competency',
+          criteria: request.templateDetails?.criteria || template?.criteria || '',
+          alignment: request.templateDetails?.alignment || template?.alignment || '',
+          description: request.templateDetails?.description || template?.description || '',
+          ucTitle: (request as any).badgeTemplateName || request.templateDetails?.badgeName || template?.badgeName || (offering && offering.programTitle) || '',
           verificationUrl,
           qrPayload,
           isDemo: (request as any).isDemo || false,
           metadata: {
             batchId: request.programBatchId,
-            programTitle: (request as any).programTitle || offering.programTitle,
-            qualificationCode: (request as any).qualificationCode || offering.qualificationCode,
+            programTitle: (request as any).programTitle || (offering && offering.programTitle) || '',
+            qualificationCode: (request as any).qualificationCode || (offering && offering.qualificationCode) || '',
             requestType: request.requestType
-          }
-        };
-        
-        batch.set(issuedBadgeRef, {
-          ...badgeData,
+          },
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
-        });
+        };
 
-        // Update learner badge status - if it exists on learner doc
+        batch.set(issuedBadgeRef, badgeData);
+
+        // Update learner badge status
         const learnerRef = doc(db, 'learners', learner.id);
         batch.update(learnerRef, {
           badgeStatus: 'Active',
           updatedAt: serverTimestamp()
         });
+
+        // Add to the summary array (Rule F and Goal 9)
+        issuedBadgeSummary.push({
+          learnerId: learner.id,
+          learnerName: `${learner.firstName} ${learner.lastName}`,
+          learnerEmail: learner.email || '',
+          badgeId,
+          verificationId,
+          issuedBadgeId: issuedBadgeRef.id
+        });
       }
 
-      // 2. Update Badge Request status
+      // 2. Fetch and update matching enrollments for these approved learners (Rule G)
+      const enrollmentsRef = collection(db, 'enrollments');
+      const qEnr = query(
+        enrollmentsRef,
+        where('programOfferingId', '==', request.programOfferingId),
+        where('learnerId', 'in', request.learnerIds)
+      );
+      const enrSnap = await getDocs(qEnr);
+      enrSnap.docs.forEach(enrDoc => {
+        batch.update(enrDoc.ref, {
+          badgeRequestStatus: 'Approved',
+          enrollmentStatus: 'Completed',
+          dateCompleted: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      });
+
+      // 3. Update Badge Request status (Rule F and Goal 9)
       const requestRef = doc(db, 'badgeRequests', request.id);
       batch.update(requestRef, {
         status: 'Approved',
+        badgeIdStatus: 'Issued',
         approvedBy: user.uid,
         approvedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-        verificationId: firstVerificationId,
-        badgeId: firstBadgeId
+        issuedBadgeSummary,
+        verificationId: issuedBadgeSummary[0]?.verificationId || '',
+        badgeId: issuedBadgeSummary[0]?.badgeId || ''
       });
 
-      // 3. Audit Log
+      // 4. Audit Log
       const auditRef = doc(collection(db, 'auditLogs'));
       batch.set(auditRef, {
         action: `Approved Badge Request: ${request.id}`,
         userName: userProfile?.name || 'District Staff',
         timestamp: serverTimestamp(),
-        details: `Issued ${learners.length} badges for ${offering.programTitle}`
+        details: `Issued ${learners.length} badges for ${(offering && offering.programTitle) || request.templateDetails?.badgeName || 'program'}`
       });
 
       await batch.commit();
@@ -182,8 +242,11 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
   const handleReject = async () => {
     if (!user || !rejectionReason) return;
     setIsSubmitting(true);
+    const batch = writeBatch(db);
     try {
-      await updateDoc(doc(db, 'badgeRequests', request.id), {
+      // 1. Update Badge Request status and badgeIdStatus (Rule 15 rejection)
+      const requestRef = doc(db, 'badgeRequests', request.id);
+      batch.update(requestRef, {
         status: 'Rejected',
         rejectionReason,
         rejectedBy: user.uid,
@@ -191,6 +254,31 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
         updatedAt: serverTimestamp()
       });
 
+      // 2. Fetch and update matching enrollments for these rejected learners
+      const enrollmentsRef = collection(db, 'enrollments');
+      const qEnr = query(
+        enrollmentsRef,
+        where('programOfferingId', '==', request.programOfferingId),
+        where('learnerId', 'in', request.learnerIds)
+      );
+      const enrSnap = await getDocs(qEnr);
+      enrSnap.docs.forEach(enrDoc => {
+        batch.update(enrDoc.ref, {
+          badgeRequestStatus: 'Rejected',
+          updatedAt: serverTimestamp()
+        });
+      });
+
+      // 3. Audit Log
+      const auditRef = doc(collection(db, 'auditLogs'));
+      batch.set(auditRef, {
+        action: `Rejected Badge Request: ${request.id}`,
+        userName: userProfile?.name || 'District Staff',
+        timestamp: serverTimestamp(),
+        details: `Reason: ${rejectionReason}`
+      });
+
+      await batch.commit();
       onClose();
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, 'badgeRequests');

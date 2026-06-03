@@ -1,4 +1,6 @@
 import { BadgeMetadata } from '@/src/types';
+import { db } from './firebase';
+import { runTransaction, doc, serverTimestamp } from 'firebase/firestore';
 
 export const getBadgeColor = (type: string) => {
   switch (type) {
@@ -31,3 +33,86 @@ export const getStatusColor = (status: string) => {
   
   return 'bg-slate-400';
 };
+
+export const generateRequestNumber = async (trainingCenterId: string): Promise<string> => {
+  const year = new Date().getFullYear();
+  const tcClean = trainingCenterId.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) || "TC";
+  const docId = `${year}_${tcClean}`;
+  const counterRef = doc(db, 'requestCounters', docId);
+
+  try {
+    const finalSequence = await runTransaction(db, async (transaction) => {
+      const counterDoc = await transaction.get(counterRef);
+      let nextNumber = 1;
+
+      if (counterDoc.exists()) {
+        const data = counterDoc.data();
+        nextNumber = (data.lastNumber || 0) + 1;
+        transaction.update(counterRef, {
+          lastNumber: nextNumber,
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        transaction.set(counterRef, {
+          year,
+          trainingCenterId,
+          lastNumber: 1,
+          updatedAt: serverTimestamp()
+        });
+      }
+      return nextNumber;
+    });
+
+    const paddedSequence = String(finalSequence).padStart(5, '0');
+    return `BR-${year}-${tcClean}-${paddedSequence}`;
+  } catch (err) {
+    console.error("Failed to generate request number via transaction:", err);
+    const rand = Math.floor(10000 + Math.random() * 90000);
+    return `BR-${year}-${tcClean}-${rand}`;
+  }
+};
+
+export const generateOfficialBadgeId = async (
+  year: number,
+  districtOfficeId: string,
+  badgeTemplateId: string,
+  prefix: string
+): Promise<string> => {
+  const cleanDistrict = districtOfficeId.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15) || "NCR";
+  const docId = `${year}_${cleanDistrict}_${badgeTemplateId}`;
+  const counterRef = doc(db, 'badgeCounters', docId);
+
+  try {
+    const finalSequence = await runTransaction(db, async (transaction) => {
+      const counterDoc = await transaction.get(counterRef);
+      let nextNumber = 1;
+
+      if (counterDoc.exists()) {
+        const data = counterDoc.data();
+        nextNumber = (data.lastNumber || 0) + 1;
+        transaction.update(counterRef, {
+          lastNumber: nextNumber,
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        transaction.set(counterRef, {
+          year,
+          districtOfficeId,
+          badgeTemplateId,
+          prefix,
+          lastNumber: 1,
+          updatedAt: serverTimestamp()
+        });
+      }
+      return nextNumber;
+    });
+
+    const paddedSequence = String(finalSequence).padStart(6, '0');
+    return `TESDA-${year}-${cleanDistrict}-${prefix}-${paddedSequence}`;
+  } catch (err) {
+    console.error("Failed to generate official Badge ID via transaction:", err);
+    const rand = Math.floor(100000 + Math.random() * 900000);
+    return `TESDA-${year}-${cleanDistrict}-${prefix}-${rand}`;
+  }
+};
+

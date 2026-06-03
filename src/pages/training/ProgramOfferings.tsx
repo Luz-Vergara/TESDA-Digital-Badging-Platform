@@ -108,7 +108,7 @@ export default function ProgramOfferings() {
         badgeType: template.badgeType,
         qualificationName: template.qualificationName,
         qualificationCode: template.qualificationCode,
-        programType: template.credentialLevel === 'Unit of Competency' ? 'Unit of Competency' : 'Full Qualification',
+        programType: template.badgeType?.toLowerCase() === 'expert' ? 'Full Qualification' : (template.credentialLevel === 'Unit of Competency' ? 'Unit of Competency' : 'Full Qualification'),
         programTitle: template.badgeName // Default title to badge name
       });
     } else {
@@ -323,9 +323,12 @@ export default function ProgramOfferings() {
                 <Select value={formData.badgeTemplateId} onValueChange={handleTemplateChange}>
                   <SelectTrigger><SelectValue placeholder="Select template..." /></SelectTrigger>
                   <SelectContent>
-                    {templates.map(t => (
-                      <SelectItem key={t.id} value={t.id}>{t.badgeName} ({t.badgeType})</SelectItem>
-                    ))}
+                    {templates
+                      .filter(t => t.badgeType && ['proficient', 'expert'].includes(t.badgeType.toLowerCase()))
+                      .map(t => (
+                        <SelectItem key={t.id} value={t.id}>{t.badgeName} ({t.badgeType})</SelectItem>
+                      ))
+                    }
                   </SelectContent>
                 </Select>
               </div>

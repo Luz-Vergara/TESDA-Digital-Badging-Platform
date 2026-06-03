@@ -468,186 +468,190 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      
-      if (currentUser) {
-        const isDemo = currentUser.providerData.some(p => p.providerId === 'password') || 
-                       currentUser.email?.toLowerCase().includes('demo') ||
-                       localStorage.getItem('is_demo_user') === 'true';
+      try {
+        setUser(currentUser);
+        
+        if (currentUser) {
+          const isDemo = currentUser.providerData.some(p => p.providerId === 'password') || 
+                         currentUser.email?.toLowerCase().includes('demo') ||
+                         localStorage.getItem('is_demo_user') === 'true';
 
-        if (isDemo) {
-          localStorage.setItem('is_demo_user', 'true');
-          
-          // Force profile mapping & creation/sync
-          const userDocRef = doc(db, 'users', currentUser.uid);
-          const userDoc = await getDoc(userDocRef);
-          
-          const role = getDemoRoleByEmail(currentUser.email || '');
-          let organizationId = '';
-          let assignedDistrictId = '';
-          
-          if (role === 'TrainingCenter') {
-            organizationId = 'demo-training-center';
-            assignedDistrictId = 'demo-district-office';
-          } else if (role === 'AssessmentCenter') {
-            organizationId = 'demo-assessment-center';
-            assignedDistrictId = 'demo-district-office';
-          } else if (role === 'DistrictOffice') {
-            organizationId = 'demo-district-office';
-            assignedDistrictId = 'demo-district-office';
-          }
+          if (isDemo) {
+            localStorage.setItem('is_demo_user', 'true');
+            
+            // Force profile mapping & creation/sync
+            const userDocRef = doc(db, 'users', currentUser.uid);
+            const userDoc = await getDoc(userDocRef);
+            
+            const role = getDemoRoleByEmail(currentUser.email || '');
+            let organizationId = '';
+            let assignedDistrictId = '';
+            
+            if (role === 'TrainingCenter') {
+              organizationId = 'demo-training-center';
+              assignedDistrictId = 'demo-district-office';
+            } else if (role === 'AssessmentCenter') {
+              organizationId = 'demo-assessment-center';
+              assignedDistrictId = 'demo-district-office';
+            } else if (role === 'DistrictOffice') {
+              organizationId = 'demo-district-office';
+              assignedDistrictId = 'demo-district-office';
+            }
 
-          // Force setup of demo organization if active
-          if (organizationId) {
-            const orgDocRef = doc(db, 'organizations', organizationId);
-            const orgDoc = await getDoc(orgDocRef);
-            if (!orgDoc.exists()) {
-              await setDoc(orgDocRef, {
-                id: organizationId,
-                name: role === 'TrainingCenter' ? 'Demo Training Center - Manila' :
-                      role === 'AssessmentCenter' ? 'Demo Assessment Center - Manila' :
-                      'Demo District Office - National Capital Region',
-                type: role === 'DistrictOffice' ? 'DistrictOffice' : role,
+            // Force setup of demo organization if active
+            if (organizationId) {
+              const orgDocRef = doc(db, 'organizations', organizationId);
+              const orgDoc = await getDoc(orgDocRef);
+              if (!orgDoc.exists()) {
+                await setDoc(orgDocRef, {
+                  id: organizationId,
+                  name: role === 'TrainingCenter' ? 'Demo Training Center - Manila' :
+                        role === 'AssessmentCenter' ? 'Demo Assessment Center - Manila' :
+                        'Demo District Office - National Capital Region',
+                  type: role === 'DistrictOffice' ? 'DistrictOffice' : role,
+                  email: currentUser.email,
+                  location: 'Manila, Philippines',
+                  assignedDistrictId: assignedDistrictId || null,
+                  status: 'Active',
+                  isDemo: true,
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp()
+                });
+              }
+            }
+
+            // Make sure demo district office exists to prevent empty drop downs
+            if (assignedDistrictId) {
+              const distDocRef = doc(db, 'organizations', assignedDistrictId);
+              const distDoc = await getDoc(distDocRef);
+              if (!distDoc.exists()) {
+                await setDoc(distDocRef, {
+                  id: assignedDistrictId,
+                  name: 'Demo District Office - National Capital Region',
+                  type: 'DistrictOffice',
+                  email: 'district@demo.com',
+                  location: 'Manila, Philippines',
+                  status: 'Active',
+                  isDemo: true,
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp()
+                });
+              }
+            }
+
+            let office = '';
+            if (role === 'TrainingCenter') {
+              office = 'Demo Training Center - Manila';
+            } else if (role === 'AssessmentCenter') {
+              office = 'Demo Assessment Center - Manila';
+            } else if (role === 'DistrictOffice') {
+              office = 'Demo District Office - National Capital Region';
+            } else if (role === 'qso_admin') {
+              office = 'Central QSO';
+            } else if (role === 'co_admin') {
+              office = 'Certification Office';
+            } else if (role === 'icto_admin') {
+              office = 'ICTO Central';
+            } else if (role === 'Admin') {
+              office = 'TESDA Main';
+            }
+
+            let profile = userDoc.exists() ? userDoc.data() : null;
+            
+            const demoProfile = {
+              uid: currentUser.uid,
+              // Respect existing name if present, otherwise map from demo accounts or fallback
+              name: profile?.name || currentUser.displayName || demoAccountGroups.flatMap(g => g.accounts).find(acc => acc.email.toLowerCase() === currentUser.email?.toLowerCase())?.label || `Demo ${role === 'co_admin' ? 'Certification Officer' : role === 'qso_admin' ? 'QSO Admin' : role === 'icto_admin' ? 'ICTO Admin' : role.replace(/([A-Z])/g, ' $1').trim()}`,
+              email: currentUser.email,
+              role: role,
+              office: office || null,
+              status: 'Active',
+              isDemo: true,
+              organizationId: organizationId || null,
+              assignedDistrictId: assignedDistrictId || null,
+              createdAt: profile?.createdAt || serverTimestamp(),
+              updatedAt: serverTimestamp()
+            };
+
+            await setDoc(userDocRef, demoProfile);
+            setUserProfile(demoProfile);
+
+            // Seed standard demo templates so UI functions perfectly
+            try {
+              await seedDemoTemplatesAndData();
+              if (role === 'Learner') {
+                await seedLearnerWorkflowData(currentUser.uid, currentUser.email || '', demoProfile.name);
+              }
+            } catch (e) {
+              console.error("Error seeding demo templates:", e);
+            }
+          } else {
+            localStorage.setItem('is_demo_user', 'false');
+            
+            // Regular real user authentication profile lookup
+            const userDocRef = doc(db, 'users', currentUser.uid);
+            const userDoc = await getDoc(userDocRef);
+            
+            let profile = userDoc.exists() ? userDoc.data() : null;
+
+            const usersRef = collection(db, 'users');
+            const q = query(usersRef, where('email', '==', currentUser.email));
+            const querySnapshot = await getDocs(q);
+
+            if (!querySnapshot.empty) {
+              const adminDoc = querySnapshot.docs.find(d => d.id !== currentUser.uid) || querySnapshot.docs[0];
+              const adminData = adminDoc.data();
+
+              if (adminDoc.id !== currentUser.uid || !profile || (profile.role === 'Learner' && adminData.role !== 'Learner')) {
+                profile = {
+                  ...(profile || {}),
+                  ...adminData,
+                  uid: currentUser.uid,
+                  updatedAt: serverTimestamp()
+                };
+                await setDoc(userDocRef, profile);
+              }
+            }
+
+            if (profile) {
+              const isCenter = profile.role === 'TrainingCenter' || profile.role === 'AssessmentCenter';
+              if (isCenter && profile.organizationId) {
+                try {
+                  const orgDoc = await getDoc(doc(db, 'organizations', profile.organizationId));
+                  if (orgDoc.exists()) {
+                    const orgData = orgDoc.data();
+                    if (orgData.assignedDistrictId && profile.assignedDistrictId !== orgData.assignedDistrictId) {
+                      profile.assignedDistrictId = orgData.assignedDistrictId;
+                      await updateDoc(userDocRef, { assignedDistrictId: orgData.assignedDistrictId });
+                    }
+                  }
+                } catch (e) {
+                  console.error("Error syncing district ID:", e);
+                }
+              }
+              setUserProfile(profile);
+            } else {
+              const newProfile = {
+                uid: currentUser.uid,
+                name: currentUser.displayName || 'New Learner',
                 email: currentUser.email,
-                location: 'Manila, Philippines',
-                assignedDistrictId: assignedDistrictId || null,
-                status: 'Active',
-                isDemo: true,
+                role: 'Learner',
                 createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-              });
+              };
+              await setDoc(userDocRef, newProfile);
+              setUserProfile(newProfile);
             }
-          }
-
-          // Make sure demo district office exists to prevent empty drop downs
-          if (assignedDistrictId) {
-            const distDocRef = doc(db, 'organizations', assignedDistrictId);
-            const distDoc = await getDoc(distDocRef);
-            if (!distDoc.exists()) {
-              await setDoc(distDocRef, {
-                id: assignedDistrictId,
-                name: 'Demo District Office - National Capital Region',
-                type: 'DistrictOffice',
-                email: 'district@demo.com',
-                location: 'Manila, Philippines',
-                status: 'Active',
-                isDemo: true,
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp()
-              });
-            }
-          }
-
-          let office = '';
-          if (role === 'TrainingCenter') {
-            office = 'Demo Training Center - Manila';
-          } else if (role === 'AssessmentCenter') {
-            office = 'Demo Assessment Center - Manila';
-          } else if (role === 'DistrictOffice') {
-            office = 'Demo District Office - National Capital Region';
-          } else if (role === 'qso_admin') {
-            office = 'Central QSO';
-          } else if (role === 'co_admin') {
-            office = 'Certification Office';
-          } else if (role === 'icto_admin') {
-            office = 'ICTO Central';
-          } else if (role === 'Admin') {
-            office = 'TESDA Main';
-          }
-
-          let profile = userDoc.exists() ? userDoc.data() : null;
-          
-          const demoProfile = {
-            uid: currentUser.uid,
-            // Respect existing name if present, otherwise map from demo accounts or fallback
-            name: profile?.name || currentUser.displayName || demoAccountGroups.flatMap(g => g.accounts).find(acc => acc.email.toLowerCase() === currentUser.email?.toLowerCase())?.label || `Demo ${role === 'co_admin' ? 'Certification Officer' : role === 'qso_admin' ? 'QSO Admin' : role === 'icto_admin' ? 'ICTO Admin' : role.replace(/([A-Z])/g, ' $1').trim()}`,
-            email: currentUser.email,
-            role: role,
-            office: office || null,
-            status: 'Active',
-            isDemo: true,
-            organizationId: organizationId || null,
-            assignedDistrictId: assignedDistrictId || null,
-            createdAt: profile?.createdAt || serverTimestamp(),
-            updatedAt: serverTimestamp()
-          };
-
-          await setDoc(userDocRef, demoProfile);
-          setUserProfile(demoProfile);
-
-          // Seed standard demo templates so UI functions perfectly
-          try {
-            await seedDemoTemplatesAndData();
-            if (role === 'Learner') {
-              await seedLearnerWorkflowData(currentUser.uid, currentUser.email || '', demoProfile.name);
-            }
-          } catch (e) {
-            console.error("Error seeding demo templates:", e);
           }
         } else {
           localStorage.setItem('is_demo_user', 'false');
-          
-          // Regular real user authentication profile lookup
-          const userDocRef = doc(db, 'users', currentUser.uid);
-          const userDoc = await getDoc(userDocRef);
-          
-          let profile = userDoc.exists() ? userDoc.data() : null;
-
-          const usersRef = collection(db, 'users');
-          const q = query(usersRef, where('email', '==', currentUser.email));
-          const querySnapshot = await getDocs(q);
-
-          if (!querySnapshot.empty) {
-            const adminDoc = querySnapshot.docs.find(d => d.id !== currentUser.uid) || querySnapshot.docs[0];
-            const adminData = adminDoc.data();
-
-            if (adminDoc.id !== currentUser.uid || !profile || (profile.role === 'Learner' && adminData.role !== 'Learner')) {
-              profile = {
-                ...(profile || {}),
-                ...adminData,
-                uid: currentUser.uid,
-                updatedAt: serverTimestamp()
-              };
-              await setDoc(userDocRef, profile);
-            }
-          }
-
-          if (profile) {
-            const isCenter = profile.role === 'TrainingCenter' || profile.role === 'AssessmentCenter';
-            if (isCenter && profile.organizationId) {
-              try {
-                const orgDoc = await getDoc(doc(db, 'organizations', profile.organizationId));
-                if (orgDoc.exists()) {
-                  const orgData = orgDoc.data();
-                  if (orgData.assignedDistrictId && profile.assignedDistrictId !== orgData.assignedDistrictId) {
-                    profile.assignedDistrictId = orgData.assignedDistrictId;
-                    await updateDoc(userDocRef, { assignedDistrictId: orgData.assignedDistrictId });
-                  }
-                }
-              } catch (e) {
-                console.error("Error syncing district ID:", e);
-              }
-            }
-            setUserProfile(profile);
-          } else {
-            const newProfile = {
-              uid: currentUser.uid,
-              name: currentUser.displayName || 'New Learner',
-              email: currentUser.email,
-              role: 'Learner',
-              createdAt: serverTimestamp(),
-            };
-            await setDoc(userDocRef, newProfile);
-            setUserProfile(newProfile);
-          }
+          setUserProfile(null);
         }
-      } else {
-        localStorage.setItem('is_demo_user', 'false');
-        setUserProfile(null);
+      } catch (err) {
+        console.error("Error loading user authenticated session:", err);
+      } finally {
+        setLoading(false);
+        setIsAuthReady(true);
       }
-      
-      setLoading(false);
-      setIsAuthReady(true);
     });
 
     return () => unsubscribe();

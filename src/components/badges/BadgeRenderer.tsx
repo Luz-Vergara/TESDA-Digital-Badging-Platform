@@ -215,7 +215,7 @@ export const BadgeRenderer: React.FC<BadgeRendererProps> = ({ scale = 1, data })
           {/* QR Code Overlay (linked to verification endpoint or details) */}
           {renderQR(
             templateConfig?.qr,
-            `${window.location.origin}/verify/${finalId}`
+            `${window.location.origin}/#/verify/${finalId}`
           )}
         </div>
       </div>
@@ -291,7 +291,7 @@ export const BadgeRenderer: React.FC<BadgeRendererProps> = ({ scale = 1, data })
         <div className="flex flex-col items-center justify-center space-y-1.5 py-1">
           <div className="p-1 px-[6px] bg-slate-50 border border-slate-100 rounded-lg shadow-sm">
             <QRCodeSVG
-              value={`${window.location.origin}/verify/${finalId}`}
+              value={`${window.location.origin}/#/verify/${finalId}`}
               size={64}
             />
           </div>

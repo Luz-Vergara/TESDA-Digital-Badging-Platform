@@ -140,6 +140,7 @@ export default function UCCompletions() {
       // Update enrollment progress
       await updateDoc(doc(db, 'enrollments', enrollment.id), {
         completionStatus: 'Completed',
+        badgeRequestStatus: enrollment.badgeRequestStatus || 'Not Requested',
         updatedAt: serverTimestamp()
       });
 

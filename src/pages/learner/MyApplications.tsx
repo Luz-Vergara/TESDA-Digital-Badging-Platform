@@ -24,28 +24,59 @@ export default function MyApplications() {
     if (!user) return;
 
     const enrPath = 'enrollments';
-    const q = query(
+    const q1 = query(
       collection(db, enrPath),
-      where('learnerId', '==', user.uid),
-      where('enrollmentStatus', 'in', ['Applied', 'Rejected'])
+      where('learnerId', '==', user.uid)
+    );
+    const q2 = query(
+      collection(db, enrPath),
+      where('learnerEmail', '==', user.email || '')
     );
 
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Enrollment[];
-      setEnrollments(data);
+    let res1: Enrollment[] = [];
+    let res2: Enrollment[] = [];
+
+    const handleMerge = async () => {
+      const merged: Enrollment[] = [];
+      const addIfValid = (item: Enrollment) => {
+        if (['Applied', 'Rejected'].includes(item.enrollmentStatus) && !merged.some(m => m.id === item.id)) {
+          merged.push(item);
+        }
+      };
+      res1.forEach(addIfValid);
+      res2.forEach(addIfValid);
+      setEnrollments(merged);
       
-      if (data.length > 0) {
-        const offIds = [...new Set(data.map(d => d.programOfferingId))];
+      if (merged.length > 0) {
+        const offIds = [...new Set(merged.map(d => d.programOfferingId))];
         const offDocs = await Promise.all(offIds.map(id => getDoc(doc(db, 'programOfferings', id))));
         setOfferings(offDocs.filter(d => d.exists()).map(d => ({ id: d.id, ...d.data() })) as ProgramOffering[]);
+      } else {
+        setOfferings([]);
       }
       setLoading(false);
+    };
+
+    const unsubscribe1 = onSnapshot(q1, async (snapshot) => {
+      res1 = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Enrollment[];
+      await handleMerge();
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, enrPath);
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    const unsubscribe2 = onSnapshot(q2, async (snapshot) => {
+      res2 = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Enrollment[];
+      await handleMerge();
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, enrPath);
+      setLoading(false);
+    });
+
+    return () => {
+      unsubscribe1();
+      unsubscribe2();
+    };
   }, [user]);
 
   if (loading) return <div className="p-8 text-center text-slate-500">Loading your applications...</div>;

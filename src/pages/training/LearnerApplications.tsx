@@ -110,6 +110,7 @@ export default function LearnerApplications() {
         await updateDoc(doc(db, 'enrollments', enrollmentId), {
           enrollmentStatus: 'Enrolled',
           completionStatus: 'Not Started',
+          badgeRequestStatus: 'Not Requested',
           programBatchId: selectedBatch.id,
           dateAccepted: serverTimestamp(),
           dateEnrolled: serverTimestamp(),
@@ -122,6 +123,8 @@ export default function LearnerApplications() {
             await updateDoc(doc(db, 'learners', enr.learnerId), {
               programBatchId: selectedBatch.id,
               batchName: selectedBatch.batchName || '',
+              trainingCenterId: enr.trainingCenterId || '',
+              programOfferingId: enr.programOfferingId || '',
               status: 'Enrolled',
               updatedAt: serverTimestamp()
             });
@@ -133,6 +136,8 @@ export default function LearnerApplications() {
               await updateDoc(doc(db, 'learners', lSnap.docs[0].id), {
                 programBatchId: selectedBatch.id,
                 batchName: selectedBatch.batchName || '',
+                trainingCenterId: enr.trainingCenterId || '',
+                programOfferingId: enr.programOfferingId || '',
                 status: 'Enrolled',
                 updatedAt: serverTimestamp()
               });
@@ -145,6 +150,8 @@ export default function LearnerApplications() {
             await updateDoc(doc(db, 'learners', lSnap.docs[0].id), {
               programBatchId: selectedBatch.id,
               batchName: selectedBatch.batchName || '',
+              trainingCenterId: enr.trainingCenterId || '',
+              programOfferingId: enr.programOfferingId || '',
               status: 'Enrolled',
               updatedAt: serverTimestamp()
             });

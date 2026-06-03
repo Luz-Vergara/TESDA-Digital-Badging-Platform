@@ -57,7 +57,8 @@ export interface Learner {
   enrollmentDate: string;
   trainingCenterId: string;
   trainingCenterName: string;
-  status: 'Enrolled' | 'Completed' | 'Dropped';
+  status: 'Applied' | 'Enrolled' | 'Completed' | 'Dropped';
+  badgeStatus?: 'Active' | 'Pending' | 'None';
   createdAt: any;
 }
 
@@ -101,6 +102,8 @@ export interface BadgeTemplate {
   hierarchyVisible: boolean;
   status: 'Approved' | 'Draft' | 'Archived' | 'Active';
   imageUrl?: string;
+  badgeIdPrefix?: string;
+  issuingSeries?: string;
   templateConfig?: {
     fitMode?: 'cover' | 'contain' | 'fill';
     name?: FieldPosition;
@@ -199,6 +202,7 @@ export interface Enrollment {
   badgeTemplateId: string; // Added to carry through
   enrollmentStatus: 'Applied' | 'Accepted' | 'Enrolled' | 'Completed' | 'Dropped' | 'Withdrawn';
   completionStatus: 'Not Started' | 'In Progress' | 'Completed' | 'For Assessment';
+  badgeRequestStatus?: 'Not Requested' | 'Pending Review' | 'Approved' | 'Rejected';
   dateApplied: any;
   dateEnrolled?: any;
   dateCompleted?: any;
@@ -228,7 +232,18 @@ export interface UCCompletion {
 export interface BadgeRequest {
   id: string;
   requestType?: 'Individual' | 'Batch' | 'UC';
+  requestNumber?: string;
+  badgeIdStatus?: "Pending District Approval" | "Issued";
+  issuedBadgeSummary?: Array<{
+    learnerId: string;
+    learnerName: string;
+    learnerEmail?: string;
+    badgeId: string;
+    verificationId: string;
+    issuedBadgeId: string;
+  }>;
   trainingCenterId?: string;
+  trainingCenterName?: string;
   programOfferingId?: string;
   programBatchId?: string;
   ucCompletionId?: string;
@@ -286,6 +301,7 @@ export interface NewIssuedBadge {
   learnerEmail: string;
   badgeTemplateId: string;
   badgeRequestId: string;
+  requestNumber?: string;
   trainingCenterId: string;
   trainingCenterName?: string;
   districtOfficeId: string;
@@ -310,6 +326,8 @@ export interface NewIssuedBadge {
   verificationUrl?: string;
   qrPayload?: string;
 }
+
+export type IssuedBadge = NewIssuedBadge;
 
 export interface AssessmentRecord {
   id: string;

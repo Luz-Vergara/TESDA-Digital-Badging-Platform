@@ -16,6 +16,9 @@ export default defineConfig(({mode}) => {
         'firebase/firestore': path.resolve(__dirname, './src/lib/firestore-wrapper.ts'),
       },
     },
+    optimizeDeps: {
+      exclude: ['firebase/app', 'firebase/auth', 'firebase/firestore', '@firebase/firestore', '@firebase/app', '@firebase/auth'],
+    },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.

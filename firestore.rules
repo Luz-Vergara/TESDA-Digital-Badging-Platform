@@ -46,7 +46,10 @@ service cloud.firestore {
     
     function isDistrictMatch(districtId) {
       let path = /databases/$(database)/documents/users/$(request.auth.uid);
-      return isAdmin() || (isDistrictOffice() && exists(path) && get(path).data.get('assignedDistrictId', '') == districtId);
+      return isAdmin() || (isDistrictOffice() && exists(path) && (
+        get(path).data.get('assignedDistrictId', '') == districtId ||
+        get(path).data.get('organizationId', '') == districtId
+      ));
     }
     function isTrainingCenter() { return isAdmin() || hasRole('TrainingCenter'); }
     function isAssessmentCenter() { return isAdmin() || hasRole('AssessmentCenter'); }
@@ -117,7 +120,7 @@ service cloud.firestore {
     // ===============================================================
 
     match /users/{userId} {
-      allow get: if isSignedIn() && (isOwner(userId) || isAdmin() || isDistrictOffice() || isQSO() || isCO() || isICTO() || isTrainingCenter() || isAssessmentCenter() || isExistingDemo());
+      allow get: if true; // Allow public lookups of user profiles (e.g., student name) for badge verification
       allow list: if isSignedIn() && (isAdmin() || isDistrictOffice() || isQSO() || isCO() || isICTO() || isTrainingCenter() || isAssessmentCenter() || (resource.data.email == request.auth.token.email) || isExistingDemo());
       
       allow create: if isSignedIn() && (isOwner(userId) || isAdmin() || isTrainingCenter() || isAssessmentCenter() || isIncomingDemo());
@@ -146,13 +149,14 @@ service cloud.firestore {
 
     match /issuedBadges/{issuedBadgeId} {
       allow read: if true; // Public verification allowed
-      allow create: if isSignedIn() && (isDistrictOffice() || isAdmin() || isIncomingDemo());
-      allow update: if isAdmin() || isIncomingDemo();
+      allow create: if isSignedIn() && (isDistrictOffice() || isCO() || isQSO() || isAssessmentCenter() || isTrainingCenter() || isAdmin() || isIncomingDemo());
+      allow update: if isSignedIn() && (isDistrictOffice() || isCO() || isQSO() || isAssessmentCenter() || isTrainingCenter() || isAdmin() || isIncomingDemo());
       allow delete: if isAdmin() || isExistingDemo();
     }
 
     match /learners/{learnerId} {
-      allow read: if isSignedIn(); 
+      allow get: if true; // Allow public lookup of learner profiles for verification
+      allow list: if isSignedIn(); 
       allow write: if isTrainingCenter() || isAssessmentCenter() || isAdmin() || isIncomingDemo();
     }
 
@@ -185,25 +189,12 @@ service cloud.firestore {
     }
 
     match /badgeRequests/{requestId} {
-      allow get: if isSignedIn() && (
-        isAdmin() || 
-        (resource != null && isDistrictMatch(resource.data.get('districtOfficeId', ''))) ||
-        (resource != null && resource.data.trainingCenterId == request.auth.uid) ||
-        (resource != null && resource.data.get('learnerIds', []) != null && request.auth.uid in resource.data.learnerIds) ||
-        isExistingDemo()
-      );
+      allow get: if true; // Public individual request lookup for external QR/URL verification
       
-      allow list: if isSignedIn() && (
-        isAdmin() || 
-        isDistrictOffice() ||
-        isTrainingCenter() ||
-        isAssessmentCenter() ||
-        isQSO() ||
-        getUserData().get('isDemo', false) == true
-      );
+      allow list: if isSignedIn();
       
       allow create: if isTrainingCenter() || isAssessmentCenter() || isAdmin() || isIncomingDemo();
-      allow update: if (isDistrictOffice() && isDistrictMatch(existing().get('districtOfficeId', ''))) || isAdmin() || (isQSO() && isValidBadgeRequest(incoming())) || isIncomingDemo();
+      allow update: if isSignedIn() && (isDistrictOffice() || isCO() || isQSO() || isTrainingCenter() || isAssessmentCenter() || isAdmin() || isIncomingDemo());
       allow delete: if isAdmin() || isExistingDemo();
     }
 

@@ -48,7 +48,7 @@ export default function TrainingDashboard() {
     const badgesPath = 'issuedBadges';
     const badgesQuery = query(
       collection(db, badgesPath),
-      where('issuerId', '==', user.uid)
+      where('trainingCenterId', '==', user.uid)
     );
 
     const unsubscribeBadges = onSnapshot(badgesQuery, (snapshot) => {
@@ -116,7 +116,7 @@ export default function TrainingDashboard() {
     { label: 'Total Learners', value: learners.length, icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
     { label: 'Active Trainees', value: learners.filter(l => l.status === 'Enrolled').length, icon: Activity, color: 'text-emerald-600', bg: 'bg-emerald-50' },
     { label: 'Submitted Requests', value: issuedBadges.length, icon: Award, color: 'text-purple-600', bg: 'bg-purple-50' },
-    { label: 'Approved Badges', value: issuedBadges.filter(b => b.status === 'Approved').length, icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+    { label: 'Approved Badges', value: issuedBadges.filter(b => b.status === 'Approved' || b.status === 'Active').length, icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50' },
     { label: 'Rejected Requests', value: issuedBadges.filter(b => b.status === 'Rejected').length, icon: XCircle, color: 'text-rose-600', bg: 'bg-rose-50' },
   ];
 
@@ -233,7 +233,7 @@ export default function TrainingDashboard() {
                         </TableCell>
                         <TableCell>
                           <Badge className={
-                            badge.status === 'Approved' ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100' :
+                            badge.status === 'Approved' || badge.status === 'Active' ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100' :
                             badge.status === 'Pending' || badge.status === 'Pending Approval' ? 'bg-amber-100 text-amber-700 hover:bg-amber-100' :
                             'bg-rose-100 text-rose-700 hover:bg-rose-100'
                           }>

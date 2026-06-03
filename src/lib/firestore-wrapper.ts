@@ -3,6 +3,15 @@ import { getAuth } from 'firebase/auth';
 
 export * from '@firebase/firestore';
 
+function isVerificationPage(): boolean {
+  try {
+    return window.location.hash.includes('/verify') || 
+           window.location.pathname.includes('/verify');
+  } catch (e) {
+    return false;
+  }
+}
+
 function isDemoUserLoggedIn(): boolean {
   if (localStorage.getItem('is_demo_user') === 'true') {
     return true;
@@ -16,101 +25,100 @@ function isDemoUserLoggedIn(): boolean {
   return false;
 }
 
-class QuerySnapshotWrapper {
-  private _original: any;
-  public docs: any[];
-  public size: number;
-  public empty: boolean;
-  public metadata: any;
-  public query: any;
+function wrapQuerySnapshot(snapshot: any, isDemo: boolean): any {
+  const filteredDocs = (snapshot.docs || []).filter((doc: any) => {
+    if (isVerificationPage()) return true;
+    const data = doc.data();
+    const isRecordDemo = data && data.isDemo === true;
+    return isDemo ? isRecordDemo : !isRecordDemo;
+  });
 
-  constructor(originalSnapshot: any, isDemo: boolean) {
-    this._original = originalSnapshot;
-    this.metadata = originalSnapshot.metadata;
-    this.query = originalSnapshot.query;
-
-    this.docs = (originalSnapshot.docs || []).filter((doc: any) => {
-      const data = doc.data();
-      const isRecordDemo = data && data.isDemo === true;
-      if (isDemo) {
-        return isRecordDemo;
-      } else {
-        return !isRecordDemo;
+  return new Proxy(snapshot, {
+    get(target, prop, receiver) {
+      if (prop === 'docs') {
+        return filteredDocs;
       }
-    });
-
-    this.size = this.docs.length;
-    this.empty = this.size === 0;
-  }
-
-  forEach(callback: any, thisArg?: any) {
-    this.docs.forEach((doc) => callback.call(thisArg, doc), thisArg);
-  }
-
-  docChanges(options?: any) {
-    const changes = this._original.docChanges(options) || [];
-    return changes.filter((change: any) => {
-      const data = change.doc.data();
-      const isRecordDemo = data && data.isDemo === true;
-      const isDemo = isDemoUserLoggedIn();
-      if (isDemo) {
-        return isRecordDemo;
-      } else {
-        return !isRecordDemo;
+      if (prop === 'size') {
+        return filteredDocs.length;
       }
-    });
-  }
+      if (prop === 'empty') {
+        return filteredDocs.length === 0;
+      }
+      if (prop === 'forEach') {
+        return (callback: any, thisArg?: any) => {
+          filteredDocs.forEach((doc) => callback.call(thisArg, doc), thisArg);
+        };
+      }
+      if (prop === 'docChanges') {
+        return (options?: any) => {
+          const changes = target.docChanges(options) || [];
+          return changes.filter((change: any) => {
+            if (isVerificationPage()) return true;
+            const data = change.doc.data();
+            const isRecordDemo = data && data.isDemo === true;
+            return isDemo ? isRecordDemo : !isRecordDemo;
+          });
+        };
+      }
+      
+      const value = Reflect.get(target, prop, receiver);
+      if (typeof value === 'function') {
+        return value.bind(target);
+      }
+      return value;
+    }
+  });
 }
 
-class DocumentSnapshotWrapper {
-  private _original: any;
-  public id: string;
-  public ref: any;
-  public metadata: any;
-
-  constructor(originalDoc: any, isDemo: boolean) {
-    this._original = originalDoc;
-    this.id = originalDoc.id;
-    this.ref = originalDoc.ref;
-    this.metadata = originalDoc.metadata;
-  }
-
-  exists() {
-    if (!this._original.exists()) return false;
-    const data = this._original.data();
+function wrapDocumentSnapshot(snapshot: any, isDemo: boolean): any {
+  const exists = () => {
+    if (!snapshot.exists()) return false;
+    if (isVerificationPage()) return true;
+    const data = snapshot.data();
     const isRecordDemo = data && data.isDemo === true;
-    const isDemo = isDemoUserLoggedIn();
-    if (isDemo) {
-      return isRecordDemo;
-    } else {
-      return !isRecordDemo;
+    return isDemo ? isRecordDemo : !isRecordDemo;
+  };
+
+  return new Proxy(snapshot, {
+    get(target, prop, receiver) {
+      if (prop === 'exists') {
+        return exists;
+      }
+      if (prop === 'data') {
+        return (options?: any) => {
+          if (!exists()) return undefined;
+          return target.data(options);
+        };
+      }
+      if (prop === 'get') {
+        return (fieldPath: any, options?: any) => {
+          if (!exists()) return undefined;
+          return target.get(fieldPath, options);
+        };
+      }
+      
+      const value = Reflect.get(target, prop, receiver);
+      if (typeof value === 'function') {
+        return value.bind(target);
+      }
+      return value;
     }
-  }
-
-  data(options?: any) {
-    if (!this.exists()) return undefined;
-    return this._original.data(options);
-  }
-
-  get(fieldPath: any, options?: any) {
-    if (!this.exists()) return undefined;
-    return this._original.get(fieldPath, options);
-  }
+  });
 }
 
 export const getDocs = async (queryRef: any) => {
   const snapshot = await original.getDocs(queryRef);
-  return new QuerySnapshotWrapper(snapshot, isDemoUserLoggedIn());
+  return wrapQuerySnapshot(snapshot, isDemoUserLoggedIn());
 };
 
 export const getDoc = async (docRef: any) => {
   const snapshot = await original.getDoc(docRef);
-  return new DocumentSnapshotWrapper(snapshot, isDemoUserLoggedIn());
+  return wrapDocumentSnapshot(snapshot, isDemoUserLoggedIn());
 };
 
 export const getDocFromServer = async (docRef: any) => {
   const snapshot = await original.getDocFromServer(docRef);
-  return new DocumentSnapshotWrapper(snapshot, isDemoUserLoggedIn());
+  return wrapDocumentSnapshot(snapshot, isDemoUserLoggedIn());
 };
 
 export function onSnapshot(...args: any[]) {
@@ -131,9 +139,9 @@ export function onSnapshot(...args: any[]) {
   const wrappedObserver = (snapshot: any) => {
     const isDemo = isDemoUserLoggedIn();
     if (snapshot.docs) {
-      observer(new QuerySnapshotWrapper(snapshot, isDemo));
+      observer(wrapQuerySnapshot(snapshot, isDemo));
     } else {
-      observer(new DocumentSnapshotWrapper(snapshot, isDemo));
+      observer(wrapDocumentSnapshot(snapshot, isDemo));
     }
   };
 
@@ -166,7 +174,6 @@ export const setDoc = async (reference: any, data: any, options?: any) => {
 };
 
 export const updateDoc = async (reference: any, data: any) => {
-  // Normally updates preserve isDemo but let's make sure it is set if not already present
   if (isDemoUserLoggedIn()) {
     data = { ...data, isDemo: true };
   }

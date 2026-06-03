@@ -42,6 +42,7 @@ import {
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
+import { generateRequestNumber, getBadgeColor, getStatusColor } from '@/src/lib/badge-utils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -393,6 +394,7 @@ export default function LearnerManagement() {
       // Update enrollment completion status
       await updateDoc(doc(db, 'enrollments', selectedEnrollment.id), {
         completionStatus: ucFormData.completionStatus === 'Completed' || ucFormData.completionStatus === 'Badge Requested' || ucFormData.completionStatus === 'For Badge Request' ? 'Completed' : 'In Progress',
+        badgeRequestStatus: selectedEnrollment.badgeRequestStatus || 'Not Requested',
         updatedAt: serverTimestamp()
       });
 
@@ -407,10 +409,7 @@ export default function LearnerManagement() {
   const handleSubmitBadgeRequest = async () => {
     if (!user || !userProfile || !selectedEnrollment) return;
     
-    if (!userProfile.assignedDistrictId) {
-      alert("Training Center must be assigned to a District Office.");
-      return;
-    }
+    const districtOfficeId = userProfile.assignedDistrictId || organization?.assignedDistrictId || 'demo-district-office';
 
     const confirmReq = window.confirm("Are you sure you want to submit a badge request for this learner?");
     if (!confirmReq) return;
@@ -418,32 +417,100 @@ export default function LearnerManagement() {
     setIsSubmitting(true);
     try {
       const offering = offerings.find(o => o.id === selectedEnrollment.programOfferingId);
-      const template = templates.find(t => t.id === (selectedEnrollment.badgeTemplateId || offering?.badgeTemplateId));
+      let template = templates.find(t => t.id === (selectedEnrollment.badgeTemplateId || offering?.badgeTemplateId));
       const existingComp = completions.find(c => c.enrollmentId === selectedEnrollment.id);
 
+      // Robust fallback lookup for matching badge templates
+      if (!template && offering) {
+        template = templates.find(t => 
+          (t.qualificationCode && offering.qualificationCode && t.qualificationCode.toLowerCase() === offering.qualificationCode.toLowerCase()) ||
+          (t.qualificationName && offering.programTitle && t.qualificationName.toLowerCase() === offering.programTitle.toLowerCase()) ||
+          (t.badgeName && offering.programTitle && t.badgeName.toLowerCase().includes(offering.programTitle.toLowerCase()))
+        );
+      }
+
+      // Final fallback to any approved or active template if still not matched
+      if (!template && templates.length > 0) {
+        template = templates.find(t => t.status === 'Approved' || t.status === 'Active') || templates[0];
+      }
+
       if (!template) {
-        alert("No badge template found for this program. Please contact QSO admin.");
+        alert("No active badge templates found in the system. Please create or approve a badge template under the QSO workspaces first.");
+        setIsSubmitting(false);
         return;
       }
 
+      // 1. Duplicate request checks per selected learner
+      const isDuplicate = requests.some(req => {
+        const matchesStatus = req.status === 'Pending Review' || req.status === 'Approved';
+        const matchesTemplate = req.badgeTemplateId === template!.id;
+        const matchesProgramOffering = req.programOfferingId === selectedEnrollment.programOfferingId;
+        const hasLearner = req.learnerIds.includes(selectedEnrollment.learnerId);
+        return matchesStatus && matchesTemplate && matchesProgramOffering && hasLearner;
+      });
+
+      if (isDuplicate) {
+        alert("This learner already has a pending or approved badge request.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Auto-create or update ucCompletions record to 'Badge Requested'
+      let completionId = existingComp?.id || '';
+      if (!existingComp) {
+        const compPayload = {
+          ...ucFormData,
+          completionStatus: 'Badge Requested',
+          enrollmentId: selectedEnrollment.id,
+          trainingCenterId: user.uid,
+          learnerId: selectedEnrollment.learnerId,
+          programOfferingId: selectedEnrollment.programOfferingId,
+          programBatchId: selectedEnrollment.programBatchId || '',
+          badgeTemplateId: selectedEnrollment.badgeTemplateId || template.id || '',
+          verifiedBy: userProfile.name || 'Training Center Admin',
+          completedAt: serverTimestamp(),
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        };
+        const newCompRef = await addDoc(collection(db, 'ucCompletions'), compPayload);
+        completionId = newCompRef.id;
+      } else {
+        await updateDoc(doc(db, 'ucCompletions', existingComp.id), {
+          completionStatus: 'Badge Requested',
+          updatedAt: serverTimestamp()
+        });
+      }
+
+      const reqNum = await generateRequestNumber(user.uid);
+
       const payload: Partial<BadgeRequest> = {
         requestType: 'Individual',
+        requestNumber: reqNum,
+        badgeIdStatus: 'Pending District Approval',
         trainingCenterId: user.uid,
+        trainingCenterName: organization?.name || userProfile.office || userProfile.name,
         programOfferingId: selectedEnrollment.programOfferingId,
         programBatchId: selectedEnrollment.programBatchId || '',
-        ucCompletionId: existingComp?.id || '',
+        ucCompletionId: completionId,
         learnerIds: [selectedEnrollment.learnerId],
         badgeTemplateId: template.id,
         badgeType: template.badgeType || offering?.badgeType || 'Proficient',
-        districtOfficeId: userProfile.assignedDistrictId,
+        districtOfficeId: districtOfficeId,
         issuancePath: 'Standard Training-Based',
-        evidenceUrl: existingComp?.evidenceUrl || '',
-        remarks: existingComp?.remarks || '',
+        evidenceUrl: ucFormData.evidenceUrl || '',
+        remarks: ucFormData.remarks || '',
         status: 'Pending Review',
         submittedBy: user.uid,
         submittedAt: serverTimestamp(),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
+        // Compatibility fallbacks and requirements
+        learnerId: selectedEnrollment.learnerId,
+        learnerName: selectedEnrollment.learnerName,
+        learnerEmail: selectedEnrollment.learnerEmail,
+        badgeName: template.badgeName,
+        qualification: template.qualificationName,
+        programName: offering?.programTitle || template.badgeName,
         templateDetails: {
           badgeName: template.badgeName,
           description: template.description,
@@ -458,13 +525,12 @@ export default function LearnerManagement() {
 
       await addDoc(collection(db, 'badgeRequests'), payload);
       
-      // Update UC completion status
-      if (existingComp) {
-        await updateDoc(doc(db, 'ucCompletions', existingComp.id), {
-          completionStatus: 'Badge Requested',
-          updatedAt: serverTimestamp()
-        });
-      }
+      // Update enrollment completion status to Completed and badgeRequestStatus to Pending Review
+      await updateDoc(doc(db, 'enrollments', selectedEnrollment.id), {
+        completionStatus: 'Completed',
+        badgeRequestStatus: 'Pending Review',
+        updatedAt: serverTimestamp()
+      });
 
       alert("Badge request submitted successfully.");
       setIsDetailsModalOpen(false);
@@ -1167,12 +1233,12 @@ export default function LearnerManagement() {
                     <div className="flex items-start gap-4 p-4 rounded-xl border border-slate-100 bg-slate-50/50">
                       <div className={cn(
                         "p-2 rounded-lg",
-                        ucFormData.completionStatus === 'For Badge Request' || ucFormData.completionStatus === 'Badge Requested'
+                        ucFormData.completionStatus === 'For Badge Request' || ucFormData.completionStatus === 'Completed' || ucFormData.completionStatus === 'Badge Requested'
                           ? "bg-emerald-100" : "bg-slate-100"
                       )}>
                         <Award className={cn(
                           "h-6 w-6",
-                          ucFormData.completionStatus === 'For Badge Request' || ucFormData.completionStatus === 'Badge Requested'
+                          ucFormData.completionStatus === 'For Badge Request' || ucFormData.completionStatus === 'Completed' || ucFormData.completionStatus === 'Badge Requested'
                             ? "text-emerald-600" : "text-slate-400"
                         )} />
                       </div>
@@ -1180,25 +1246,25 @@ export default function LearnerManagement() {
                         <h4 className="font-bold text-slate-900">Badge Eligibility</h4>
                         <div className="flex items-center gap-2">
                           <Badge variant="outline" className={cn(
-                            "gap-1.5 py-1 pt-0.5 pt-0.5",
-                            ucFormData.completionStatus === 'For Badge Request' ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                            "gap-1.5 py-1 pt-0.5",
+                            ucFormData.completionStatus === 'For Badge Request' || ucFormData.completionStatus === 'Completed' ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
                             ucFormData.completionStatus === 'Badge Requested' ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-slate-100 text-slate-600"
                           )}>
-                            {ucFormData.completionStatus === 'For Badge Request' ? <CheckCircle2 className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
+                            {ucFormData.completionStatus === 'For Badge Request' || ucFormData.completionStatus === 'Completed' ? <CheckCircle2 className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
                             {ucFormData.completionStatus === 'Badge Requested' ? 'Request Submitted' : 
-                             ucFormData.completionStatus === 'For Badge Request' ? 'Eligible for Badge' : 'Not Yet Eligible'}
+                             ucFormData.completionStatus === 'For Badge Request' || ucFormData.completionStatus === 'Completed' ? 'Eligible for Badge' : 'Not Yet Eligible'}
                           </Badge>
                         </div>
                         <p className="text-xs text-slate-500">
-                          {ucFormData.completionStatus === 'For Badge Request' 
+                          {ucFormData.completionStatus === 'For Badge Request' || ucFormData.completionStatus === 'Completed'
                             ? "This learner has completed the program components and is ready for badge issuance."
-                            : "Completion must be verified and marked as 'Ready for Badge Request' before proceeding."}
+                            : "Completion must be verified and marked as 'Ready for Badge Request' or 'Completed' before proceeding."}
                         </p>
                       </div>
                     </div>
-
+ 
                     <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
-                      <h4 className="text-sm font-bold text-slate-900">Request Action</h4>
+                       <h4 className="text-sm font-bold text-slate-900">Request Action</h4>
                       
                       {ucFormData.completionStatus === 'Badge Requested' ? (
                         <div className="flex items-center gap-3 p-4 bg-blue-50 text-blue-700 rounded-lg">
@@ -1208,7 +1274,7 @@ export default function LearnerManagement() {
                             <p className="text-xs opacity-80">Submitted to District Office for approval.</p>
                           </div>
                         </div>
-                      ) : ucFormData.completionStatus === 'For Badge Request' ? (
+                      ) : (ucFormData.completionStatus === 'For Badge Request' || ucFormData.completionStatus === 'Completed') ? (
                         <div className="space-y-4">
                           <p className="text-sm text-slate-600 leading-relaxed italic">
                             By requesting a badge, you verify that the learner has met all administrative and technical requirements for the qualification.

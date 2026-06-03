@@ -28,6 +28,7 @@ import {
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
+import { generateRequestNumber, getBadgeColor, getStatusColor } from '@/src/lib/badge-utils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -72,6 +73,8 @@ export default function BadgeRequests() {
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState<BadgeRequest | null>(null);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [requestType, setRequestType] = useState<'Individual' | 'Batch'>('Individual');
   
   const [formData, setFormData] = useState({
@@ -157,15 +160,38 @@ export default function BadgeRequests() {
     try {
       if (!userProfile.assignedDistrictId) {
          alert("Training Center must be assigned to a District Office.");
+         setIsSubmitting(false);
          return;
       }
 
       const offering = offerings.find(o => o.id === formData.programOfferingId);
       const templateId = formData.badgeTemplateId || offering?.badgeTemplateId;
+
+      // 1. Duplicate request checks per selected learner
+      const duplicateLearners = formData.learnerIds.filter(learnerId => {
+        return requests.some(req => {
+          const isPendingOrApproved = req.status === 'Pending Review' || req.status === 'Approved';
+          const matchesTemplate = req.badgeTemplateId === templateId;
+          const matchesProgramOffering = req.programOfferingId === formData.programOfferingId;
+          const hasLearner = req.learnerIds.includes(learnerId);
+          return isPendingOrApproved && matchesTemplate && matchesProgramOffering && hasLearner;
+        });
+      });
+
+      if (duplicateLearners.length > 0) {
+        alert("This learner already has a pending or approved badge request.");
+        setIsSubmitting(false);
+        return;
+      }
+
       const template = templates.find(t => t.id === templateId);
+      
+      const reqNum = await generateRequestNumber(user.uid);
       
       const payload: any = {
         requestType,
+        requestNumber: reqNum,
+        badgeIdStatus: 'Pending District Approval',
         trainingCenterId: user.uid,
         trainingCenterName: userProfile.office || userProfile.name,
         programOfferingId: formData.programOfferingId,
@@ -200,6 +226,23 @@ export default function BadgeRequests() {
       };
 
       await addDoc(collection(db, 'badgeRequests'), payload);
+
+      // 2. Atomic batch update of the associated enrollment files
+      const batchUpdate = writeBatch(db);
+      const selectedEnrollmentsToUpdate = enrollments.filter(e => 
+        formData.learnerIds.includes(e.learnerId) &&
+        e.programOfferingId === formData.programOfferingId
+      );
+
+      selectedEnrollmentsToUpdate.forEach(enr => {
+        const ref = doc(db, 'enrollments', enr.id);
+        batchUpdate.update(ref, {
+          badgeRequestStatus: 'Pending Review',
+          updatedAt: serverTimestamp()
+        });
+      });
+
+      await batchUpdate.commit();
       
       setIsSubmitModalOpen(false);
       setFormData({
@@ -281,10 +324,14 @@ export default function BadgeRequests() {
     if (formData.programOfferingId) {
       filtered = filtered.filter(e => e.programOfferingId === formData.programOfferingId);
     }
-    if (formData.programBatchId) {
+    if (formData.programBatchId && formData.programBatchId !== 'none') {
       filtered = filtered.filter(e => e.programBatchId === formData.programBatchId);
     }
-    return filtered.filter(e => e.completionStatus === 'Completed');
+    return filtered.filter(e => 
+      e.completionStatus === 'Completed' &&
+      e.badgeRequestStatus !== 'Pending Review' &&
+      e.badgeRequestStatus !== 'Approved'
+    );
   };
 
   if (loading) return <div className="p-8 text-center text-slate-500">Loading requests...</div>;
@@ -383,6 +430,7 @@ export default function BadgeRequests() {
                 <TableHead>Program / Qualification</TableHead>
                 <TableHead>Learners</TableHead>
                 <TableHead>Submitted At</TableHead>
+                <TableHead>Badge ID</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right pr-6">Action</TableHead>
               </TableRow>
@@ -401,7 +449,7 @@ export default function BadgeRequests() {
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-col">
-                        <span className="text-sm font-bold text-slate-800">{offering?.programTitle || 'Program'}</span>
+                        <span className="text-sm font-bold text-slate-800">{offering?.programTitle || request.programTitle || request.badgeTemplateName || 'Program'}</span>
                         <span className="text-[10px] text-slate-500 uppercase font-medium">{request.badgeType} Level</span>
                       </div>
                     </TableCell>
@@ -410,6 +458,21 @@ export default function BadgeRequests() {
                     </TableCell>
                     <TableCell className="text-xs text-slate-500">
                       {request.submittedAt ? new Date(request.submittedAt.seconds * 1000).toLocaleDateString() : 'N/A'}
+                    </TableCell>
+                    <TableCell className="text-xs font-mono">
+                      {request.status === 'Approved' ? (
+                        request.requestType === 'Individual' ? (
+                          <span className="bg-slate-100 text-slate-800 px-2 py-1 rounded select-all">
+                            {request.badgeId || 'Approved'}
+                          </span>
+                        ) : (
+                          <span className="text-emerald-600 font-semibold">
+                            {request.issuedBadgeSummary?.length || request.learnerIds.length} Badge(s) Issued
+                          </span>
+                        )
+                      ) : (
+                        <span className="text-slate-400 italic">Pending District Approval</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge className={
@@ -420,20 +483,133 @@ export default function BadgeRequests() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right pr-6">
-                      <Button variant="ghost" size="sm" className="text-blue-600">Details</Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="text-blue-600"
+                        onClick={() => {
+                          setSelectedRequest(request);
+                          setIsDetailsOpen(true);
+                        }}
+                      >
+                        Details
+                      </Button>
                     </TableCell>
                   </TableRow>
                 );
               })}
               {requests.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-32 text-center text-slate-500 italic">No badge requests found.</TableCell>
+                  <TableCell colSpan={7} className="h-32 text-center text-slate-500 italic">No badge requests found.</TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
+
+      {/* Request Details Dialog */}
+      <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
+        <DialogContent className="sm:max-w-[550px] max-h-[85vh] overflow-y-auto text-slate-900">
+          {selectedRequest && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex justify-between items-center text-lg font-bold">
+                  <span>Badge Request Details</span>
+                  <Badge variant="outline" className="text-[10px]">
+                    {selectedRequest.requestNumber || `Req ID: ${selectedRequest.id.slice(0, 8)}`}
+                  </Badge>
+                </DialogTitle>
+                <DialogDescription>
+                  Detailed metadata and status of the submitted badge issuance.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="grid gap-4 py-3 text-sm">
+                <div className="grid grid-cols-3 py-1 border-b border-slate-100">
+                  <span className="text-slate-500 font-medium">Program:</span>
+                  <span className="col-span-2 font-semibold text-slate-800">
+                    {selectedRequest.programTitle || selectedRequest.badgeTemplateName || 'Program'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 py-1 border-b border-slate-100">
+                  <span className="text-slate-500 font-medium">Badge/Level:</span>
+                  <span className="col-span-2">
+                    <Badge variant="secondary" className="text-xs font-semibold">
+                      {selectedRequest.badgeType} Level
+                    </Badge>
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 py-1 border-b border-slate-100">
+                  <span className="text-slate-500 font-medium">Issuance Path:</span>
+                  <span className="col-span-2 font-medium text-slate-700">
+                    {selectedRequest.issuancePath || 'Standard Training-Based'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 py-1 border-b border-slate-100">
+                  <span className="text-slate-500 font-medium">Status:</span>
+                  <span className="col-span-2">
+                    <Badge className={
+                      selectedRequest.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' :
+                      selectedRequest.status === 'Pending Review' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'
+                    }>
+                      {selectedRequest.status}
+                    </Badge>
+                  </span>
+                </div>
+
+                {selectedRequest.status === 'Rejected' && selectedRequest.rejectionReason && (
+                  <div className="bg-rose-50 text-rose-800 p-3 rounded-lg border border-rose-100">
+                    <p className="font-semibold text-xs mb-1">Rejection Reason:</p>
+                    <p className="text-xs">{selectedRequest.rejectionReason}</p>
+                  </div>
+                )}
+
+                <div className="space-y-2 mt-2">
+                  <p className="font-bold text-slate-700 text-xs uppercase tracking-wider">Learners & Badge IDs</p>
+                  <div className="border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
+                    <div className="grid grid-cols-2 bg-slate-100 text-slate-600 font-semibold p-2 text-xs border-b border-slate-200">
+                      <span>Learner</span>
+                      <span>Official Badge ID</span>
+                    </div>
+                    
+                    {selectedRequest.status === 'Approved' && selectedRequest.issuedBadgeSummary && selectedRequest.issuedBadgeSummary.length > 0 ? (
+                      <div className="divide-y divide-slate-100 max-h-[150px] overflow-y-auto">
+                        {selectedRequest.issuedBadgeSummary.map((item, idx) => (
+                          <div key={idx} className="grid grid-cols-2 p-2 text-xs hover:bg-slate-100 transition-colors">
+                            <span className="font-medium text-slate-800">{item.learnerName}</span>
+                            <span className="font-mono text-blue-600 font-semibold select-all break-all">{item.badgeId}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : selectedRequest.status === 'Approved' && selectedRequest.badgeId ? (
+                      <div className="grid grid-cols-2 p-2 text-xs">
+                        <span className="font-medium text-slate-800">
+                          {selectedRequest.learnerName || `${selectedRequest.learnerIds?.length || 1} Learner(s)`}
+                        </span>
+                        <span className="font-mono text-blue-600 font-semibold select-all break-all">{selectedRequest.badgeId}</span>
+                      </div>
+                    ) : (
+                      <div className="p-3 text-center text-xs text-slate-500 italic">
+                        Pending District Approval
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsDetailsOpen(false)}>
+                  Close
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={isSubmitModalOpen} onOpenChange={setIsSubmitModalOpen}>
         <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
