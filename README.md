@@ -1,6 +1,6 @@
 # TESDA Digital Badging Platform
 
-A web application prototype for the TESDA Digital Badging Platform, designed for secure badge issue tracking, decentralized approval queues, and public credential verification.
+A web application prototype for the TESDA Digital Badging Platform, designed for secure badge issue tracking, decentralized approval queues, and public credential verification. Connected successfully to Google AI Studio.
 
 ---
 
