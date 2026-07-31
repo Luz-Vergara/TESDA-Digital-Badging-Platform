@@ -36,7 +36,10 @@ import {
   updateDoc, 
   deleteDoc,
   doc, 
-  serverTimestamp 
+  serverTimestamp,
+  getDocs,
+  where,
+  writeBatch
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
@@ -528,14 +531,212 @@ export default function BadgeTemplates() {
     if (!templateToDelete) return;
     setIsSubmitting(true);
     try {
-      await deleteDoc(doc(db, 'badgeTemplates', templateToDelete.id!));
+      const batch = writeBatch(db);
+      const templateId = templateToDelete.id!;
+      const qualificationName = templateToDelete.qualificationName || '';
+      const badgeName = templateToDelete.badgeName || '';
+
+      // Fetch all candidate records for inline in-memory robust cascade deletion
+      const [
+        allTemplates,
+        allOfferings,
+        allBatches,
+        allEnrollments,
+        allCompletions,
+        allBadgeRequests,
+        allIssuedBadges,
+        allAssessmentRecords,
+        allRplApplications,
+        allLearners
+      ] = await Promise.all([
+        getDocs(collection(db, 'badgeTemplates')),
+        getDocs(collection(db, 'programOfferings')),
+        getDocs(collection(db, 'programBatches')),
+        getDocs(collection(db, 'enrollments')),
+        getDocs(collection(db, 'ucCompletions')),
+        getDocs(collection(db, 'badgeRequests')),
+        getDocs(collection(db, 'issuedBadges')),
+        getDocs(collection(db, 'assessmentRecords')),
+        getDocs(collection(db, 'rplApplications')),
+        getDocs(collection(db, 'learners'))
+      ]);
+
+      // 1. Delete matching badge templates and write sentinel
+      allTemplates.docs.forEach(snap => {
+        const id = snap.id;
+        if (id === templateId) {
+          batch.delete(snap.ref);
+          batch.set(doc(db, 'deletedDemoItems', id), {
+            deletedAt: serverTimestamp(),
+            type: 'badgeTemplate'
+          });
+        }
+      });
+
+      // 2. Delete matching programOfferings and write sentinel
+      const matchedOfferingIds = new Set<string>();
+      allOfferings.docs.forEach(snap => {
+        const data = snap.data();
+        const id = snap.id;
+        if (data.badgeTemplateId === templateId) {
+          batch.delete(snap.ref);
+          matchedOfferingIds.add(id);
+          batch.set(doc(db, 'deletedDemoItems', id), {
+            deletedAt: serverTimestamp(),
+            type: 'programOffering'
+          });
+        }
+      });
+
+      // 3. Delete matching programBatches
+      const matchedBatchIds = new Set<string>();
+      allBatches.docs.forEach(snap => {
+        const data = snap.data();
+        const id = snap.id;
+        if (data.badgeTemplateId === templateId || (data.programOfferingId && matchedOfferingIds.has(data.programOfferingId))) {
+          batch.delete(snap.ref);
+          matchedBatchIds.add(id);
+        }
+      });
+
+      // 4. Delete matching enrollments
+      const matchedEnrollmentIds = new Set<string>();
+      allEnrollments.docs.forEach(snap => {
+        const data = snap.data();
+        const id = snap.id;
+        if (
+          data.badgeTemplateId === templateId ||
+          (data.programOfferingId && matchedOfferingIds.has(data.programOfferingId)) ||
+          (data.programBatchId && matchedBatchIds.has(data.programBatchId))
+        ) {
+          batch.delete(snap.ref);
+          matchedEnrollmentIds.add(id);
+        }
+      });
+
+      // 5. Delete matching ucCompletions
+      allCompletions.docs.forEach(snap => {
+        const data = snap.data();
+        if (
+          data.badgeTemplateId === templateId ||
+          (data.programOfferingId && matchedOfferingIds.has(data.programOfferingId)) ||
+          (data.programBatchId && matchedBatchIds.has(data.programBatchId)) ||
+          (data.enrollmentId && matchedEnrollmentIds.has(data.enrollmentId))
+        ) {
+          batch.delete(snap.ref);
+        }
+      });
+
+      // 6. Delete matching badgeRequests
+      const matchedBadgeRequestIds = new Set<string>();
+      allBadgeRequests.docs.forEach(snap => {
+        const data = snap.data();
+        const id = snap.id;
+        if (
+          data.badgeTemplateId === templateId ||
+          (data.programOfferingId && matchedOfferingIds.has(data.programOfferingId)) ||
+          (data.programBatchId && matchedBatchIds.has(data.programBatchId))
+        ) {
+          batch.delete(snap.ref);
+          matchedBadgeRequestIds.add(id);
+        }
+      });
+
+      // 7. Delete matching issuedBadges
+      allIssuedBadges.docs.forEach(snap => {
+        const data = snap.data();
+        if (
+          data.badgeTemplateId === templateId ||
+          (data.badgeRequestId && matchedBadgeRequestIds.has(data.badgeRequestId)) ||
+          (data.programOfferingId && matchedOfferingIds.has(data.programOfferingId)) ||
+          (data.programBatchId && matchedBatchIds.has(data.programBatchId))
+        ) {
+          batch.delete(snap.ref);
+        }
+      });
+
+      // 8. Delete matching assessmentRecords
+      allAssessmentRecords.docs.forEach(snap => {
+        const data = snap.data();
+        if (
+          data.badgeTemplateId === templateId ||
+          (data.programOfferingId && matchedOfferingIds.has(data.programOfferingId)) ||
+          (data.programBatchId && matchedBatchIds.has(data.programBatchId))
+        ) {
+          batch.delete(snap.ref);
+        } else if (
+          data.qualification === qualificationName &&
+          (!data.badgeType || data.badgeType !== 'Proficient')
+        ) {
+          const hasMatchingEnrollment = allEnrollments.docs.some(esnap => {
+            const edata = esnap.data();
+            return edata.learnerId === data.learnerId && (edata.badgeTemplateId === templateId || matchedOfferingIds.has(edata.programOfferingId || ''));
+          });
+          if (hasMatchingEnrollment) {
+            batch.delete(snap.ref);
+          }
+        }
+      });
+
+      // 9. Delete matching rplApplications
+      allRplApplications.docs.forEach(snap => {
+        const data = snap.data();
+        if (
+          data.qualificationId === templateId ||
+          (data.programOfferingId && matchedOfferingIds.has(data.programOfferingId))
+        ) {
+          batch.delete(snap.ref);
+        } else if (data.qualificationName === qualificationName) {
+          const hasMatchingEnrollment = allEnrollments.docs.some(esnap => {
+            const edata = esnap.data();
+            return edata.learnerId === data.learnerId && (edata.badgeTemplateId === templateId || matchedOfferingIds.has(edata.programOfferingId || ''));
+          });
+          if (hasMatchingEnrollment) {
+            batch.delete(snap.ref);
+          }
+        }
+      });
+
+      // 10. Update learners to set a remaining active program template as fallback
+      const remainingTemplates = allTemplates.docs
+        .map(d => ({ id: d.id, ...d.data() } as any))
+        .filter(t => t.id !== templateId && t.status === 'Approved');
       
-      await addDoc(collection(db, 'auditLogs'), {
-        action: `Deleted Badge Template: ${templateToDelete.badgeName || templateToDelete.programName}`,
+      const fallbackQual = remainingTemplates.length > 0 
+        ? (remainingTemplates[0].qualificationName || remainingTemplates[0].badgeName)
+        : 'Cloud Computing Fundamentals';
+
+      allLearners.docs.forEach(snap => {
+        const data = snap.data();
+        const hasDeletedEnrollment = allEnrollments.docs.some(esnap => {
+          const edata = esnap.data();
+          return edata.learnerId === data.id && (edata.badgeTemplateId === templateId || matchedOfferingIds.has(edata.programOfferingId || ''));
+        });
+
+        if (hasDeletedEnrollment || data.qualification === qualificationName) {
+          batch.update(snap.ref, {
+            qualification: remainingTemplates.length > 0 ? fallbackQual : '',
+            programTitle: remainingTemplates.length > 0 ? fallbackQual : '',
+            programOfferingId: '',
+            programBatchId: '',
+            batchName: '',
+            status: remainingTemplates.length > 0 ? 'Enrolled' : 'Applied',
+            updatedAt: serverTimestamp()
+          });
+        }
+      });
+
+      // 11. Add audit log entry
+      const auditLogRef = doc(collection(db, 'auditLogs'));
+      batch.set(auditLogRef, {
+        action: `Deleted Badge Template: ${templateToDelete.badgeName || templateToDelete.programName}. Cascaded hard deletions to relevant offerings, batches, active enrollments, progress records, and reset learner profiles to remaining active programs.`,
         userName: 'QSO Admin',
         timestamp: serverTimestamp(),
-        details: `Qualification: ${templateToDelete.qualificationName} | Type: ${templateToDelete.badgeType}`
+        details: `Qualification: ${qualificationName} | Type: ${templateToDelete.badgeType}`
       });
+
+      // Commit the atomic bundle
+      await batch.commit();
 
       setIsDeleteModalOpen(false);
       setTemplateToDelete(null);

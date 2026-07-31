@@ -93,10 +93,34 @@ export default function MyBadgeWallet() {
 
     // Filter to only include badges that match a known template
     return filtered.filter(badge => {
-      const bId = badge.badgeTemplateId || badge.badgeId;
-      let matchedTemplate = templates.find(t => t.id === bId);
+      let matchedTemplate: BadgeTemplate | undefined = undefined;
+
+      // 1. Primary: Match by qualificationCode if available on both the badge and template
+      const bQualCode = badge.qualificationCode || (badge as any).programCode || (badge as any).qualificationCode;
+      if (bQualCode) {
+        const cleanBQual = String(bQualCode).trim().toLowerCase();
+        // Try exact match with both qualificationCode and optionally badgeType
+        matchedTemplate = templates.find(t => 
+          t.qualificationCode && 
+          t.qualificationCode.trim().toLowerCase() === cleanBQual &&
+          (!badge.badgeType || t.badgeType.toLowerCase() === badge.badgeType.toLowerCase())
+        );
+        // Fallback to just qualificationCode match
+        if (!matchedTemplate) {
+          matchedTemplate = templates.find(t => 
+            t.qualificationCode && 
+            t.qualificationCode.trim().toLowerCase() === cleanBQual
+          );
+        }
+      }
+
+      // 2. Secondary: Match by Template ID
+      if (!matchedTemplate) {
+        const bId = badge.badgeTemplateId || badge.badgeId;
+        matchedTemplate = templates.find(t => t.id === bId);
+      }
       
-      // Fallback: title match with aggressive normalization
+      // 3. Tertiary: Fallback title match with aggressive normalization
       const normalize = (s: string) => {
         return s.toLowerCase()
           .replace(/[^a-z0-9]/g, ' ')
@@ -109,25 +133,67 @@ export default function MyBadgeWallet() {
       const bTitleNorm = normalize(badge.programTitle || badge.badgeName || badge.badgeTemplateName || '');
       
       if (!matchedTemplate && bTitleNorm) {
-        matchedTemplate = templates.find(t => normalize(t.badgeName || '') === bTitleNorm);
-        if (!matchedTemplate) {
-          matchedTemplate = templates.find(t => {
-            const tTitleNorm = normalize(t.badgeName || '');
-            if (!tTitleNorm) return false;
-            const bWords = bTitleNorm.split(' ').filter(w => w.length >= 2);
+        let bestTemplate: BadgeTemplate | null = null;
+        let highestScore = 0;
+        const bWords = bTitleNorm.split(' ').filter(w => w.length >= 2);
+
+        templates.forEach(t => {
+          // Check for code mismatch
+          const bCode = (badge.qualificationCode || (badge as any).programCode || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+          const tCode = (t.qualificationCode || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (bCode && tCode && bCode !== tCode) {
+            return; // Explicitly skip matching this template due to code mismatch!
+          }
+
+          const tTitleNorm = normalize(t.badgeName || '');
+          if (!tTitleNorm) return;
+
+          let score = 0;
+          if (tTitleNorm === bTitleNorm) {
+            score = 100; // Perfect match
+          } else if (bTitleNorm.includes(tTitleNorm) || tTitleNorm.includes(bTitleNorm)) {
+            // High score for direct string inclusion
+            const ratio = Math.min(bTitleNorm.length, tTitleNorm.length) / Math.max(bTitleNorm.length, tTitleNorm.length);
+            score = 60 + ratio * 20;
+          } else {
             const tWords = tTitleNorm.split(' ').filter(w => w.length >= 2);
             const intersection = bWords.filter(w => tWords.includes(w));
-            return intersection.length >= 2 || bTitleNorm.includes(tTitleNorm) || tTitleNorm.includes(bTitleNorm);
-          });
+            if (intersection.length >= 2) {
+              // Word overlap score
+              const overlapCoeff = intersection.length / Math.max(bWords.length, tWords.length);
+              score = overlapCoeff * 50;
+            }
+          }
+
+          // Prioritize template that matches the badge's tier/type
+          const bType = (badge.badgeType || '').toLowerCase();
+          const tType = (t.badgeType || '').toLowerCase();
+          if (score > 0) {
+            if (bType && tType && bType === tType) {
+              score += 15;
+            }
+          }
+
+          if (score > highestScore) {
+            highestScore = score;
+            bestTemplate = t;
+          }
+        });
+
+        if (highestScore >= 20) {
+          matchedTemplate = bestTemplate || undefined;
         }
       }
 
       if (matchedTemplate) {
          // Attach template metadata
-         if (!badge.badgeType) badge.badgeType = matchedTemplate.badgeType;
-         if (!badge.badgeName) badge.badgeName = matchedTemplate.badgeName;
-         if (!badge.qualificationCode) badge.qualificationCode = matchedTemplate.qualificationCode;
-         if (!badge.qualificationName) badge.qualificationName = matchedTemplate.qualificationName;
+         badge.badgeType = matchedTemplate.badgeType;
+         badge.badgeName = matchedTemplate.badgeName;
+         badge.qualificationCode = matchedTemplate.qualificationCode;
+         if (matchedTemplate.qualificationName) {
+           badge.qualificationName = matchedTemplate.qualificationName;
+         }
+         badge.template = matchedTemplate;
          return true;
       }
       
@@ -263,9 +329,7 @@ export default function MyBadgeWallet() {
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredBadges.length > 0 ? (
           filteredBadges.map((badge) => {
-            const matchedTemplate = templates.find(
-              (template) => template.id === (badge.badgeTemplateId || badge.badgeId)
-            );
+            const matchedTemplate = badge.template;
             return (
               <Card key={badge.id} className="group border-slate-200 hover:border-blue-300 transition-all hover:shadow-md overflow-hidden">
                 <div className={`h-2 ${getBadgeColor(badge.badgeType).split(' ')[0]}`} />
@@ -306,12 +370,13 @@ export default function MyBadgeWallet() {
                           imageUrl: matchedTemplate.imageUrl || "",
                           level: badge.badgeType || matchedTemplate.badgeType,
                           qualificationTitle:
+                            badge.badgeName ||
+                            matchedTemplate.badgeName ||
+                            (badge as any).badgeTemplateName ||
                             badge.programName ||
                             badge.programTitle ||
                             matchedTemplate.qualificationName ||
-                            badge.qualificationName ||
-                            badge.badgeName ||
-                            (badge as any).badgeTemplateName,
+                            badge.qualificationName,
                           qualificationCode:
                             matchedTemplate.qualificationCode ||
                             badge.qualificationCode,
@@ -321,8 +386,8 @@ export default function MyBadgeWallet() {
                     </div>
                   )}
                   
-                  <h3 className="font-bold text-slate-900 mb-1 group-hover:text-blue-600 transition-colors line-clamp-2 min-h-[3rem]">
-                    {badge.programName || (badge as any).programTitle || (badge as any).badgeName || (badge as any).badgeTemplateName || "Unnamed Badge"}
+                  <h3 className="font-bold text-slate-900 mb-1 group-hover:text-blue-600 transition-colors line-clamp-2 min-h-[3rem]" title={matchedTemplate?.badgeName || badge.programName || (badge as any).programTitle || (badge as any).badgeName || "Unnamed Badge"}>
+                    {matchedTemplate?.badgeName || badge.programName || (badge as any).programTitle || (badge as any).badgeName || (badge as any).badgeTemplateName || "Unnamed Badge"}
                   </h3>
                   <p className="text-[10px] text-slate-500 mb-4 font-bold uppercase tracking-widest bg-slate-100 w-fit px-2 py-0.5 rounded">
                     {badge.badgeType}

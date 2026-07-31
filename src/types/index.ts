@@ -36,6 +36,7 @@ export interface BadgeMetadata {
   qualificationName?: string;
   qualificationCode?: string;
   badgeName?: string;
+  template?: BadgeTemplate;
 }
 
 export interface User {
@@ -367,7 +368,10 @@ export type RPLStatus =
   | 'Returned to TC'
   | 'Additional Documents Requested'
   | 'Not Eligible'
-  | 'Assessment Completed';
+  | 'Assessment Completed'
+  | 'Approved'
+  | 'Scheduled for Assessment'
+  | 'For Assessment';
 
 export interface RPLEvidence {
   id: string;
@@ -427,6 +431,17 @@ export interface RPLApplication {
   };
   eligibilityStatus?: 'Approve for Assessment Schedule' | 'Return to Training Center' | 'Request Additional Documents' | 'Not Eligible';
   eligibilityRemarks?: string;
+
+  // Assessment Center Batch & Schedule Assignment fields
+  assessmentBatchId?: string;
+  assessmentBatchName?: string;
+  assessmentDate?: string;
+  assessmentStartTime?: string;
+  assessmentEndTime?: string;
+  assessmentVenue?: string;
+  assessorName?: string;
+  assessmentScheduleStatus?: 'Scheduled' | 'For Assessment' | 'Completed' | string;
+  assessmentRemarks?: string;
 }
 
 

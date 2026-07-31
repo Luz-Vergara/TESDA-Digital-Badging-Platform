@@ -40,7 +40,6 @@ export default function DistrictOfficeDashboard() {
   const [stats, setStats] = useState({
     pending: 0,
     trainingCenters: 0,
-    assessmentCenters: 0,
     approved: 0,
     rejected: 0,
     expiring: 0
@@ -115,8 +114,7 @@ export default function DistrictOfficeDashboard() {
       const docs = snapshot.docs.map(doc => doc.data());
       setStats(prev => ({
         ...prev,
-        trainingCenters: docs.filter(d => d.type === 'TrainingCenter').length,
-        assessmentCenters: docs.filter(d => d.type === 'AssessmentCenter').length
+        trainingCenters: docs.filter(d => d.type === 'TrainingCenter').length
       }));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, pathOrgs);
@@ -158,7 +156,6 @@ export default function DistrictOfficeDashboard() {
   const statCards = [
     { label: 'Pending Requests', value: stats.pending, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50', link: '/districtoffice/queue' },
     { label: 'Training Centers', value: stats.trainingCenters, icon: Building2, color: 'text-blue-600', bg: 'bg-blue-50', link: '/districtoffice/training-centers' },
-    { label: 'Assessment Centers', value: stats.assessmentCenters, icon: ClipboardCheck, color: 'text-indigo-600', bg: 'bg-indigo-50', link: '/districtoffice/assessment-centers' },
     { label: 'Approved Requests', value: stats.approved, icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50', link: '/districtoffice/status' },
     { label: 'Rejected Requests', value: stats.rejected, icon: XCircle, color: 'text-rose-600', bg: 'bg-rose-50', link: '/districtoffice/status' },
   ];
@@ -201,8 +198,8 @@ export default function DistrictOfficeDashboard() {
             </div>
             <div className="flex gap-8">
               <div className="text-center">
-                <p className="text-blue-100 text-xs font-medium uppercase tracking-wider">Total Centers</p>
-                <p className="text-2xl font-bold">{stats.trainingCenters + stats.assessmentCenters}</p>
+                <p className="text-blue-100 text-xs font-medium uppercase tracking-wider">Training Centers</p>
+                <p className="text-2xl font-bold">{stats.trainingCenters}</p>
               </div>
               <div className="text-center">
                 <p className="text-blue-100 text-xs font-medium uppercase tracking-wider">Regional Division</p>
@@ -214,7 +211,7 @@ export default function DistrictOfficeDashboard() {
       </Card>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {statCards.map((stat) => (
           <Link key={stat.label} to={stat.link}>
             <Card className="hover:shadow-md transition-all h-full border-slate-200 group">
@@ -387,18 +384,6 @@ export default function DistrictOfficeDashboard() {
                   </div>
                 </div>
                 <p className="text-xl font-bold text-blue-700">{stats.trainingCenters}</p>
-              </div>
-              <div className="flex items-center justify-between p-3 rounded-lg border border-indigo-100 bg-indigo-50/30">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-indigo-100 rounded-lg">
-                    <ClipboardCheck className="h-4 w-4 text-indigo-600" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-900">Assessment Centers</p>
-                    <p className="text-[10px] text-slate-500">Accredited Centers</p>
-                  </div>
-                </div>
-                <p className="text-xl font-bold text-indigo-700">{stats.assessmentCenters}</p>
               </div>
               <Button 
                 variant="secondary" 

@@ -9,7 +9,10 @@ import {
   updateDoc, 
   deleteDoc,
   doc, 
-  serverTimestamp 
+  serverTimestamp,
+  getDoc,
+  getDocs,
+  writeBatch
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
@@ -70,11 +73,12 @@ export default function ProgramOfferings() {
   useEffect(() => {
     if (!isAuthReady || !user) return;
 
+    const tcId = userProfile?.organizationId || user.uid;
     const path = 'programOfferings';
     // Admins see all programs, Training Centers see only their own
     const q = userProfile?.role === 'Admin' 
       ? query(collection(db, path))
-      : query(collection(db, path), where('trainingCenterId', '==', user.uid));
+      : query(collection(db, path), where('trainingCenterId', '==', tcId));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setPrograms(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ProgramOffering[]);
@@ -130,7 +134,7 @@ export default function ProgramOfferings() {
       const payload = {
         ...formData,
         badgeTemplateName: template?.badgeName || formData.badgeTemplateName || '',
-        trainingCenterId: user.uid,
+        trainingCenterId: userProfile?.organizationId || user.uid,
         trainingCenterName: userProfile.office || userProfile.name,
         updatedAt: serverTimestamp(),
       };
@@ -193,8 +197,166 @@ export default function ProgramOfferings() {
     setDeletingId(id);
     console.log("Attempting to delete program offering:", id);
     try {
-      await deleteDoc(doc(db, 'programOfferings', id));
-      console.log("Successfully deleted program offering:", id);
+      const batch = writeBatch(db);
+
+      // 1. Fetch the program offering beforehand to get details
+      const offeringDoc = await getDoc(doc(db, 'programOfferings', id));
+      let offeringData: any = null;
+      if (offeringDoc.exists()) {
+        offeringData = offeringDoc.data();
+      }
+
+      const programTitle = offeringData?.programTitle || '';
+      const qualificationName = offeringData?.qualificationName || '';
+      const badgeTemplateId = offeringData?.badgeTemplateId || '';
+
+      // Fetch all candidate records for inline in-memory robust cascade deletion
+      const [
+        allOfferings,
+        allBatches,
+        allEnrollments,
+        allCompletions,
+        allBadgeRequests,
+        allIssuedBadges,
+        allAssessmentRecords,
+        allRplApplications,
+        allLearners
+      ] = await Promise.all([
+        getDocs(collection(db, 'programOfferings')),
+        getDocs(collection(db, 'programBatches')),
+        getDocs(collection(db, 'enrollments')),
+        getDocs(collection(db, 'ucCompletions')),
+        getDocs(collection(db, 'badgeRequests')),
+        getDocs(collection(db, 'issuedBadges')),
+        getDocs(collection(db, 'assessmentRecords')),
+        getDocs(collection(db, 'rplApplications')),
+        getDocs(collection(db, 'learners'))
+      ]);
+
+      // 2. Delete the specific program offering document and write sentinel
+      allOfferings.docs.forEach(snap => {
+        const offId = snap.id;
+        if (offId === id) {
+          batch.delete(snap.ref);
+          batch.set(doc(db, 'deletedDemoItems', offId), {
+            deletedAt: serverTimestamp(),
+            type: 'programOffering'
+          });
+        }
+      });
+
+      // 3. Delete matching programBatches
+      const matchedBatchIds = new Set<string>();
+      allBatches.docs.forEach(snap => {
+        const data = snap.data();
+        if (data.programOfferingId === id) {
+          batch.delete(snap.ref);
+          matchedBatchIds.add(snap.id);
+        }
+      });
+
+      // 4. Delete matching enrollments
+      const matchedEnrollmentIds = new Set<string>();
+      allEnrollments.docs.forEach(snap => {
+        const data = snap.data();
+        if (data.programOfferingId === id || (data.programBatchId && matchedBatchIds.has(data.programBatchId))) {
+          batch.delete(snap.ref);
+          matchedEnrollmentIds.add(snap.id);
+        }
+      });
+
+      // 5. Delete matching ucCompletions
+      allCompletions.docs.forEach(snap => {
+        const data = snap.data();
+        if (
+          data.programOfferingId === id ||
+          (data.programBatchId && matchedBatchIds.has(data.programBatchId)) ||
+          (data.enrollmentId && matchedEnrollmentIds.has(data.enrollmentId))
+        ) {
+          batch.delete(snap.ref);
+        }
+      });
+
+      // 6. Delete matching badgeRequests
+      const matchedBadgeRequestIds = new Set<string>();
+      allBadgeRequests.docs.forEach(snap => {
+        const data = snap.data();
+        if (data.programOfferingId === id || (data.programBatchId && matchedBatchIds.has(data.programBatchId))) {
+          batch.delete(snap.ref);
+          matchedBadgeRequestIds.add(snap.id);
+        }
+      });
+
+      // 7. Delete matching issuedBadges
+      allIssuedBadges.docs.forEach(snap => {
+        const data = snap.data();
+        if (
+          data.programOfferingId === id ||
+          (data.programBatchId && matchedBatchIds.has(data.programBatchId)) ||
+          (data.badgeRequestId && matchedBadgeRequestIds.has(data.badgeRequestId))
+        ) {
+          batch.delete(snap.ref);
+        }
+      });
+
+      // 8. Delete matching assessmentRecords
+      allAssessmentRecords.docs.forEach(snap => {
+        const data = snap.data();
+        if (data.programOfferingId === id || (data.programBatchId && matchedBatchIds.has(data.programBatchId))) {
+          batch.delete(snap.ref);
+        }
+      });
+
+      // 9. Delete matching rplApplications
+      allRplApplications.docs.forEach(snap => {
+        const data = snap.data();
+        if (data.programOfferingId === id || (badgeTemplateId && data.qualificationId === badgeTemplateId)) {
+          batch.delete(snap.ref);
+        }
+      });
+
+      // 10. Update matching learners to set a remaining active program as fallback and clear progress
+      const remainingOfferings = allOfferings.docs
+        .map(d => ({ id: d.id, ...d.data() } as any))
+        .filter(o => o.id !== id && o.status === 'Active');
+
+      const fallbackQual = remainingOfferings.length > 0
+        ? (remainingOfferings[0].qualificationName || remainingOfferings[0].programTitle)
+        : 'Cloud Computing Fundamentals';
+
+      allLearners.docs.forEach(snap => {
+        const data = snap.data();
+        const hasDeletedEnrollment = allEnrollments.docs.some(esnap => {
+          const edata = esnap.data();
+          return edata.learnerId === data.id && (edata.programOfferingId === id || (edata.programBatchId && matchedBatchIds.has(edata.programBatchId)));
+        });
+
+        if (hasDeletedEnrollment || data.qualification === qualificationName) {
+          batch.update(snap.ref, {
+            qualification: remainingOfferings.length > 0 ? fallbackQual : '',
+            programTitle: remainingOfferings.length > 0 ? fallbackQual : '',
+            programOfferingId: '',
+            programBatchId: '',
+            batchName: '',
+            status: remainingOfferings.length > 0 ? 'Enrolled' : 'Applied',
+            updatedAt: serverTimestamp()
+          });
+        }
+      });
+
+      // 11. Add audit log
+      const auditLogRef = doc(collection(db, 'auditLogs'));
+      batch.set(auditLogRef, {
+        action: `Deleted Program Offering: ${offeringData?.programTitle || id}. Cascaded hard deletions of active enrollments, batches, and progress records, updating associated learner profiles to remaining active programs.`,
+        userName: userProfile?.name || 'Training Center Admin',
+        timestamp: serverTimestamp(),
+        details: `Deleted Program ID: ${id}`
+      });
+
+      // Commit full batch
+      await batch.commit();
+
+      console.log("Successfully deleted program offering and all linked data for:", id);
       setConfirmDeleteId(null);
     } catch (error: any) {
       console.error("Delete failed:", error);

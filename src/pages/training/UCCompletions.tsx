@@ -66,9 +66,11 @@ export default function UCCompletions() {
   useEffect(() => {
     if (!user) return;
 
+    const tcId = userProfile?.organizationId || user.uid;
+
     const q = query(
       collection(db, 'ucCompletions'),
-      where('trainingCenterId', '==', user.uid)
+      where('trainingCenterId', '==', tcId)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -79,21 +81,21 @@ export default function UCCompletions() {
       setLoading(false);
     });
 
-    const enrQuery = query(collection(db, 'enrollments'), where('trainingCenterId', '==', user.uid), where('enrollmentStatus', '==', 'Enrolled'));
+    const enrQuery = query(collection(db, 'enrollments'), where('trainingCenterId', '==', tcId), where('enrollmentStatus', '==', 'Enrolled'));
     const unsubscribeEnr = onSnapshot(enrQuery, (snapshot) => {
       setEnrollments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Enrollment[]);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'enrollments');
     });
 
-    const offQuery = query(collection(db, 'programOfferings'), where('trainingCenterId', '==', user.uid));
+    const offQuery = query(collection(db, 'programOfferings'), where('trainingCenterId', '==', tcId));
     const unsubscribeOff = onSnapshot(offQuery, (snapshot) => {
       setOfferings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ProgramOffering[]);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'programOfferings');
     });
 
-    const batchQuery = query(collection(db, 'programBatches'), where('trainingCenterId', '==', user.uid));
+    const batchQuery = query(collection(db, 'programBatches'), where('trainingCenterId', '==', tcId));
     const unsubscribeBatches = onSnapshot(batchQuery, (snapshot) => {
       setBatches(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ProgramBatch[]);
     }, (error) => {
@@ -106,7 +108,7 @@ export default function UCCompletions() {
       unsubscribeOff();
       unsubscribeBatches();
     };
-  }, [user]);
+  }, [user, userProfile]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -124,7 +126,7 @@ export default function UCCompletions() {
       
       const payload = {
         ...formData,
-        trainingCenterId: user.uid,
+        trainingCenterId: userProfile?.organizationId || user.uid,
         learnerId: enrollment.learnerId,
         programOfferingId: enrollment.programOfferingId,
         programBatchId: enrollment.programBatchId,

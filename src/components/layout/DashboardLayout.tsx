@@ -5,7 +5,7 @@ import Sidebar from './Sidebar';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
 
 interface DashboardLayoutProps {
-  role: 'Learner' | 'Admin' | 'TrainingCenter' | 'AssessmentCenter' | 'DistrictOffice' | 'qso_admin' | 'co_admin' | 'icto_admin';
+  role: 'Learner' | 'Admin' | 'TrainingCenter' | 'DistrictOffice' | 'qso_admin' | 'icto_admin';
 }
 
 export default function DashboardLayout({ role }: DashboardLayoutProps) {
@@ -28,11 +28,9 @@ export default function DashboardLayout({ role }: DashboardLayoutProps) {
       Learner: '/learner',
       Admin: '/admin',
       qso_admin: '/qso',
-      co_admin: '/co',
       icto_admin: '/icto',
       DistrictOffice: '/districtoffice',
       TrainingCenter: '/trainingcenter',
-      AssessmentCenter: '/assessmentcenter',
     };
     const dest = defaultPaths[userProfile.role] || '/';
     return <Navigate to={dest} replace />;

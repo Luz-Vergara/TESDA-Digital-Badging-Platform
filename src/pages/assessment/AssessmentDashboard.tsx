@@ -24,7 +24,8 @@ import {
   MoreVertical,
   Download,
   Info,
-  Loader2
+  Loader2,
+  MapPin
 } from 'lucide-react';
 import { 
   collection, 
@@ -70,7 +71,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { AssessmentRecord, BadgeRequest, Learner, Organization, BadgeTemplate, RPLApplication } from '@/src/types';
+import { AssessmentRecord, BadgeRequest, Learner, Organization, BadgeTemplate, RPLApplication, RPLStatus } from '@/src/types';
 import { motion, AnimatePresence } from 'motion/react';
 
 type DashboardView = 'overview' | 'search' | 'profiles' | 'assessment-records' | 'rpl-records' | 'submit-request' | 'tracking' | 'notifications';
@@ -1083,7 +1084,7 @@ function LearnerProfileView({
 }
 
 function RPLEndorsedCandidatesAndRecordsView({ organization, templates }: { organization: any, templates: BadgeTemplate[] }) {
-  const [subTab, setSubTab] = useState<'endorsed' | 'history'>('endorsed');
+  const [subTab, setSubTab] = useState<'endorsed' | 'schedules' | 'history'>('endorsed');
   const [candidates, setCandidates] = useState<RPLApplication[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -1113,6 +1114,67 @@ function RPLEndorsedCandidatesAndRecordsView({ organization, templates }: { orga
     remarks: '',
   });
 
+  // Scheduling states
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [schedulingCandidate, setSchedulingCandidate] = useState<RPLApplication | null>(null);
+  const [scheduleForm, setScheduleForm] = useState({
+    assessmentBatchName: '',
+    assessmentDate: '',
+    assessmentStartTime: '',
+    assessmentEndTime: '',
+    assessmentVenue: '',
+    assessorName: '',
+    assessmentRemarks: '',
+    status: 'Scheduled for Assessment' as RPLStatus
+  });
+
+  const handleOpenScheduleModal = (cand: RPLApplication) => {
+    setSchedulingCandidate(cand);
+    setScheduleForm({
+      assessmentBatchName: cand.assessmentBatchName || '',
+      assessmentDate: cand.assessmentDate || new Date().toISOString().split('T')[0],
+      assessmentStartTime: cand.assessmentStartTime || '08:00',
+      assessmentEndTime: cand.assessmentEndTime || '12:00',
+      assessmentVenue: cand.assessmentVenue || '',
+      assessorName: cand.assessorName || '',
+      assessmentRemarks: cand.assessmentRemarks || '',
+      status: (cand.status === 'Scheduled for Assessment' || cand.status === 'For Assessment' || cand.status === 'Approved' ? cand.status : 'Scheduled for Assessment') as RPLStatus
+    });
+    setIsScheduleModalOpen(true);
+  };
+
+  const handleSaveSchedule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!schedulingCandidate) return;
+
+    try {
+      const docRef = doc(db, 'rplApplications', schedulingCandidate.id);
+      const batchId = schedulingCandidate.assessmentBatchId || `BATCH-${Math.floor(100000 + Math.random() * 900000)}`;
+      
+      const payload: Partial<RPLApplication> = {
+        assessmentBatchId: batchId,
+        assessmentBatchName: scheduleForm.assessmentBatchName,
+        assessmentDate: scheduleForm.assessmentDate,
+        assessmentStartTime: scheduleForm.assessmentStartTime,
+        assessmentEndTime: scheduleForm.assessmentEndTime,
+        assessmentVenue: scheduleForm.assessmentVenue,
+        assessorName: scheduleForm.assessorName,
+        assessmentRemarks: scheduleForm.assessmentRemarks,
+        assessmentScheduleStatus: scheduleForm.status === 'For Assessment' ? 'For Assessment' : 'Scheduled',
+        status: scheduleForm.status,
+        updatedAt: serverTimestamp()
+      };
+
+      await updateDoc(docRef, payload);
+      setIsScheduleModalOpen(false);
+      setSchedulingCandidate(null);
+      alert('Assessment batch and schedule successfully updated!');
+    } catch (err) {
+      console.error(err);
+      alert('Error updating schedule details.');
+    }
+  };
+
   // Load candidates
   useEffect(() => {
     if (!organization?.id) return;
@@ -1128,6 +1190,9 @@ function RPLEndorsedCandidatesAndRecordsView({ organization, templates }: { orga
                           app.assessmentCenterName === organization.name ||
                           app.status === 'Endorsed to Assessment Center' ||
                           app.status === 'Eligible for Assessment' ||
+                          app.status === 'Scheduled for Assessment' ||
+                          app.status === 'For Assessment' ||
+                          app.status === 'Approved' ||
                           app.status === 'Returned to TC' ||
                           app.status === 'Additional Documents Requested' ||
                           app.status === 'Not Eligible' ||
@@ -1276,6 +1341,14 @@ function RPLEndorsedCandidatesAndRecordsView({ organization, templates }: { orga
             RPL-Endorsed Candidates
           </Button>
           <Button
+            variant={subTab === 'schedules' ? 'default' : 'ghost'}
+            size="sm"
+            className="text-xs transition-shadow"
+            onClick={() => setSubTab('schedules')}
+          >
+            Schedules & Batches
+          </Button>
+          <Button
             variant={subTab === 'history' ? 'default' : 'ghost'}
             size="sm"
             className="text-xs transition-shadow"
@@ -1286,9 +1359,9 @@ function RPLEndorsedCandidatesAndRecordsView({ organization, templates }: { orga
         </div>
       </div>
 
-      {subTab === 'history' ? (
-        <RecordsView organization={organization} type="rpl" />
-      ) : (
+      {subTab === 'history' && <RecordsView organization={organization} type="rpl" />}
+
+      {subTab === 'endorsed' && (
         <Card className="border-slate-200 shadow-sm">
           <CardHeader>
             <CardTitle className="text-sm font-bold flex items-center gap-1.5 text-slate-800">
@@ -1335,7 +1408,8 @@ function RPLEndorsedCandidatesAndRecordsView({ organization, templates }: { orga
                       <TableCell className="text-xs text-slate-500">{cand.trainingCenterName}</TableCell>
                       <TableCell>
                         <Badge className="text-[10px]" variant={
-                          cand.status === 'Eligible for Assessment' ? 'default' :
+                          cand.status === 'Eligible for Assessment' || cand.status === 'Approved' ? 'default' :
+                          cand.status === 'Scheduled for Assessment' || cand.status === 'For Assessment' ? 'outline' :
                           cand.status === 'Assessment Completed' ? 'emerald' :
                           cand.status === 'Returned to TC' ? 'destructive' :
                           'secondary'
@@ -1344,14 +1418,25 @@ function RPLEndorsedCandidatesAndRecordsView({ organization, templates }: { orga
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button 
-                          size="xs" 
-                          variant="outline" 
-                          className="bg-white text-xs px-2.5 h-8 font-semibold border-slate-200 text-slate-700 font-sans"
-                          onClick={() => handleOpenEval(cand)}
-                        >
-                          Evaluate Eligibility
-                        </Button>
+                        <div className="flex gap-1.5 justify-end">
+                          <Button 
+                            size="xs" 
+                            variant="outline" 
+                            className="bg-white text-xs px-2.5 h-8 font-semibold border-slate-200 text-slate-700 font-sans"
+                            onClick={() => handleOpenEval(cand)}
+                          >
+                            Evaluate Eligibility
+                          </Button>
+                          {(cand.status === 'Eligible for Assessment' || cand.status === 'Scheduled for Assessment' || cand.status === 'For Assessment' || cand.status === 'Approved') && (
+                            <Button 
+                              size="xs" 
+                              className="bg-indigo-600 hover:bg-slate-800 text-white text-xs px-2.5 h-8 font-bold font-sans"
+                              onClick={() => handleOpenScheduleModal(cand)}
+                            >
+                              Assign Batch & Schedule
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -1360,6 +1445,267 @@ function RPLEndorsedCandidatesAndRecordsView({ organization, templates }: { orga
             )}
           </CardContent>
         </Card>
+      )}
+
+      {subTab === 'schedules' && (
+        <div className="space-y-6">
+          <Card className="border-slate-200 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-sm font-bold flex items-center gap-1.5 text-slate-800">
+                <Users className="h-4 w-4 text-indigo-600" />
+                Assessment Batches & Calendars
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Group layout of all scheduled assessment candidate programs, venues, and evaluators.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-6">
+              {(() => {
+                // Filter learners who have some scheduled info
+                const scheduledApps = candidates.filter(cand => cand.assessmentBatchName);
+                
+                if (scheduledApps.length === 0) {
+                  return (
+                    <div className="text-center py-12 text-slate-450 font-mono text-xs">
+                      No candidate has been scheduled into batches yet. Go to "RPL-Endorsed Candidates" and click "Assign Batch & Schedule" to plan checks.
+                    </div>
+                  );
+                }
+
+                // Group candidates by batchName
+                const batches: { [batchName: string]: RPLApplication[] } = {};
+                scheduledApps.forEach(app => {
+                  const bName = app.assessmentBatchName || 'Unassigned Batch';
+                  if (!batches[bName]) batches[bName] = [];
+                  batches[bName].push(app);
+                });
+
+                return (
+                  <div className="space-y-8">
+                    {Object.keys(batches).map((bName) => {
+                      const list = batches[bName];
+                      const first = list[0]; // representative to show common specs if any
+                      return (
+                        <div key={bName} className="border border-slate-150 rounded-xl overflow-hidden bg-white shadow-xs">
+                          <div className="bg-slate-50/70 p-4 border-b border-slate-150 flex flex-wrap justify-between items-center gap-2">
+                            <div>
+                              <h3 className="font-bold text-slate-800 text-xs tracking-wider uppercase font-mono">
+                                {bName}
+                              </h3>
+                              <div className="flex flex-wrap items-center gap-4 text-xs mt-1 text-slate-500">
+                                <span className="flex items-center gap-1">
+                                  <Clock className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                  {first.assessmentDate} ({first.assessmentStartTime} - {first.assessmentEndTime})
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <MapPin className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                  {first.assessmentVenue}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <Users className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                                  Assessor: {first.assessorName}
+                                </span>
+                              </div>
+                            </div>
+                            <Badge className="bg-indigo-50 text-indigo-700 border-indigo-100 uppercase tracking-widest text-[9px] font-mono">
+                              Total: {list.length} Candidate(s)
+                            </Badge>
+                          </div>
+                          
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="w-[180px]">Candidate</TableHead>
+                                <TableHead>Competency Standard</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead className="text-right">Actions</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {list.map((cand) => (
+                                <TableRow key={cand.id}>
+                                  <TableCell className="font-semibold text-xs text-slate-800">
+                                    {cand.learnerName}
+                                    <p className="text-[10px] text-slate-400 font-mono italic select-all">{cand.learnerEmail}</p>
+                                  </TableCell>
+                                  <TableCell className="text-xs text-slate-600 font-medium">
+                                    [{cand.qualificationCode}] {cand.qualificationName}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge className="text-[10px]" variant={
+                                      cand.status === 'Assessment Completed' ? 'emerald' : 'default'
+                                    }>
+                                      {cand.status}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    <div className="flex gap-1.5 justify-end">
+                                      <Button
+                                        size="xs"
+                                        variant="outline"
+                                        className="h-8 text-xs font-sans"
+                                        onClick={() => handleOpenScheduleModal(cand)}
+                                      >
+                                        Edit Schedule
+                                      </Button>
+                                      {cand.status !== 'Assessment Completed' && (
+                                        <Button
+                                          size="xs"
+                                          className="bg-amber-600 hover:bg-amber-700 text-white h-8 text-xs font-sans font-semibold"
+                                          onClick={() => {
+                                            setSelectedCandidate(cand);
+                                            setRecordingResult(true);
+                                            setIsEvalOpen(true);
+                                          }}
+                                        >
+                                          Record Result
+                                        </Button>
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Assign Batch and Schedule Dialog */}
+      {schedulingCandidate && (
+        <Dialog open={isScheduleModalOpen} onOpenChange={() => setIsScheduleModalOpen(false)}>
+          <DialogContent className="max-w-md border-slate-200">
+            <DialogHeader>
+              <DialogTitle className="text-slate-950 font-extrabold text-base flex items-center gap-1.5">
+                <Clock className="h-5 w-5 text-indigo-600" />
+                Assign Batch & Schedule
+              </DialogTitle>
+              <DialogDescription className="text-xs">
+                Configure the assessment schedule for <strong>{schedulingCandidate.learnerName}</strong>.
+              </DialogDescription>
+            </DialogHeader>
+
+            <form onSubmit={handleSaveSchedule} className="space-y-4 py-2 text-xs">
+              <div className="space-y-1.5">
+                <Label className="font-semibold text-slate-700">Assessment Batch Name / Number</Label>
+                <Input 
+                  placeholder="e.g. Batch #4 - Web Dev NC III"
+                  required
+                  className="bg-white text-xs"
+                  value={scheduleForm.assessmentBatchName}
+                  onChange={(e) => setScheduleForm(prev => ({ ...prev, assessmentBatchName: e.target.value }))}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="font-semibold text-slate-700">Assessment Date</Label>
+                <Input 
+                  type="date"
+                  required
+                  className="bg-white text-xs font-mono"
+                  value={scheduleForm.assessmentDate}
+                  onChange={(e) => setScheduleForm(prev => ({ ...prev, assessmentDate: e.target.value }))}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="font-semibold text-slate-700">Start Time</Label>
+                  <Input 
+                    type="time"
+                    required
+                    className="bg-white text-xs font-mono"
+                    value={scheduleForm.assessmentStartTime}
+                    onChange={(e) => setScheduleForm(prev => ({ ...prev, assessmentStartTime: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="font-semibold text-slate-700">End Time</Label>
+                  <Input 
+                    type="time"
+                    required
+                    className="bg-white text-xs font-mono"
+                    value={scheduleForm.assessmentEndTime}
+                    onChange={(e) => setScheduleForm(prev => ({ ...prev, assessmentEndTime: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="font-semibold text-slate-700">Venue or Room</Label>
+                <Input 
+                  placeholder="e.g. Assessment Room 102A, Main Campus"
+                  required
+                  className="bg-white text-xs"
+                  value={scheduleForm.assessmentVenue}
+                  onChange={(e) => setScheduleForm(prev => ({ ...prev, assessmentVenue: e.target.value }))}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="font-semibold text-slate-700">Assessor Name</Label>
+                <Input 
+                  placeholder="e.g. Juan De La Cruz"
+                  required
+                  className="bg-white text-xs"
+                  value={scheduleForm.assessorName}
+                  onChange={(e) => setScheduleForm(prev => ({ ...prev, assessorName: e.target.value }))}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="font-semibold text-slate-700">Assessment Status Workflow</Label>
+                <Select 
+                  value={scheduleForm.status} 
+                  onValueChange={(val: any) => setScheduleForm(prev => ({ ...prev, status: val }))}
+                >
+                  <SelectTrigger className="w-full bg-white text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="text-xs">
+                    <SelectItem value="Scheduled for Assessment">Scheduled for Assessment</SelectItem>
+                    <SelectItem value="For Assessment">For Assessment</SelectItem>
+                    <SelectItem value="Approved">Approved</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="font-semibold text-slate-700">Remarks / Special Instructions</Label>
+                <Textarea 
+                  placeholder="e.g. Bring valid ID and tools of trade checklist..."
+                  rows={2}
+                  className="bg-white text-xs"
+                  value={scheduleForm.assessmentRemarks}
+                  onChange={(e) => setScheduleForm(prev => ({ ...prev, assessmentRemarks: e.target.value }))}
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <Button 
+                  type="button" 
+                  variant="ghost" 
+                  onClick={() => setIsScheduleModalOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  type="submit" 
+                  className="bg-indigo-600 hover:bg-slate-800 text-white font-bold h-9"
+                >
+                  Save Schedule
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
       )}
 
       {/* Candidate Eligibility Evaluation Dialog */}
@@ -1528,19 +1874,65 @@ function RPLEndorsedCandidatesAndRecordsView({ organization, templates }: { orga
                   </div>
 
                   {/* Immediate Competency Assessment Recorder trigger */}
-                  {(selectedCandidate.status === 'Eligible for Assessment') && (
-                    <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-center justify-between gap-4 mt-6">
-                      <div className="space-y-0.5 text-xs text-amber-800">
-                        <span className="font-bold block">Schedule Authorized</span>
-                        <p className="text-[11px] text-amber-700">Competency check is approved. Record the final score directly into the repository.</p>
+                  {(selectedCandidate.status === 'Eligible for Assessment' || 
+                    selectedCandidate.status === 'Scheduled for Assessment' || 
+                    selectedCandidate.status === 'For Assessment' || 
+                    selectedCandidate.status === 'Approved') && (
+                    <div className="space-y-4">
+                      {selectedCandidate.assessmentBatchName && (
+                        <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-lg text-indigo-900 space-y-1">
+                          <span className="font-bold block text-[10px] text-indigo-700 uppercase tracking-wider">Scheduled Assessment Details</span>
+                          <p className="text-[11px] font-medium leading-relaxed">
+                            Batch: <span className="font-bold">{selectedCandidate.assessmentBatchName}</span> | Date: <span className="font-bold">{selectedCandidate.assessmentDate}</span> ({selectedCandidate.assessmentStartTime} - {selectedCandidate.assessmentEndTime})
+                          </p>
+                          <p className="text-[11px] leading-relaxed">
+                            Venue: <span className="font-bold">{selectedCandidate.assessmentVenue}</span> | Assessor: <span className="font-bold">{selectedCandidate.assessorName}</span>
+                          </p>
+                          {selectedCandidate.assessmentRemarks && (
+                            <p className="text-[10px] italic text-indigo-700">
+                              Instruction: "{selectedCandidate.assessmentRemarks}"
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      
+                      <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="space-y-0.5 text-xs text-amber-800">
+                          <span className="font-bold block">Schedule Authorized</span>
+                          <p className="text-[11px] text-amber-700 font-medium">Competency check is approved. You can edit/assign this candidate's batch schedule, or record the final evaluation score directly.</p>
+                        </div>
+                        <div className="flex gap-2 shrink-0 self-end md:self-auto">
+                          <Button 
+                            type="button"
+                            size="sm" 
+                            variant="outline"
+                            className="bg-white text-zinc-800 border-zinc-200 hover:bg-slate-100 font-bold h-9 text-xs"
+                            onClick={() => {
+                              setIsEvalOpen(false);
+                              handleOpenScheduleModal(selectedCandidate);
+                            }}
+                          >
+                            {selectedCandidate.assessmentBatchName ? 'Edit Batch & Schedule' : 'Assign Batch & Schedule'}
+                          </Button>
+                          <Button 
+                            type="button"
+                            size="sm" 
+                            className="bg-amber-600 text-white font-bold h-9 text-xs hover:bg-amber-700"
+                            onClick={() => {
+                              if (selectedCandidate.assessorName) {
+                                setAssessorForm(prev => ({ 
+                                  ...prev, 
+                                  assessorName: selectedCandidate.assessorName || '',
+                                  assessmentDate: selectedCandidate.assessmentDate || prev.assessmentDate
+                                }));
+                              }
+                              setRecordingResult(true);
+                            }}
+                          >
+                            Record Assessor Record Now
+                          </Button>
+                        </div>
                       </div>
-                      <Button 
-                        size="sm" 
-                        className="bg-amber-600 text-white font-bold h-9"
-                        onClick={() => setRecordingResult(true)}
-                      >
-                        Record Assessor Record Now
-                      </Button>
                     </div>
                   )}
                 </div>

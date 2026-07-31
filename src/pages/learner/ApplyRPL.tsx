@@ -655,6 +655,32 @@ export default function ApplyRPL() {
                               </p>
                             </div>
                           )}
+
+                          {app.assessmentBatchName && (
+                            <div className="p-3 rounded-lg bg-blue-50 border border-blue-150 text-blue-950 space-y-1.5 mt-3">
+                              <span className="font-bold block text-[10px] text-blue-700 uppercase tracking-wide flex items-center gap-1">
+                                <Clock className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                                Assigned Assessment Schedule
+                              </span>
+                              <p className="text-xs">
+                                Batch: <strong className="font-semibold text-slate-800">{app.assessmentBatchName}</strong>
+                              </p>
+                              <p className="text-xs">
+                                Schedule: <strong className="font-semibold text-slate-850">{app.assessmentDate}</strong> ({app.assessmentStartTime} - {app.assessmentEndTime})
+                              </p>
+                              <p className="text-xs">
+                                Venue/Room: <strong className="font-semibold text-slate-850">{app.assessmentVenue}</strong>
+                              </p>
+                              <p className="text-xs">
+                                Assessor: <strong className="font-semibold text-slate-850">{app.assessorName}</strong>
+                              </p>
+                              {app.assessmentRemarks && (
+                                <p className="text-[10px] text-slate-500 font-mono italic leading-normal border-t border-blue-100 pt-1 mt-1">
+                                  Instructions: "{app.assessmentRemarks}"
+                                </p>
+                              )}
+                            </div>
+                          )}
                         </div>
 
                         {/* Mapped Competencies Status Checklist */}

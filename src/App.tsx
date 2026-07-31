@@ -3,6 +3,7 @@ import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { FirebaseProvider } from './lib/FirebaseProvider';
 import Home from './pages/public/Home';
 import Login from './pages/public/Login';
+import Orientation from './pages/public/Orientation';
 import Verification from './pages/employer/Verification';
 import LearnerDashboard from './pages/learner/LearnerDashboard';
 import AvailablePrograms from './pages/learner/AvailablePrograms';
@@ -15,7 +16,6 @@ import ApprovalQueue from './pages/districtoffice/ApprovalQueue';
 import RenewalManagement from './pages/districtoffice/RenewalManagement';
 import BadgeRequestStatus from './pages/districtoffice/BadgeRequestStatus';
 import TrainingCenters from './pages/districtoffice/TrainingCenters';
-import AssessmentCenters from './pages/districtoffice/AssessmentCenters';
 import CentralAdminDashboard from './pages/admin/CentralAdminDashboard';
 import Organizations from './pages/admin/Organizations';
 import Users from './pages/admin/Users';
@@ -27,7 +27,6 @@ import BadgeHierarchy from './pages/qso/BadgeHierarchy';
 import MetadataStandards from './pages/qso/MetadataStandards';
 import QualificationAlignment from './pages/qso/QualificationAlignment';
 import NamingConventions from './pages/qso/NamingConventions';
-import CODashboard from './pages/co/CODashboard';
 import ICTODashboard from './pages/icto/ICTODashboard';
 
 import TrainingDashboard from './pages/training/TrainingDashboard';
@@ -38,7 +37,6 @@ import LearnerApplications from './pages/training/LearnerApplications';
 import UCCompletions from './pages/training/UCCompletions';
 import BadgeRequests from './pages/training/BadgeRequests';
 import RPLApplications from './pages/training/RPLApplications';
-import AssessmentDashboard from './pages/assessment/AssessmentDashboard';
 import DashboardLayout from './components/layout/DashboardLayout';
 
 export default function App() {
@@ -49,6 +47,7 @@ export default function App() {
           {/* Public Routes */}
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/orientation" element={<Orientation />} />
           <Route path="/verify" element={<Verification />} />
           <Route path="/verify/:verificationId" element={<Verification />} />
           
@@ -84,15 +83,6 @@ export default function App() {
             <Route path="conventions" element={<NamingConventions />} />
           </Route>
 
-          {/* CO Module */}
-          <Route path="/co" element={<DashboardLayout role="co_admin" />}>
-            <Route index element={<CODashboard />} />
-            <Route path="oversight" element={<div className="p-8 text-center text-slate-500">Skilled & Master Oversight Queue</div>} />
-            <Route path="renewal" element={<div className="p-8 text-center text-slate-500">Validity and Renewal Configuration</div>} />
-            <Route path="revocation" element={<div className="p-8 text-center text-slate-500">Revocation and Suspension Management</div>} />
-            <Route path="monitoring" element={<div className="p-8 text-center text-slate-500 font-mono text-sm">Certification Pulse Monitor</div>} />
-          </Route>
-
           {/* ICTO Module */}
           <Route path="/icto" element={<DashboardLayout role="icto_admin" />}>
             <Route index element={<ICTODashboard />} />
@@ -111,7 +101,6 @@ export default function App() {
             <Route path="status" element={<BadgeRequestStatus />} />
             <Route path="renewal" element={<RenewalManagement />} />
             <Route path="training-centers" element={<TrainingCenters />} />
-            <Route path="assessment-centers" element={<AssessmentCenters />} />
             <Route path="notifications" element={<div className="p-8 text-center text-slate-500">Notifications (Coming Soon)</div>} />
           </Route>
 
@@ -127,18 +116,6 @@ export default function App() {
             <Route path="requests" element={<BadgeRequests />} />
             <Route path="reports" element={<div className="p-8 text-center text-slate-500 font-medium">Training Center performance reports (Coming Soon)</div>} />
             <Route path="notifications" element={<div className="p-8 text-center text-slate-500">Notifications (Coming Soon)</div>} />
-          </Route>
-
-          {/* Assessment Center Portal */}
-          <Route path="/assessmentcenter" element={<DashboardLayout role="AssessmentCenter" />}>
-            <Route index element={<AssessmentDashboard />} />
-            <Route path="search" element={<AssessmentDashboard />} />
-            <Route path="profiles" element={<AssessmentDashboard />} />
-            <Route path="records" element={<AssessmentDashboard />} />
-            <Route path="rpl" element={<AssessmentDashboard />} />
-            <Route path="submit" element={<AssessmentDashboard />} />
-            <Route path="tracking" element={<AssessmentDashboard />} />
-            <Route path="notifications" element={<AssessmentDashboard />} />
           </Route>
 
           {/* Fallback */}

@@ -91,8 +91,9 @@ export default function BadgeRequests() {
   useEffect(() => {
     if (!isAuthReady || !user) return;
 
+    const tcId = userProfile?.organizationId || user.uid;
     const reqPath = 'badgeRequests';
-    const q = query(collection(db, reqPath), where('trainingCenterId', '==', user.uid));
+    const q = query(collection(db, reqPath), where('trainingCenterId', '==', tcId));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as BadgeRequest[]);
       setLoading(false);
@@ -102,7 +103,7 @@ export default function BadgeRequests() {
     });
 
     const offPath = 'programOfferings';
-    const offQuery = query(collection(db, offPath), where('trainingCenterId', '==', user.uid));
+    const offQuery = query(collection(db, offPath), where('trainingCenterId', '==', tcId));
     const unsubOff = onSnapshot(offQuery, (snapshot) => {
       setOfferings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ProgramOffering[]);
     }, (error) => {
@@ -110,7 +111,7 @@ export default function BadgeRequests() {
     });
 
     const batchPath = 'programBatches';
-    const batchQuery = query(collection(db, batchPath), where('trainingCenterId', '==', user.uid));
+    const batchQuery = query(collection(db, batchPath), where('trainingCenterId', '==', tcId));
     const unsubBatches = onSnapshot(batchQuery, (snapshot) => {
       setBatches(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ProgramBatch[]);
     }, (error) => {
@@ -118,7 +119,7 @@ export default function BadgeRequests() {
     });
 
     const enrPath = 'enrollments';
-    const enrQuery = query(collection(db, enrPath), where('trainingCenterId', '==', user.uid));
+    const enrQuery = query(collection(db, enrPath), where('trainingCenterId', '==', tcId));
     const unsubEnr = onSnapshot(enrQuery, (snapshot) => {
       setEnrollments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Enrollment[]);
     }, (error) => {
@@ -150,7 +151,7 @@ export default function BadgeRequests() {
       unsubTemp();
       unsubAC();
     };
-  }, [user, isAuthReady]);
+  }, [user, isAuthReady, userProfile]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -192,7 +193,7 @@ export default function BadgeRequests() {
         requestType,
         requestNumber: reqNum,
         badgeIdStatus: 'Pending District Approval',
-        trainingCenterId: user.uid,
+        trainingCenterId: userProfile?.organizationId || user.uid,
         trainingCenterName: userProfile.office || userProfile.name,
         programOfferingId: formData.programOfferingId,
         programBatchId: formData.programBatchId,
@@ -270,13 +271,15 @@ export default function BadgeRequests() {
     setIsResetting(true);
     setResetStatus("Initializing reset...");
     
+    const tcId = userProfile?.organizationId || user.uid;
+    
     try {
       const collectionsToClear = ['badgeRequests', 'issuedBadges', 'ucCompletions'];
       let totalDeleted = 0;
 
       for (const collectionName of collectionsToClear) {
         setResetStatus(`Clearing ${collectionName}...`);
-        const orgQuery = query(collection(db, collectionName), where('trainingCenterId', '==', user.uid));
+        const orgQuery = query(collection(db, collectionName), where('trainingCenterId', '==', tcId));
         const districtQuery = query(collection(db, collectionName), where('districtOfficeId', '==', userProfile.assignedDistrictId || 'none'));
         
         const [orgSnap, districtSnap] = await Promise.all([
@@ -290,7 +293,7 @@ export default function BadgeRequests() {
           if (!allDocs.find(d => d.id === doc.id)) {
             // Only add if it's related to this center's requests or completions
             const data = doc.data();
-            if (data.trainingCenterId === user.uid) {
+            if (data.trainingCenterId === tcId) {
               allDocs.push(doc);
             }
           }

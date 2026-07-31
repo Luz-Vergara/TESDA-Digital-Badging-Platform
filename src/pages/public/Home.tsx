@@ -96,26 +96,89 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-3xl mx-auto mb-16">
             <h2 className="text-3xl font-bold text-slate-900 mb-4">The TESDA Badge Hierarchy</h2>
-            <p className="text-slate-600">Our multi-tiered badging system recognizes every step of your competency journey, from individual units to national certifications.</p>
+            <p className="text-slate-600">Our multi-tiered badging system recognizes every step of your competency journey, clearly classified by training progress and assessment certification.</p>
           </div>
           
-          <div className="grid md:grid-cols-4 gap-6">
-            {[
-              { title: 'Proficient', desc: 'Unit of Competency', color: 'blue' },
-              { title: 'Expert', desc: 'Program Completion', color: 'green' },
-              { title: 'Skilled', desc: 'Certificate of Competency', color: 'amber' },
-              { title: 'Master', desc: 'National Certificate', color: 'purple' },
-            ].map((tier) => (
-              <Card key={tier.title} className="border-none shadow-sm hover:shadow-md transition-shadow">
-                <CardContent className="p-8 text-center">
-                  <div className={`w-20 h-20 mx-auto rounded-full bg-${tier.color}-100 flex items-center justify-center mb-6`}>
-                    <Award className={`h-10 w-10 text-${tier.color}-600`} />
+          <div className="grid lg:grid-cols-2 gap-8">
+            {/* Training Group */}
+            <div className="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col justify-between space-y-6">
+              <div>
+                <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-bold uppercase tracking-wider mb-3">
+                  <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
+                  Training Base
+                </div>
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight">Training</h3>
+                <p className="text-slate-500 text-sm mt-1 leading-relaxed">
+                  Competency badges earned progressively through institutional training milestones and coursework validation.
+                </p>
+              </div>
+              
+              <div className="grid sm:grid-cols-2 gap-4 pt-4 border-t border-slate-100">
+                {/* Proficient Badge */}
+                <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 hover:border-emerald-200 hover:bg-emerald-50/10 transition-all duration-300 flex flex-col justify-between">
+                  <div>
+                    <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center mb-4">
+                      <Award className="h-6 w-6" />
+                    </div>
+                    <h4 className="text-lg font-bold text-slate-900">Proficient Badge</h4>
+                    <span className="text-[10px] font-semibold text-slate-400 capitalize tracking-wider">Unit of Competency</span>
                   </div>
-                  <h3 className="text-xl font-bold text-slate-900 mb-2">{tier.title} Badge</h3>
-                  <p className="text-sm text-slate-500">{tier.desc}</p>
-                </CardContent>
-              </Card>
-            ))}
+                  <p className="text-xs text-slate-550 mt-4 leading-relaxed">Awarded for each individually completed Unit of Competency (UC) during coursework.</p>
+                </div>
+
+                {/* Expert Badge */}
+                <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 hover:border-amber-200 hover:bg-amber-50/10 transition-all duration-300 flex flex-col justify-between">
+                  <div>
+                    <div className="w-12 h-12 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center mb-4">
+                      <Award className="h-6 w-6" />
+                    </div>
+                    <h4 className="text-lg font-bold text-slate-900">Expert Badge</h4>
+                    <span className="text-[10px] font-semibold text-slate-400 capitalize tracking-wider">Program Completion</span>
+                  </div>
+                  <p className="text-xs text-slate-550 mt-4 leading-relaxed">Completed when all required core competency units in a TVET format are achieved.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Assessment Group */}
+            <div className="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col justify-between space-y-6">
+              <div>
+                <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-bold uppercase tracking-wider mb-3">
+                  <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
+                  Certified Baseline
+                </div>
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight">Assessment</h3>
+                <p className="text-slate-500 text-sm mt-1 leading-relaxed">
+                  Authentic certified milestones achieved following national level competence mapping and assessments.
+                </p>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-4 pt-4 border-t border-slate-100">
+                {/* Skilled Badge */}
+                <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 hover:border-blue-200 hover:bg-blue-50/10 transition-all duration-300 flex flex-col justify-between">
+                  <div>
+                    <div className="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center mb-4">
+                      <Award className="h-6 w-6" />
+                    </div>
+                    <h4 className="text-lg font-bold text-slate-900">Skilled Badge</h4>
+                    <span className="text-[10px] font-semibold text-slate-400 capitalize tracking-wider">Certificate of Competency</span>
+                  </div>
+                  <p className="text-xs text-slate-550 mt-4 leading-relaxed">Represents certification of specific competency clusters (CoC) under national frameworks.</p>
+                </div>
+
+                {/* Master Badge */}
+                <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 hover:border-yellow-300 hover:bg-yellow-50/10 transition-all duration-300 flex flex-col justify-between">
+                  <div>
+                    <div className="w-12 h-12 rounded-xl bg-yellow-100 text-yellow-600 flex items-center justify-center mb-4">
+                      <Award className="h-6 w-6" />
+                    </div>
+                    <h4 className="text-lg font-bold text-slate-900">Master Badge</h4>
+                    <span className="text-[10px] font-semibold text-slate-400 capitalize tracking-wider">National Certificate</span>
+                  </div>
+                  <p className="text-xs text-slate-550 mt-4 leading-relaxed">Issued following full National Certificate (NC) validation. The highest hierarchy level.</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>

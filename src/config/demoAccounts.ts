@@ -81,7 +81,7 @@ export const demoAccountGroups: DemoAccountGroup[] = [
       },
       {
         id: "demo-learner-3",
-        label: "Demo Learner 3 (Jose Rizal)",
+        label: "Demo Learner 3 (Kiko Benitez)",
         email: "learner3@demo.com"
       },
       {
@@ -93,32 +93,6 @@ export const demoAccountGroups: DemoAccountGroup[] = [
         id: "demo-learner-5",
         label: "Demo Learner 5 (Emilio Aguinaldo)",
         email: "learner5@demo.com"
-      }
-    ]
-  },
-  {
-    role: "AssessmentCenter",
-    label: "Assessment Center",
-    dashboardPath: "/assessmentcenter",
-    accounts: [
-      {
-        id: "demo-assessment-1",
-        label: "Demo Assessment Center",
-        email: "assessment@demo.com",
-        organizationName: "Demo Assessment Center"
-      }
-    ]
-  },
-  {
-    role: "co_admin",
-    label: "Certification Office",
-    dashboardPath: "/co",
-    accounts: [
-      {
-        id: "demo-co-1",
-        label: "Demo Cert Officer",
-        email: "co@demo.com",
-        organizationName: "Certification Office"
       }
     ]
   },

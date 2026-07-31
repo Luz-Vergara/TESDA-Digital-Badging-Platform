@@ -45,10 +45,12 @@ export default function TrainingDashboard() {
   useEffect(() => {
     if (!isAuthReady || !user) return;
 
+    const tcId = userProfile?.organizationId || user.uid;
+
     const badgesPath = 'issuedBadges';
     const badgesQuery = query(
       collection(db, badgesPath),
-      where('trainingCenterId', '==', user.uid)
+      where('trainingCenterId', '==', tcId)
     );
 
     const unsubscribeBadges = onSnapshot(badgesQuery, (snapshot) => {
@@ -64,7 +66,7 @@ export default function TrainingDashboard() {
     const learnersPath = 'learners';
     const learnersQuery = query(
       collection(db, learnersPath),
-      where('trainingCenterId', '==', user.uid)
+      where('trainingCenterId', '==', tcId)
     );
 
     const unsubscribeLearners = onSnapshot(learnersQuery, (snapshot) => {

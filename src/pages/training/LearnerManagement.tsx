@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Users, 
   UserPlus, 
@@ -92,6 +93,7 @@ import { cn } from '@/lib/utils';
 
 export default function LearnerManagement() {
   const { user, userProfile, isAuthReady } = useFirebase();
+  const navigate = useNavigate();
   
   // Shared State
   const [loading, setLoading] = useState(true);
@@ -158,10 +160,11 @@ export default function LearnerManagement() {
   useEffect(() => {
     if (!isAuthReady || !user) return;
 
+    const tcId = userProfile?.organizationId || user.uid;
     const path = 'learners';
     const q = query(
       collection(db, path),
-      where('trainingCenterId', '==', user.uid)
+      where('trainingCenterId', '==', tcId)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -176,16 +179,17 @@ export default function LearnerManagement() {
     });
 
     return () => unsubscribe();
-  }, [user, isAuthReady]);
+  }, [user, isAuthReady, userProfile]);
 
   // Enrollment Subscriptions
   useEffect(() => {
     if (!user) return;
 
+    const tcId = userProfile?.organizationId || user.uid;
     const enrPath = 'enrollments';
     const q = query(
       collection(db, enrPath),
-      where('trainingCenterId', '==', user.uid),
+      where('trainingCenterId', '==', tcId),
       where('enrollmentStatus', 'in', ['Enrolled', 'Completed'])
     );
 
@@ -196,7 +200,7 @@ export default function LearnerManagement() {
     });
 
     const offPath = 'programOfferings';
-    const offQuery = query(collection(db, offPath), where('trainingCenterId', '==', user.uid));
+    const offQuery = query(collection(db, offPath), where('trainingCenterId', '==', tcId));
     const unsubscribeOff = onSnapshot(offQuery, (snapshot) => {
       setOfferings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ProgramOffering[]);
     }, (error) => {
@@ -204,21 +208,21 @@ export default function LearnerManagement() {
     });
 
     const batchPath = 'programBatches';
-    const batchQuery = query(collection(db, batchPath), where('trainingCenterId', '==', user.uid));
+    const batchQuery = query(collection(db, batchPath), where('trainingCenterId', '==', tcId));
     const unsubscribeBatches = onSnapshot(batchQuery, (snapshot) => {
       setBatches(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ProgramBatch[]);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, batchPath);
     });
 
-    const completionQuery = query(collection(db, 'ucCompletions'), where('trainingCenterId', '==', user.uid));
+    const completionQuery = query(collection(db, 'ucCompletions'), where('trainingCenterId', '==', tcId));
     const unsubscribeCompletions = onSnapshot(completionQuery, (snapshot) => {
       setCompletions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as UCCompletion[]);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'ucCompletions');
     });
 
-    const requestsQuery = query(collection(db, 'badgeRequests'), where('trainingCenterId', '==', user.uid));
+    const requestsQuery = query(collection(db, 'badgeRequests'), where('trainingCenterId', '==', tcId));
     const unsubscribeRequests = onSnapshot(requestsQuery, (snapshot) => {
       setRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as BadgeRequest[]);
     }, (error) => {
@@ -240,7 +244,7 @@ export default function LearnerManagement() {
       unsubscribeRequests();
       unsubscribeTemplates();
     };
-  }, [user]);
+  }, [user, userProfile]);
 
   // Database duplicate cleanup effect
   useEffect(() => {
@@ -317,13 +321,94 @@ export default function LearnerManagement() {
     if (!learnerToDelete) return;
     setIsSubmitting(true);
     try {
-      await deleteDoc(doc(db, 'learners', learnerToDelete.id));
-      await addDoc(collection(db, 'auditLogs'), {
+      const batch = writeBatch(db);
+
+      // 1. Delete main learner document from 'learners'
+      const learnerRef = doc(db, 'learners', learnerToDelete.id);
+      batch.delete(learnerRef);
+
+      // 2. Fetch and queue related enrollments
+      const enrollmentsRef = collection(db, 'enrollments');
+      const eq = query(enrollmentsRef, where('learnerId', '==', learnerToDelete.id));
+      const eqSnap = await getDocs(eq);
+      eqSnap.forEach(docSnap => {
+        batch.delete(docSnap.ref);
+      });
+
+      // Also clean up any enrollments by email as an additional fallback
+      if (learnerToDelete.email) {
+        const eqEmail = query(enrollmentsRef, where('learnerEmail', '==', learnerToDelete.email));
+        const eqEmailSnap = await getDocs(eqEmail);
+        eqEmailSnap.forEach(docSnap => {
+          batch.delete(docSnap.ref);
+        });
+      }
+
+      // 3. Fetch and queue related ucCompletions
+      const completionsRef = collection(db, 'ucCompletions');
+      const cq = query(completionsRef, where('learnerId', '==', learnerToDelete.id));
+      const cqSnap = await getDocs(cq);
+      cqSnap.forEach(docSnap => {
+        batch.delete(docSnap.ref);
+      });
+
+      // 4. Fetch and queue related issuedBadges
+      const issuedBadgesRef = collection(db, 'issuedBadges');
+      const ibq = query(issuedBadgesRef, where('learnerId', '==', learnerToDelete.id));
+      const ibqSnap = await getDocs(ibq);
+      ibqSnap.forEach(docSnap => {
+        batch.delete(docSnap.ref);
+      });
+
+      // 5. Fetch and queue related assessmentRecords
+      const assessmentRecordsRef = collection(db, 'assessmentRecords');
+      const arq = query(assessmentRecordsRef, where('learnerId', '==', learnerToDelete.id));
+      const arqSnap = await getDocs(arq);
+      arqSnap.forEach(docSnap => {
+        batch.delete(docSnap.ref);
+      });
+
+      // 6. Fetch and queue related rplApplications
+      const rplApplicationsRef = collection(db, 'rplApplications');
+      const rq = query(rplApplicationsRef, where('learnerId', '==', learnerToDelete.id));
+      const rqSnap = await getDocs(rq);
+      rqSnap.forEach(docSnap => {
+        batch.delete(docSnap.ref);
+      });
+
+      // 7. Fetch and handle related badgeRequests
+      const badgeRequestsRef = collection(db, 'badgeRequests');
+      const brSnap = await getDocs(badgeRequestsRef);
+      brSnap.forEach(docSnap => {
+        const data = docSnap.data();
+        const learnerIds = data.learnerIds || [];
+        if (learnerIds.includes(learnerToDelete.id)) {
+          if (learnerIds.length <= 1) {
+            batch.delete(docSnap.ref);
+          } else {
+            const updatedIds = learnerIds.filter((id: string) => id !== learnerToDelete.id);
+            const updatedSummary = (data.issuedBadgeSummary || []).filter((s: any) => s.learnerId !== learnerToDelete.id);
+            batch.update(docSnap.ref, {
+              learnerIds: updatedIds,
+              issuedBadgeSummary: updatedSummary,
+              updatedAt: serverTimestamp()
+            });
+          }
+        }
+      });
+
+      // 8. Add audit log
+      const auditLogRef = doc(collection(db, 'auditLogs'));
+      batch.set(auditLogRef, {
         userId: user!.uid,
         userName: userProfile!.name,
-        action: `Deleted Learner: ${learnerToDelete.firstName} ${learnerToDelete.lastName}`,
+        action: `Deleted Learner & Cleared Linked Data (Active enrollments, batch classes progress, completions, badge requests, and dashboards): ${learnerToDelete.firstName} ${learnerToDelete.lastName}`,
         timestamp: serverTimestamp()
       });
+
+      // Commit full batch of changes
+      await batch.commit();
+
       setIsDeleteModalOpen(false);
       setLearnerToDelete(null);
     } catch (error) {
@@ -372,7 +457,7 @@ export default function LearnerManagement() {
       const payload = {
         ...ucFormData,
         enrollmentId: selectedEnrollment.id,
-        trainingCenterId: user.uid,
+        trainingCenterId: userProfile?.organizationId || user.uid,
         learnerId: selectedEnrollment.learnerId,
         programOfferingId: selectedEnrollment.programOfferingId,
         programBatchId: selectedEnrollment.programBatchId || '',
@@ -462,7 +547,7 @@ export default function LearnerManagement() {
           ...ucFormData,
           completionStatus: 'Badge Requested',
           enrollmentId: selectedEnrollment.id,
-          trainingCenterId: user.uid,
+          trainingCenterId: userProfile?.organizationId || user.uid,
           learnerId: selectedEnrollment.learnerId,
           programOfferingId: selectedEnrollment.programOfferingId,
           programBatchId: selectedEnrollment.programBatchId || '',
@@ -487,7 +572,7 @@ export default function LearnerManagement() {
         requestType: 'Individual',
         requestNumber: reqNum,
         badgeIdStatus: 'Pending District Approval',
-        trainingCenterId: user.uid,
+        trainingCenterId: userProfile?.organizationId || user.uid,
         trainingCenterName: organization?.name || userProfile.office || userProfile.name,
         programOfferingId: selectedEnrollment.programOfferingId,
         programBatchId: selectedEnrollment.programBatchId || '',
@@ -534,6 +619,7 @@ export default function LearnerManagement() {
 
       alert("Badge request submitted successfully.");
       setIsDetailsModalOpen(false);
+      navigate('/trainingcenter/requests');
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'badgeRequests');
     } finally {
@@ -563,7 +649,7 @@ export default function LearnerManagement() {
           createdAt: serverTimestamp(),
           isPreRegistered: true,
           registeredBy: user.uid,
-          trainingCenterId: user.uid,
+          trainingCenterId: userProfile?.organizationId || user.uid,
           trainingCenterName: userProfile.office || userProfile.name
         });
       }
@@ -599,9 +685,9 @@ export default function LearnerManagement() {
       }
 
       const connectionPayload = {
-        trainingCenterId: user.uid,
+        trainingCenterId: userProfile?.organizationId || user.uid,
         trainingCenterName: organization?.name || userProfile.office || userProfile.name,
-        organizationId: organization?.id || '',
+        organizationId: organization?.id || userProfile?.organizationId || '',
         organizationName: organization?.name || userProfile.office || userProfile.name,
         districtOfficeId: districtOfficeId,
         districtOfficeName: districtOfficeName,
@@ -1023,6 +1109,53 @@ export default function LearnerManagement() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
+        <DialogContent className="sm:max-w-[450px]">
+          <DialogHeader>
+            <DialogTitle className="text-rose-600 flex items-center gap-2 font-bold">
+              <Trash2 className="h-5 w-5" />
+              Delete Learner Record
+            </DialogTitle>
+            <div className="space-y-3 pt-2">
+              <p className="text-sm text-slate-600">
+                Are you sure you want to permanently delete <strong className="text-slate-900">{learnerToDelete?.firstName} {learnerToDelete?.lastName}</strong>? This action cannot be undone.
+              </p>
+              <div className="bg-rose-50 border border-rose-100 p-3.5 rounded-lg text-rose-800 text-xs space-y-2 text-left">
+                <p className="font-bold text-rose-900">By deleting this learner, the following will occur automatically:</p>
+                <ul className="list-disc pl-4 space-y-1 text-rose-700">
+                  <li>The learner's record in <strong>Active Enrollments</strong> will be permanently removed.</li>
+                  <li>Any related records in <strong>batch classes</strong> (class assignment progress) will be deleted.</li>
+                  <li>All progress entries like Unit Competencies (UC completions) and badge requests will be cleared.</li>
+                  <li>The learner's profile and accumulated achievements will show <strong>zero data</strong> on their Learner Dashboard.</li>
+                </ul>
+              </div>
+            </div>
+          </DialogHeader>
+          <DialogFooter className="gap-2 mt-4">
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => {
+                setIsDeleteModalOpen(false);
+                setLearnerToDelete(null);
+              }}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button 
+              type="button" 
+              className="bg-rose-600 hover:bg-rose-700 text-white" 
+              onClick={handleDelete}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? 'Deleting...' : 'Permanently Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Add/Edit Modal */}
       <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>

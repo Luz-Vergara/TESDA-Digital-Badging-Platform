@@ -70,11 +70,12 @@ export default function ProgramBatches() {
   useEffect(() => {
     if (!isAuthReady || !user) return;
 
+    const tcId = userProfile?.organizationId || user.uid;
     const path = 'programBatches';
     // Admins see all batches, Training Centers see only their own
     const q = userProfile?.role === 'Admin' 
       ? query(collection(db, path))
-      : query(collection(db, path), where('trainingCenterId', '==', user.uid));
+      : query(collection(db, path), where('trainingCenterId', '==', tcId));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setBatches(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ProgramBatch[]);
@@ -87,7 +88,7 @@ export default function ProgramBatches() {
     const offPath = 'programOfferings';
     const offQuery = userProfile?.role === 'Admin'
       ? query(collection(db, offPath))
-      : query(collection(db, offPath), where('trainingCenterId', '==', user.uid));
+      : query(collection(db, offPath), where('trainingCenterId', '==', tcId));
       
     const unsubscribeOff = onSnapshot(offQuery, (snapshot) => {
       setOfferings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ProgramOffering[]);
@@ -98,7 +99,7 @@ export default function ProgramBatches() {
     const enrPath = 'enrollments';
     const enrQuery = userProfile?.role === 'Admin'
       ? query(collection(db, enrPath))
-      : query(collection(db, enrPath), where('trainingCenterId', '==', user.uid));
+      : query(collection(db, enrPath), where('trainingCenterId', '==', tcId));
       
     const unsubscribeEnr = onSnapshot(enrQuery, (snapshot) => {
       setEnrollments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Enrollment[]);
@@ -123,7 +124,7 @@ export default function ProgramBatches() {
       const payload = {
         ...formData,
         badgeTemplateId: offering?.badgeTemplateId || '',
-        trainingCenterId: user.uid,
+        trainingCenterId: userProfile?.organizationId || user.uid,
         updatedAt: serverTimestamp(),
       };
 

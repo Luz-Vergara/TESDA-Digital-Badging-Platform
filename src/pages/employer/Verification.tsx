@@ -466,7 +466,7 @@ export default function Verification() {
                       {result.badgeType} Level
                     </Badge>
                     <h2 className="text-xl font-bold font-sans tracking-tight leading-snug">
-                      {result.programTitle || result.badgeTemplateName || result.badgeName || result.qualificationName || "TESDA Registered Program"}
+                      {result.badgeTemplateName || result.badgeName || result.programTitle || result.qualificationName || "TESDA Registered Program"}
                     </h2>
                     <p className="text-slate-400 text-xs mt-1 font-mono">
                       Badge ID: <span className="text-slate-200 font-bold">{result.badgeId || "N/A"}</span>
@@ -496,7 +496,7 @@ export default function Verification() {
                       verificationId: result.verificationId || result.id,
                       imageUrl: result.templateData?.imageUrl || '',
                       level: result.badgeType || result.templateData?.badgeType || 'Proficient',
-                      qualificationTitle: result.programTitle || result.badgeTemplateName || result.qualificationName || '',
+                      qualificationTitle: result.badgeTemplateName || result.badgeName || result.programTitle || result.qualificationName || '',
                       qualificationCode: result.qualificationCode || result.templateData?.qualificationCode || '',
                       templateConfig: result.templateData?.templateConfig
                     }}

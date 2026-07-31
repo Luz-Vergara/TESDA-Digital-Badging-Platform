@@ -42,7 +42,7 @@ import {
 import { Learner } from '@/src/types';
 
 export default function TrainingRecords() {
-  const { user, isAuthReady } = useFirebase();
+  const { user, userProfile, isAuthReady } = useFirebase();
   const [learners, setLearners] = useState<Learner[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -50,10 +50,11 @@ export default function TrainingRecords() {
   useEffect(() => {
     if (!isAuthReady || !user) return;
 
+    const tcId = userProfile?.organizationId || user.uid;
     const path = 'learners';
     const q = query(
       collection(db, path),
-      where('trainingCenterId', '==', user.uid)
+      where('trainingCenterId', '==', tcId)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -68,7 +69,7 @@ export default function TrainingRecords() {
     });
 
     return () => unsubscribe();
-  }, [user, isAuthReady]);
+  }, [user, isAuthReady, userProfile]);
 
   const updateStatus = async (learnerId: string, newStatus: string) => {
     try {

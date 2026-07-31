@@ -28,7 +28,7 @@ import { Badge } from '@/components/ui/badge';
 import { Enrollment, ProgramOffering, ProgramBatch } from '@/src/types';
 
 export default function LearnerApplications() {
-  const { user } = useFirebase();
+  const { user, userProfile } = useFirebase();
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [offerings, setOfferings] = useState<ProgramOffering[]>([]);
   const [batches, setBatches] = useState<ProgramBatch[]>([]);
@@ -37,9 +37,11 @@ export default function LearnerApplications() {
   useEffect(() => {
     if (!user) return;
 
+    const tcId = userProfile?.organizationId || user.uid;
+
     const q = query(
       collection(db, 'enrollments'),
-      where('trainingCenterId', '==', user.uid)
+      where('trainingCenterId', '==', tcId)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -50,14 +52,14 @@ export default function LearnerApplications() {
       setLoading(false);
     });
 
-    const offQuery = query(collection(db, 'programOfferings'), where('trainingCenterId', '==', user.uid));
+    const offQuery = query(collection(db, 'programOfferings'), where('trainingCenterId', '==', tcId));
     const unsubscribeOff = onSnapshot(offQuery, (snapshot) => {
       setOfferings(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ProgramOffering[]);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'programOfferings');
     });
 
-    const batchQuery = query(collection(db, 'programBatches'), where('trainingCenterId', '==', user.uid));
+    const batchQuery = query(collection(db, 'programBatches'), where('trainingCenterId', '==', tcId));
     const unsubscribeBatches = onSnapshot(batchQuery, (snapshot) => {
       setBatches(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ProgramBatch[]);
     }, (error) => {
@@ -69,7 +71,7 @@ export default function LearnerApplications() {
       unsubscribeOff();
       unsubscribeBatches();
     };
-  }, [user]);
+  }, [user, userProfile]);
 
   const handleStatusUpdate = async (enrollmentId: string, newStatus: 'Enrolled' | 'Rejected') => {
     try {
@@ -231,7 +233,7 @@ export default function LearnerApplications() {
                         <span className="text-xs text-slate-500">{enr.learnerEmail}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-sm font-semibold text-blue-600">{offering?.programTitle || 'Program'}</TableCell>
+                    <TableCell className="text-sm font-semibold text-blue-600">{enr.programTitle || offering?.programTitle || 'Program'}</TableCell>
                     <TableCell>
                       <Badge variant="outline">{batch?.batchName || 'No specific batch'}</Badge>
                     </TableCell>

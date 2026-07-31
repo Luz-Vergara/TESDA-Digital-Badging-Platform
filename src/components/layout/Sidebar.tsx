@@ -53,7 +53,7 @@ const EXAMPLE_NOTIFICATIONS = [
 ];
 
 interface SidebarProps {
-  role: 'Learner' | 'Admin' | 'TrainingCenter' | 'AssessmentCenter' | 'DistrictOffice' | 'qso_admin' | 'co_admin' | 'icto_admin';
+  role: 'Learner' | 'Admin' | 'TrainingCenter' | 'DistrictOffice' | 'qso_admin' | 'icto_admin';
 }
 
 export default function Sidebar({ role }: SidebarProps) {
@@ -68,7 +68,7 @@ export default function Sidebar({ role }: SidebarProps) {
 
   const getLinks = () => {
     const common = [
-      { name: 'Dashboard', href: role === 'qso_admin' ? '/qso' : role === 'co_admin' ? '/co' : role === 'icto_admin' ? '/icto' : `/${role.toLowerCase()}`, icon: LayoutDashboard },
+      { name: 'Dashboard', href: role === 'qso_admin' ? '/qso' : role === 'icto_admin' ? '/icto' : `/${role.toLowerCase()}`, icon: LayoutDashboard },
       { name: 'Notifications', type: 'dropdown', icon: Bell },
     ];
 
@@ -104,20 +104,6 @@ export default function Sidebar({ role }: SidebarProps) {
       ];
     }
 
-    if (role === 'co_admin') {
-      return [
-        { name: 'Dashboard', href: '/co', icon: LayoutDashboard },
-        { name: 'Notifications', href: '/co?view=notifications', icon: Bell },
-        { name: 'Skilled & Master Requests', href: '/co?view=requests', icon: Clock },
-        { name: 'Badge ID Generation', href: '/co?view=id-generation', icon: Hash },
-        { name: 'Forward to District Office', href: '/co?view=forwarding', icon: ArrowRight },
-        { name: 'Validity Monitoring', href: '/co?view=validity', icon: ShieldCheck },
-        { name: 'Renewal Management', href: '/co?view=renewal', icon: RefreshCw },
-        { name: 'Revocation / Suspension', href: '/co?view=revocation', icon: ShieldAlert },
-        { name: 'Certification Reports', href: '/co?view=reports', icon: TrendingUp },
-      ];
-    }
-
     if (role === 'icto_admin') {
       return [
         ...common,
@@ -136,7 +122,6 @@ export default function Sidebar({ role }: SidebarProps) {
         { name: 'Approval Queue', href: '/districtoffice/queue', icon: ClipboardCheck },
         { name: 'Badge Request Status', href: '/districtoffice/status', icon: TrendingUp },
         { name: 'Training Centers', href: '/districtoffice/training-centers', icon: Building2 },
-        { name: 'Assessment Centers', href: '/districtoffice/assessment-centers', icon: Building2 },
       ];
     }
 
@@ -153,43 +138,18 @@ export default function Sidebar({ role }: SidebarProps) {
       ];
     }
 
-    if (role === 'AssessmentCenter') {
-      return [
-        ...common,
-        { name: 'Learner Search', href: '/assessmentcenter/search', icon: Search },
-        { name: 'Learner Profiles', href: '/assessmentcenter/profiles', icon: Users },
-        { name: 'Assessment Records', href: '/assessmentcenter/records', icon: FileText },
-        { name: 'RPL-Endorsed Candidates', href: '/assessmentcenter/rpl', icon: ClipboardList },
-        { name: 'Submit Badge Request', href: '/assessmentcenter/submit', icon: Plus },
-        { name: 'Submission Tracking', href: '/assessmentcenter/tracking', icon: TrendingUp },
-      ];
-    }
-
     return common;
   };
 
   const links = getLinks();
 
   return (
-    <aside className={cn(
-      "w-64 border-r border-slate-200 flex flex-col h-[calc(100vh-64px)] sticky top-16 transition-all",
-      role === 'co_admin' ? "bg-white" : "bg-white"
-    )}>
+    <aside className="w-64 border-r border-slate-200 flex flex-col h-[calc(100vh-64px)] sticky top-16 transition-all bg-white">
       <div className="p-4">
-        {role === 'co_admin' ? (
-          <div className="p-5 bg-blue-600 rounded-2xl shadow-lg shadow-blue-100/50 mb-6 uppercase">
-            <p className="text-[10px] font-bold text-blue-100 uppercase tracking-widest mb-1 opacity-80">Certification Authority</p>
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="h-5 w-5 text-white" />
-              <p className="font-bold text-white text-sm">Central Office</p>
-            </div>
-          </div>
-        ) : (
-          <div className="px-3 py-2 mb-6 bg-slate-50 rounded-lg border border-slate-100">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Current Role</p>
-            <p className="text-sm font-semibold text-slate-900">{role.replace(/([A-Z])/g, ' $1').trim()}</p>
-          </div>
-        )}
+        <div className="px-3 py-2 mb-6 bg-slate-50 rounded-lg border border-slate-100">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Current Role</p>
+          <p className="text-sm font-semibold text-slate-900">{role.replace(/([A-Z])/g, ' $1').trim()}</p>
+        </div>
         
         <nav className="space-y-1.5">
           {links.map((link) => {
@@ -240,11 +200,9 @@ export default function Sidebar({ role }: SidebarProps) {
               );
             }
 
-            const isActive = link.href === '/co' 
-              ? (location.pathname === '/co' && !location.search)
-              : (link.href?.includes('?view=') 
-                  ? location.search === '?' + link.href.split('?')[1]
-                  : location.pathname === link.href);
+            const isActive = link.href?.includes('?view=') 
+              ? location.search === '?' + link.href.split('?')[1]
+              : location.pathname === link.href;
 
             return (
               <Link

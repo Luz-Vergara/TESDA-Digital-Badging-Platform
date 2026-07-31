@@ -67,10 +67,34 @@ export default function LearnerDashboard() {
     
     // Filter to only include badges that match a known template
     return combined.filter(badge => {
-      const bId = badge.badgeTemplateId || badge.badgeId;
-      let matchedTemplate = templates.find(t => t.id === bId);
+      let matchedTemplate: BadgeTemplate | undefined = undefined;
+
+      // 1. Primary: Match by qualificationCode if available on both the badge and template
+      const bQualCode = badge.qualificationCode || (badge as any).programCode || (badge as any).qualificationCode;
+      if (bQualCode) {
+        const cleanBQual = String(bQualCode).trim().toLowerCase();
+        // Try exact match with both qualificationCode and optionally badgeType
+        matchedTemplate = templates.find(t => 
+          t.qualificationCode && 
+          t.qualificationCode.trim().toLowerCase() === cleanBQual &&
+          (!badge.badgeType || t.badgeType.toLowerCase() === badge.badgeType.toLowerCase())
+        );
+        // Fallback to just qualificationCode match
+        if (!matchedTemplate) {
+          matchedTemplate = templates.find(t => 
+            t.qualificationCode && 
+            t.qualificationCode.trim().toLowerCase() === cleanBQual
+          );
+        }
+      }
+
+      // 2. Secondary: Match by Template ID
+      if (!matchedTemplate) {
+        const bId = badge.badgeTemplateId || badge.badgeId;
+        matchedTemplate = templates.find(t => t.id === bId);
+      }
       
-      // Fallback: title match with aggressive normalization
+      // 3. Tertiary: Fallback title match with aggressive normalization
       const normalize = (s: string) => {
         return s.toLowerCase()
           .replace(/[^a-z0-9]/g, ' ')
@@ -83,23 +107,66 @@ export default function LearnerDashboard() {
       const bTitleNorm = normalize(badge.programTitle || badge.badgeName || badge.badgeTemplateName || '');
       
       if (!matchedTemplate && bTitleNorm) {
-        matchedTemplate = templates.find(t => normalize(t.badgeName || '') === bTitleNorm);
-        if (!matchedTemplate) {
-          matchedTemplate = templates.find(t => {
-            const tTitleNorm = normalize(t.badgeName || '');
-            if (!tTitleNorm) return false;
-            const bWords = bTitleNorm.split(' ').filter(w => w.length >= 2);
+        let bestTemplate: BadgeTemplate | null = null;
+        let highestScore = 0;
+        const bWords = bTitleNorm.split(' ').filter(w => w.length >= 2);
+
+        templates.forEach(t => {
+          // Check for code mismatch
+          const bCode = (badge.qualificationCode || (badge as any).programCode || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+          const tCode = (t.qualificationCode || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (bCode && tCode && bCode !== tCode) {
+            return; // Explicitly skip matching this template due to code mismatch!
+          }
+
+          const tTitleNorm = normalize(t.badgeName || '');
+          if (!tTitleNorm) return;
+
+          let score = 0;
+          if (tTitleNorm === bTitleNorm) {
+            score = 100; // Perfect match
+          } else if (bTitleNorm.includes(tTitleNorm) || tTitleNorm.includes(bTitleNorm)) {
+            // High score for direct string inclusion
+            const ratio = Math.min(bTitleNorm.length, tTitleNorm.length) / Math.max(bTitleNorm.length, tTitleNorm.length);
+            score = 60 + ratio * 20;
+          } else {
             const tWords = tTitleNorm.split(' ').filter(w => w.length >= 2);
             const intersection = bWords.filter(w => tWords.includes(w));
-            return intersection.length >= 2 || bTitleNorm.includes(tTitleNorm) || tTitleNorm.includes(bTitleNorm);
-          });
+            if (intersection.length >= 2) {
+              // Word overlap score
+              const overlapCoeff = intersection.length / Math.max(bWords.length, tWords.length);
+              score = overlapCoeff * 50;
+            }
+          }
+
+          // Prioritize template that matches the badge's tier/type
+          const bType = (badge.badgeType || '').toLowerCase();
+          const tType = (t.badgeType || '').toLowerCase();
+          if (score > 0) {
+            if (bType && tType && bType === tType) {
+              score += 15;
+            }
+          }
+
+          if (score > highestScore) {
+            highestScore = score;
+            bestTemplate = t;
+          }
+        });
+
+        if (highestScore >= 20) {
+          matchedTemplate = bestTemplate || undefined;
         }
       }
 
       if (matchedTemplate) {
-         // Attach template metadata
-         if (!badge.badgeType) badge.badgeType = matchedTemplate.badgeType;
-         if (!badge.badgeName) badge.badgeName = matchedTemplate.badgeName;
+         // Attach/align template metadata
+         badge.badgeType = matchedTemplate.badgeType;
+         badge.badgeName = matchedTemplate.badgeName;
+         badge.qualificationCode = matchedTemplate.qualificationCode;
+         if (matchedTemplate.qualificationName) {
+           badge.qualificationName = matchedTemplate.qualificationName;
+         }
          badge.template = matchedTemplate;
          return true;
       }
@@ -349,6 +416,27 @@ export default function LearnerDashboard() {
     );
   }
 
+  const getLearnerDisplayName = () => {
+    if (learnerData?.firstName) {
+      return learnerData.firstName;
+    }
+    const rawName = userProfile?.name || '';
+    if (!rawName) return 'Learner';
+    const parenthesizedMatch = rawName.match(/\(([^)]+)\)/);
+    if (parenthesizedMatch && parenthesizedMatch[1]) {
+      const pName = parenthesizedMatch[1];
+      return pName.split(' ')[0] || pName;
+    }
+    if (rawName.startsWith('Demo Learner')) {
+      return 'Learner';
+    }
+    if (rawName.startsWith('Demo ')) {
+      const clean = rawName.replace('Demo ', '').trim();
+      return clean.split(' ')[0] || clean;
+    }
+    return rawName.split(' ')[0] || 'Learner';
+  };
+
   if (!user) {
     return (
       <div className="p-8 text-center text-slate-500">
@@ -363,7 +451,7 @@ export default function LearnerDashboard() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-2">
-            Welcome back, {userProfile?.name?.split(' ')[0]}!
+            Welcome back, {getLearnerDisplayName()}!
             {activeBadges.some(b => b.pathway === 'Recognition of Prior Learning (RPL)') && (
               <Badge className="bg-purple-600 text-white text-[10px] uppercase tracking-wider py-0.5 px-2">RPL Pathway</Badge>
             )}
@@ -512,6 +600,28 @@ export default function LearnerDashboard() {
                         <p className="text-xs text-slate-500">
                           Assigned Hub: <span className="font-semibold text-slate-700">{app.trainingCenterName}</span>
                         </p>
+                        {app.assessmentBatchName && (
+                          <div className="mt-2.5 p-2.5 bg-blue-50/50 rounded-lg text-[11px] text-blue-900 border border-blue-100 max-w-md space-y-0.5">
+                            <p className="font-bold text-blue-800 flex items-center gap-1 mb-1">
+                              <Clock className="h-3 w-3" />
+                              Assigned Assessment Schedule
+                            </p>
+                            <p>
+                              Batch: <strong className="font-semibold text-slate-800">{app.assessmentBatchName}</strong>
+                            </p>
+                            <p>
+                              Date: <strong className="font-semibold text-slate-850">{app.assessmentDate}</strong> | Time: <strong className="font-semibold">{app.assessmentStartTime} - {app.assessmentEndTime}</strong>
+                            </p>
+                            <p>
+                              Room: <strong className="font-semibold text-slate-850">{app.assessmentVenue}</strong> | Assessor: <strong className="font-semibold">{app.assessorName}</strong>
+                            </p>
+                            {app.assessmentRemarks && (
+                              <p className="text-[10px] text-slate-500 italic border-t border-slate-100 pt-1 mt-1 font-mono">
+                                Note: "{app.assessmentRemarks}"
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-3 shrink-0 self-end md:self-auto">

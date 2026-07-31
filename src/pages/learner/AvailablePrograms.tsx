@@ -153,6 +153,9 @@ export default function AvailablePrograms() {
         badgeTemplateId?: string; 
         badgeType?: string; 
         programTitle?: string;
+        programName?: string;
+        qualificationTitle?: string;
+        qualificationCode?: string;
         trainingCenterName?: string;
         organizationId?: string;
         organizationName?: string;
@@ -171,6 +174,9 @@ export default function AvailablePrograms() {
         badgeTemplateId: selectedProgram.badgeTemplateId || '',
         badgeType: selectedProgram.badgeType || '',
         programTitle: selectedProgram.programTitle || '',
+        programName: selectedProgram.programTitle || '',
+        qualificationTitle: selectedProgram.qualificationName || '',
+        qualificationCode: selectedProgram.qualificationCode || '',
         programBatchId: '', // Learner just applies to the program
         districtOfficeId: assignedDistrictId,
         districtOfficeName: assignedDistrictName,

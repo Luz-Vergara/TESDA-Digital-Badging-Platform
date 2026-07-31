@@ -71,8 +71,16 @@ const matchBadgeWithTemplate = (item: any, template: BadgeTemplate, offerings: a
     const off = offerings.find(o => o.id === item.programOfferingId);
     if (off && off.badgeTemplateId === template.id) return true;
   }
+
+  // 3. Strict qualificationCode check: if both have codes, and they don't match, they CANNOT match
+  const itemCode = (item.qualificationCode || item.programCode || (item as any).qualificationCode || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  const templateCode = (template.qualificationCode || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '');
   
-  // 3. Fallback Title & Type match with aggressive normalization
+  if (itemCode && templateCode && itemCode !== templateCode) {
+    return false; // Explicit code mismatch!
+  }
+  
+  // 4. Fallback Title & Type match with aggressive normalization
   const normalize = (s: string) => {
     return s.toLowerCase()
       .replace(/[^a-z0-9]/g, ' ')
@@ -812,7 +820,7 @@ function HierarchyGroup({ title, level, items, allBadges, colorClass, maxSlots, 
       
       <div className={cn(
         "grid gap-4 w-full",
-        compact ? "grid-cols-4" : "grid-cols-1 justify-items-center"
+        compact ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4" : "grid-cols-1 justify-items-center"
       )}>
         {slots.map((_, idx) => {
           const badge = items[idx];
@@ -913,10 +921,11 @@ function HierarchyGroup({ title, level, items, allBadges, colorClass, maxSlots, 
                   </div>
 
                   {/* Aesthetic Badge Overlay inside Node */}
-                  <div className="my-2.5 flex justify-center relative">
-                    <div className={status === 'Active' ? "" : "opacity-40 grayscale"}>
+                  <div className="my-2.5 flex justify-center relative w-full">
+                    <div className={cn("w-full flex justify-center items-center", status === 'Active' ? "" : "opacity-40 grayscale")}>
                       <BadgeRenderer
                         scale={0.34}
+                        allowEnlarge={false}
                         data={{
                           id: badge.id,
                           name: badge.badgeName,
@@ -929,6 +938,7 @@ function HierarchyGroup({ title, level, items, allBadges, colorClass, maxSlots, 
                           qualificationTitle:
                             activeRecord?.programName ||
                             activeRecord?.programTitle ||
+                            badge.badgeName ||
                             badge.qualificationName,
                           qualificationCode: badge.qualificationCode,
                           templateConfig: badge.templateConfig

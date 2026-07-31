@@ -37,12 +37,13 @@ export default function QSODashboard() {
       const templates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       const latestUpdate = templates.sort((a: any, b: any) => 
         (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0)
-      )[0]?.name || 'None';
+      )[0] as any;
+      const latestUpdateName = latestUpdate?.badgeName || latestUpdate?.name || 'None';
       
       setStats(prev => ({ 
         ...prev, 
         totalTemplates: snap.size,
-        recentUpdate: latestUpdate
+        recentUpdate: latestUpdateName
       }));
     });
 

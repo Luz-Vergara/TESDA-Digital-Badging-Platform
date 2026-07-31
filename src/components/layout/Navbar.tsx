@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Shield, Menu, X, Search, User, LogIn, LogOut, Settings, LayoutDashboard, HelpCircle } from 'lucide-react';
+import { Shield, Menu, X, Search, User, LogIn, LogOut, Settings, LayoutDashboard, HelpCircle, AlertTriangle, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
 import {
@@ -15,12 +15,23 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import DemoAccountLauncher from '@/src/components/demo/DemoAccountLauncher';
+import firebaseConfig from '../../../firebase-applet-config.json';
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = React.useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, userProfile, logout } = useFirebase();
+  const { user, userProfile, logout, offlineError } = useFirebase();
+
+  const getCleanDisplayName = () => {
+    const raw = userProfile?.name || user?.displayName || '';
+    if (!raw) return 'User';
+    const parenthesizedMatch = raw.match(/\(([^)]+)\)/);
+    if (parenthesizedMatch && parenthesizedMatch[1]) {
+      return parenthesizedMatch[1];
+    }
+    return raw;
+  };
 
   const navLinks = [
     { name: 'Home', href: '/' },
@@ -39,14 +50,41 @@ export default function Navbar() {
     switch (userProfile.role) {
       case 'Admin': return '/admin';
       case 'TrainingCenter': return '/trainingcenter';
-      case 'AssessmentCenter': return '/assessmentcenter';
       case 'DistrictOffice': return '/districtoffice';
       default: return '/learner';
     }
   };
 
   return (
-    <nav className="bg-white border-b border-slate-200 sticky top-0 z-50">
+    <>
+      {offlineError && (
+        <div className="bg-amber-50 border-b border-amber-200 text-amber-950 px-4 py-3 text-xs md:text-sm font-medium sticky top-0 z-[60]">
+          <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+            <div className="flex gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5 md:mt-0 animate-pulse" />
+              <div>
+                <span className="font-bold">Firestore Database is Offline for Project {firebaseConfig.projectId}</span>
+                <p className="text-slate-600 mt-0.5 text-[11px] font-sans leading-relaxed pt-1">
+                  To activate your database and enable digital badging: 
+                  Open the <a href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/firestore`} target="_blank" rel="noopener noreferrer" className="underline font-semibold text-blue-700 hover:text-blue-800 inline-flex items-center gap-0.5">Firebase Console <ExternalLink className="h-3 w-3 inline" /></a>, 
+                  click <strong className="text-slate-800">"Create database"</strong>, select <strong className="text-slate-800">"Start in test mode"</strong> (or production rules), choose your region, keep the <strong className="text-slate-800">default database ID</strong>, and save!
+                </p>
+              </div>
+            </div>
+            <div className="self-end md:self-center shrink-0">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => window.location.reload()}
+                className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs border-transparent hover:text-white"
+              >
+                I Enabled It: Refresh App
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      <nav className="bg-white border-b border-slate-200 sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex items-center gap-2">
@@ -87,9 +125,9 @@ export default function Navbar() {
                     render={
                       <Button variant="ghost" className="relative h-10 w-10 rounded-full p-0">
                         <Avatar className="h-10 w-10 border border-slate-200">
-                          <AvatarImage src={user.photoURL || ''} alt={user.displayName || 'User'} />
+                          <AvatarImage src={user.photoURL || ''} alt={getCleanDisplayName()} />
                           <AvatarFallback className="bg-blue-100 text-blue-600">
-                            {user.displayName?.charAt(0) || <User className="h-5 w-5" />}
+                            {getCleanDisplayName().charAt(0) || <User className="h-5 w-5" />}
                           </AvatarFallback>
                         </Avatar>
                       </Button>
@@ -99,7 +137,7 @@ export default function Navbar() {
                     <DropdownMenuGroup>
                       <DropdownMenuLabel className="font-normal">
                         <div className="flex flex-col space-y-1">
-                          <p className="text-sm font-medium leading-none">{user.displayName}</p>
+                          <p className="text-sm font-medium leading-none">{getCleanDisplayName()}</p>
                           <p className="text-xs leading-none text-slate-500">{user.email}</p>
                           <Badge className="w-fit mt-1 text-[10px] py-0 px-1.5" variant="secondary">
                             {userProfile?.role || 'Learner'}
@@ -179,13 +217,13 @@ export default function Navbar() {
           {user && (
             <div className="flex items-center gap-3 px-3 py-4 border-b border-slate-100 mb-2">
               <Avatar className="h-12 w-12 border border-slate-200">
-                <AvatarImage src={user.photoURL || ''} alt={user.displayName || 'User'} />
+                <AvatarImage src={user.photoURL || ''} alt={getCleanDisplayName()} />
                 <AvatarFallback className="bg-blue-100 text-blue-600">
-                  {user.displayName?.charAt(0) || <User className="h-6 w-6" />}
+                  {getCleanDisplayName().charAt(0) || <User className="h-6 w-6" />}
                 </AvatarFallback>
               </Avatar>
               <div>
-                <p className="font-bold text-slate-900">{user.displayName}</p>
+                <p className="font-bold text-slate-900">{getCleanDisplayName()}</p>
                 <p className="text-xs text-slate-500">{user.email}</p>
               </div>
             </div>
@@ -247,5 +285,6 @@ export default function Navbar() {
         </div>
       )}
     </nav>
+  </>
   );
 }
