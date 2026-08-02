@@ -25,7 +25,7 @@ provides an authorized integration contract.
 | Domain | Required standardized fields |
 | --- | --- |
 | Training Center | `id`, `externalTrainingCenterId`, `code`, `name`, `status`, `districtName`, `address`, `contact` |
-| Registered program | `id`, `externalProgramId`, `trainingCenterId`, `registrationCode`, `qualification`, `deliveryMode`, `status`, `registeredAt`, `validUntil` |
+| Registered program | `id`, `externalProgramId`, `trainingCenterId`, `ctprNumber`, `qualification`, `deliveryMode`, `status`, `registeredAt`, `validUntil` |
 | Learner | `id`, `externalLearnerId`, `displayName`, `email` |
 | Enrollment | `id`, `externalEnrollmentId`, `learnerId`, `registeredProgram`, `enrollmentStatus`, `completionStatus`, `enrolledAt`, `completedAt` |
 | Competency completion | `id`, `externalCompletionId`, `learnerId`, `enrollmentId`, `competency`, `status`, `completedAt`, `verifiedBy` |
@@ -36,3 +36,13 @@ provides an authorized integration contract.
 A future source might call the same learner identifier `learner_id`, `uli`, or
 `learner_number`. Its mapper—not the adapter interface, API route, or frontend—
 will translate that source field to `externalLearnerId`.
+
+### CTPR identifier mapping
+
+| Reference field | Database field | API field | Display label |
+| --- | --- | --- | --- |
+| CTPR Code / CTPR Number | `ctpr_number` | `ctprNumber` | CTPR No. |
+
+`registration_code` was renamed because it represented the same Certificate of
+TVET Program Registration Number identifier. Keeping both fields would duplicate
+the same value.

@@ -50,13 +50,13 @@ insert into public.competencies (
 on conflict do nothing;
 
 insert into public.registered_programs (
-  id, training_center_id, qualification_id, registration_code, delivery_mode,
+  id, training_center_id, qualification_id, ctpr_number, delivery_mode,
   status, registered_at, valid_until, created_at
 ) values (
   'PROG-DEMO-001',
   'TC-DEMO-001',
   'QUAL-DEMO-001',
-  'REG-DEMO-2026-001',
+  'CTPR-DEMO-2026-001',
   'Institution-Based',
   'Active',
   '2026-01-10',

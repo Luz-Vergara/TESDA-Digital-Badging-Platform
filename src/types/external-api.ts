@@ -38,7 +38,7 @@ export interface ExternalRegisteredProgram {
   id: string;
   externalProgramId: string;
   trainingCenterId: string;
-  registrationCode: string;
+  ctprNumber: string;
   qualification: ExternalQualification;
   deliveryMode: string;
   status: 'Active' | 'Inactive' | 'Expired';

@@ -67,7 +67,7 @@ export class SupabaseExternalDataSourceAdapter
       (query) =>
         query
           .eq("training_center_id", trainingCenterId)
-          .order("registration_code"),
+          .order("ctpr_number"),
     );
     if (programRows.length === 0) return [];
 

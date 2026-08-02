@@ -56,7 +56,7 @@ export const supabaseFieldMapper = {
       id: row.id,
       externalProgramId: row.id,
       trainingCenterId: row.training_center_id,
-      registrationCode: row.registration_code,
+      ctprNumber: row.ctpr_number,
       qualification: this.qualification(qualification),
       deliveryMode: row.delivery_mode,
       status: row.status,

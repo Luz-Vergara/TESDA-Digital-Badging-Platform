@@ -165,6 +165,18 @@ The seed contains only fictional data:
 
 All emails use the reserved `example.invalid` domain.
 
+### CTPR identifier mapping
+
+The mock registered-program identifier uses one canonical CTPR field:
+
+| Reference field | Database field | API field | Display label |
+| --- | --- | --- | --- |
+| CTPR Code / CTPR Number | `ctpr_number` | `ctprNumber` | CTPR No. |
+
+`registration_code` was renamed because it represented the same Certificate of
+TVET Program Registration Number identifier. Keeping both fields would duplicate
+the same value.
+
 ## Create and Connect a Supabase Project Later
 
 The following steps are instructions only. They have not been run for this

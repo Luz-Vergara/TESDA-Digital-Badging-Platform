@@ -296,7 +296,7 @@ export default function ExternalTrainingDashboard({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Registration</TableHead>
+                  <TableHead>CTPR No.</TableHead>
                   <TableHead>Qualification</TableHead>
                   <TableHead>Delivery</TableHead>
                   <TableHead>Valid Until</TableHead>
@@ -307,7 +307,7 @@ export default function ExternalTrainingDashboard({
                 {summary.registeredPrograms.map((program) => (
                   <TableRow key={program.id}>
                     <TableCell className="font-mono text-xs">
-                      {program.registrationCode}
+                      {program.ctprNumber}
                     </TableCell>
                     <TableCell>
                       <p className="font-medium">{program.qualification.title}</p>
@@ -363,7 +363,16 @@ export default function ExternalTrainingDashboard({
                         </p>
                       </TableCell>
                       <TableCell>
-                        {learner.enrollments[0]?.enrollmentStatus || 'No enrollment'}
+                        {learner.enrollments[0] ? (
+                          <>
+                            <p>{learner.enrollments[0].enrollmentStatus}</p>
+                            <p className="text-xs font-mono text-slate-500">
+                              CTPR No.: {learner.enrollments[0].registeredProgram.ctprNumber}
+                            </p>
+                          </>
+                        ) : (
+                          'No enrollment'
+                        )}
                       </TableCell>
                       <TableCell>{learner.completedCompetencyCount}</TableCell>
                       <TableCell>
