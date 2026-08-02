@@ -36,9 +36,12 @@ import type {
   ExternalApiMeta,
   ExternalBadgeRequest,
   ExternalBadgeVerification,
+  ExternalCompetencyCompletion,
   ExternalDashboardSummary,
+  ExternalIssuedBadge,
   ExternalLearnerDetails,
   ExternalLearnerSummary,
+  ExternalRegisteredProgram,
 } from '@/src/types/external-api';
 
 interface Props {
@@ -53,6 +56,10 @@ function displayDate(value: string | null): string {
 function errorMessage(error: unknown): string {
   if (error instanceof ExternalApiError) return error.message;
   return 'The external dashboard data could not be loaded.';
+}
+
+function asArray<T>(value: T[] | null | undefined): T[] {
+  return Array.isArray(value) ? value : [];
 }
 
 export default function ExternalTrainingDashboard({
@@ -88,8 +95,8 @@ export default function ExternalTrainingDashboard({
         externalApi.getTrainingCenterBadgeRequests(trainingCenterId),
       ]);
       setSummary(summaryResult.data);
-      setLearners(learnerResult.data);
-      setRequests(requestResult.data);
+      setLearners(asArray(learnerResult.data));
+      setRequests(asArray(requestResult.data));
       setMeta(summaryResult.meta);
     } catch (caught) {
       setError(errorMessage(caught));
@@ -186,7 +193,7 @@ export default function ExternalTrainingDashboard({
     },
     {
       label: 'Registered Programs',
-      value: summary.registeredPrograms.length,
+      value: asArray(summary?.registeredPrograms).length,
       icon: Layers,
       color: 'text-indigo-600',
       bg: 'bg-indigo-50',
@@ -221,20 +228,26 @@ export default function ExternalTrainingDashboard({
     },
   ];
 
+  const programs = asArray<ExternalRegisteredProgram>(summary.registeredPrograms);
+  const learnerEnrollments = (learner: ExternalLearnerSummary) =>
+    asArray(learner.enrollments);
+  const learnerEligibility = (learner: ExternalLearnerSummary) =>
+    asArray(learner.badgeEligibility);
+  const requestItems = (request: ExternalBadgeRequest) => asArray(request.items);
   const normalizedSearch = search.trim().toLowerCase();
-  const matchesSearch = (...values: Array<string | null | undefined>) =>
+  const matchesSearch = (...values: unknown[]) =>
     !normalizedSearch || values.some((value) =>
-      value?.toLowerCase().includes(normalizedSearch),
+      String(value ?? '').toLowerCase().includes(normalizedSearch),
     );
   const enrollmentStatuses = [...new Set(
     learners.flatMap((learner) =>
-      learner.enrollments.map((enrollment) => enrollment.enrollmentStatus),
+      learnerEnrollments(learner).map((enrollment) => enrollment.enrollmentStatus),
     ),
   )].sort();
   const badgeRequestStatuses = [...new Set(requests.map((request) => request.status))].sort();
   const issuedBadgeStatuses = [...new Set(
     requests.flatMap((request) =>
-      request.items.flatMap((item) => item.issuedBadge ? [item.issuedBadge.status] : []),
+      requestItems(request).flatMap((item) => item.issuedBadge ? [item.issuedBadge.status] : []),
     ),
   )].sort();
   const resetFilters = () => {
@@ -254,52 +267,58 @@ export default function ExternalTrainingDashboard({
       sortBy !== 'name',
   );
   const mostRecentEnrollment = (learner: ExternalLearnerSummary) => Math.max(
-    ...learner.enrollments.map((enrollment) => Date.parse(enrollment.enrolledAt)),
+    ...learnerEnrollments(learner).map((enrollment) => Date.parse(enrollment.enrolledAt)),
     0,
   );
-  const visiblePrograms = summary.registeredPrograms
+  const visiblePrograms = programs
     .filter((program) => matchesSearch(
       program.ctprNumber,
-      program.qualification.title,
-      program.qualification.code,
+      program.qualification?.title,
+      program.qualification?.code,
       program.deliveryMode,
       program.status,
     ))
     .sort((first, second) => {
-      if (sortBy === 'status') return first.status.localeCompare(second.status);
+      if (sortBy === 'status') {
+        return String(first.status ?? '').localeCompare(String(second.status ?? ''));
+      }
       if (sortBy === 'recent') {
         return Date.parse(second.registeredAt) - Date.parse(first.registeredAt);
       }
-      return first.qualification.title.localeCompare(second.qualification.title);
+      return String(first.qualification?.title ?? '').localeCompare(
+        String(second.qualification?.title ?? ''),
+      );
     });
   const visibleLearners = learners
     .filter((learner) => {
-      const eligible = learner.badgeEligibility.some((item) => item.eligible);
-      const notEligible = learner.badgeEligibility.some((item) => !item.eligible);
+      const eligibility = learnerEligibility(learner);
+      const enrollments = learnerEnrollments(learner);
+      const eligible = eligibility.some((item) => item.eligible);
+      const notEligible = eligibility.some((item) => !item.eligible);
       const matchesEligibility = eligibilityFilter === 'all' ||
         (eligibilityFilter === 'eligible' && eligible) ||
         (eligibilityFilter === 'not-eligible' && notEligible);
       const matchesEnrollment = enrollmentStatusFilter === 'all' ||
-        learner.enrollments.some(
+        enrollments.some(
           (enrollment) => enrollment.enrollmentStatus === enrollmentStatusFilter,
         );
 
       return matchesEligibility && matchesEnrollment && matchesSearch(
         learner.displayName,
         learner.externalLearnerId,
-        ...learner.enrollments.flatMap((enrollment) => [
+        ...enrollments.flatMap((enrollment) => [
           enrollment.enrollmentStatus,
           enrollment.completionStatus,
-          enrollment.registeredProgram.ctprNumber,
-          enrollment.registeredProgram.qualification.title,
-          enrollment.registeredProgram.qualification.code,
+          enrollment.registeredProgram?.ctprNumber,
+          enrollment.registeredProgram?.qualification?.title,
+          enrollment.registeredProgram?.qualification?.code,
         ]),
       );
     })
     .sort((first, second) => {
       if (sortBy === 'status') {
-        return (first.enrollments[0]?.enrollmentStatus || '').localeCompare(
-          second.enrollments[0]?.enrollmentStatus || '',
+        return (learnerEnrollments(first)[0]?.enrollmentStatus || '').localeCompare(
+          learnerEnrollments(second)[0]?.enrollmentStatus || '',
         );
       }
       if (sortBy === 'recent') {
@@ -311,14 +330,20 @@ export default function ExternalTrainingDashboard({
     const matchesRequestStatus = badgeRequestStatusFilter === 'all' ||
       request.status === badgeRequestStatusFilter;
     const matchesIssuedStatus = issuedBadgeStatusFilter === 'all' ||
-      request.items.some((item) => item.issuedBadge?.status === issuedBadgeStatusFilter);
+      requestItems(request).some((item) => item.issuedBadge?.status === issuedBadgeStatusFilter);
 
     return matchesRequestStatus && matchesIssuedStatus && matchesSearch(
       request.requestNumber,
-      request.badgeDefinition.name,
-      ...request.items.map((item) => item.learnerName),
+      request.badgeDefinition?.name,
+      ...requestItems(request).map((item) => item.learnerName),
     );
   });
+  const selectedCompetencyCompletions = selectedLearner
+    ? asArray<ExternalCompetencyCompletion>(selectedLearner.competencyCompletions)
+    : [];
+  const selectedIssuedBadges = selectedLearner
+    ? asArray<ExternalIssuedBadge>(selectedLearner.issuedBadges)
+    : [];
 
   return (
     <div className="space-y-8">
@@ -463,7 +488,7 @@ export default function ExternalTrainingDashboard({
           <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
             <p>
               Showing {visibleLearners.length} of {learners.length} learners,{' '}
-              {visiblePrograms.length} of {summary.registeredPrograms.length} programs, and{' '}
+              {visiblePrograms.length} of {programs.length} programs, and{' '}
               {visibleRequests.length} of {requests.length} requests.
             </p>
             <label className="flex items-center gap-2">
@@ -489,7 +514,7 @@ export default function ExternalTrainingDashboard({
           <CardDescription>Programs supplied by the mock external system</CardDescription>
         </CardHeader>
         <CardContent>
-          {summary.registeredPrograms.length === 0 ? (
+          {programs.length === 0 ? (
             <div className="py-10 text-center text-slate-500">
               No registered programs were returned.
             </div>
@@ -565,7 +590,8 @@ export default function ExternalTrainingDashboard({
               </TableHeader>
               <TableBody>
                 {visibleLearners.map((learner) => {
-                  const eligibility = learner.badgeEligibility[0];
+                  const eligibility = learnerEligibility(learner)[0];
+                  const enrollments = learnerEnrollments(learner);
                   return (
                     <TableRow key={learner.id}>
                       <TableCell>
@@ -575,11 +601,11 @@ export default function ExternalTrainingDashboard({
                         </p>
                       </TableCell>
                       <TableCell>
-                        {learner.enrollments[0] ? (
+                        {enrollments[0] ? (
                           <>
-                            <p>{learner.enrollments[0].enrollmentStatus}</p>
+                            <p>{enrollments[0].enrollmentStatus}</p>
                             <p className="text-xs font-mono text-slate-500">
-                              CTPR No.: {learner.enrollments[0].registeredProgram.ctprNumber}
+                              CTPR No.: {enrollments[0].registeredProgram.ctprNumber}
                             </p>
                           </>
                         ) : (
@@ -648,13 +674,13 @@ export default function ExternalTrainingDashboard({
                 <div className="grid md:grid-cols-2 gap-6">
                   <div>
                     <p className="font-semibold mb-3">Completed competencies</p>
-                    {selectedLearner.competencyCompletions.length === 0 ? (
+                    {selectedCompetencyCompletions.length === 0 ? (
                       <p className="text-sm text-slate-500">
                         No competency completions found.
                       </p>
                     ) : (
                       <div className="space-y-2">
-                        {selectedLearner.competencyCompletions.map((completion) => (
+                        {selectedCompetencyCompletions.map((completion) => (
                           <div
                             key={completion.id}
                             className="p-3 rounded-lg bg-slate-50 border"
@@ -673,13 +699,13 @@ export default function ExternalTrainingDashboard({
                   </div>
                   <div>
                     <p className="font-semibold mb-3">Issued badges</p>
-                    {selectedLearner.issuedBadges.length === 0 ? (
+                    {selectedIssuedBadges.length === 0 ? (
                       <p className="text-sm text-slate-500">
                         No issued badge found for this learner.
                       </p>
                     ) : (
                       <div className="space-y-3">
-                        {selectedLearner.issuedBadges.map((issued) => (
+                        {selectedIssuedBadges.map((issued) => (
                           <div key={issued.id} className="p-3 rounded-lg bg-violet-50 border border-violet-200">
                             <p className="font-medium">{issued.badgeName}</p>
                             <p className="font-mono text-xs text-slate-500 mt-1">
@@ -751,7 +777,7 @@ export default function ExternalTrainingDashboard({
                     </TableCell>
                     <TableCell>{request.badgeDefinition.name}</TableCell>
                     <TableCell>
-                      {request.items.map((item) => item.learnerName).join(', ')}
+                      {requestItems(request).map((item) => item.learnerName).join(', ')}
                     </TableCell>
                     <TableCell>{displayDate(request.submittedAt)}</TableCell>
                     <TableCell>
@@ -766,7 +792,7 @@ export default function ExternalTrainingDashboard({
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      {request.items[0]?.issuedBadge?.credentialId || '—'}
+                      {requestItems(request)[0]?.issuedBadge?.credentialId || '—'}
                     </TableCell>
                   </TableRow>
                 ))}
