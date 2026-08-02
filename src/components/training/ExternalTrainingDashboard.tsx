@@ -62,6 +62,16 @@ function asArray<T>(value: T[] | null | undefined): T[] {
   return Array.isArray(value) ? value : [];
 }
 
+function textValue(value: unknown, fallback = ''): string {
+  return typeof value === 'string' && value.trim() ? value : fallback;
+}
+
+function dateTimestamp(value: unknown): number {
+  if (typeof value !== 'string') return 0;
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
 export default function ExternalTrainingDashboard({
   trainingCenterId,
 }: Props) {
@@ -179,14 +189,14 @@ export default function ExternalTrainingDashboard({
   const stats = [
     {
       label: 'Learners',
-      value: summary.counts.learners,
+      value: summary.counts?.learners ?? 0,
       icon: Users,
       color: 'text-blue-600',
       bg: 'bg-blue-50',
     },
     {
       label: 'Active Enrollments',
-      value: summary.counts.activeEnrollments,
+      value: summary.counts?.activeEnrollments ?? 0,
       icon: Activity,
       color: 'text-emerald-600',
       bg: 'bg-emerald-50',
@@ -200,28 +210,28 @@ export default function ExternalTrainingDashboard({
     },
     {
       label: 'Completed Competencies',
-      value: summary.counts.completedCompetencies,
+      value: summary.counts?.completedCompetencies ?? 0,
       icon: CheckCircle,
       color: 'text-teal-600',
       bg: 'bg-teal-50',
     },
     {
       label: 'Eligible Learners',
-      value: summary.counts.eligibleLearners,
+      value: summary.counts?.eligibleLearners ?? 0,
       icon: CheckCircle,
       color: 'text-green-600',
       bg: 'bg-green-50',
     },
     {
       label: 'Pending Requests',
-      value: summary.counts.pendingBadgeRequests,
+      value: summary.counts?.pendingBadgeRequests ?? 0,
       icon: Award,
       color: 'text-amber-600',
       bg: 'bg-amber-50',
     },
     {
       label: 'Issued Badges',
-      value: summary.counts.issuedBadges,
+      value: summary.counts?.issuedBadges ?? 0,
       icon: Award,
       color: 'text-purple-600',
       bg: 'bg-purple-50',
@@ -241,13 +251,20 @@ export default function ExternalTrainingDashboard({
     );
   const enrollmentStatuses = [...new Set(
     learners.flatMap((learner) =>
-      learnerEnrollments(learner).map((enrollment) => enrollment.enrollmentStatus),
+      learnerEnrollments(learner)
+        .map((enrollment) => textValue(enrollment.enrollmentStatus))
+        .filter(Boolean),
     ),
   )].sort();
-  const badgeRequestStatuses = [...new Set(requests.map((request) => request.status))].sort();
+  const badgeRequestStatuses = [...new Set(
+    requests.map((request) => textValue(request.status)).filter(Boolean),
+  )].sort();
   const issuedBadgeStatuses = [...new Set(
     requests.flatMap((request) =>
-      requestItems(request).flatMap((item) => item.issuedBadge ? [item.issuedBadge.status] : []),
+      requestItems(request).flatMap((item) => {
+        const status = textValue(item.issuedBadge?.status);
+        return status ? [status] : [];
+      }),
     ),
   )].sort();
   const resetFilters = () => {
@@ -267,7 +284,7 @@ export default function ExternalTrainingDashboard({
       sortBy !== 'name',
   );
   const mostRecentEnrollment = (learner: ExternalLearnerSummary) => Math.max(
-    ...learnerEnrollments(learner).map((enrollment) => Date.parse(enrollment.enrolledAt)),
+    ...learnerEnrollments(learner).map((enrollment) => dateTimestamp(enrollment.enrolledAt)),
     0,
   );
   const visiblePrograms = programs
@@ -283,7 +300,7 @@ export default function ExternalTrainingDashboard({
         return String(first.status ?? '').localeCompare(String(second.status ?? ''));
       }
       if (sortBy === 'recent') {
-        return Date.parse(second.registeredAt) - Date.parse(first.registeredAt);
+        return dateTimestamp(second.registeredAt) - dateTimestamp(first.registeredAt);
       }
       return String(first.qualification?.title ?? '').localeCompare(
         String(second.qualification?.title ?? ''),
@@ -324,7 +341,7 @@ export default function ExternalTrainingDashboard({
       if (sortBy === 'recent') {
         return mostRecentEnrollment(second) - mostRecentEnrollment(first);
       }
-      return first.displayName.localeCompare(second.displayName);
+      return textValue(first.displayName).localeCompare(textValue(second.displayName));
     });
   const visibleRequests = requests.filter((request) => {
     const matchesRequestStatus = badgeRequestStatusFilter === 'all' ||
@@ -379,15 +396,15 @@ export default function ExternalTrainingDashboard({
             <Building2 className="h-6 w-6 text-violet-700 mt-1" />
             <div>
               <p className="font-bold text-slate-900">
-                {summary.trainingCenter.name}
+                {textValue(summary.trainingCenter?.name, 'Training Center')}
               </p>
               <p className="text-sm text-slate-600">
                 {summary.trainingCenter.code} · {summary.trainingCenter.districtName}
               </p>
               <p className="text-xs text-slate-500 mt-1">
-                {summary.trainingCenter.address.line},{' '}
-                {summary.trainingCenter.address.city},{' '}
-                {summary.trainingCenter.address.province}
+                {textValue(summary.trainingCenter?.address?.line, 'Address unavailable')},{' '}
+                {textValue(summary.trainingCenter?.address?.city, '—')},{' '}
+                {textValue(summary.trainingCenter?.address?.province, '—')}
               </p>
             </div>
           </div>
@@ -537,18 +554,20 @@ export default function ExternalTrainingDashboard({
                 {visiblePrograms.map((program) => (
                   <TableRow key={program.id}>
                     <TableCell className="font-mono text-xs">
-                      {program.ctprNumber}
+                      {textValue(program.ctprNumber, '—')}
                     </TableCell>
                     <TableCell>
-                      <p className="font-medium">{program.qualification.title}</p>
+                      <p className="font-medium">
+                        {textValue(program.qualification?.title, 'Qualification unavailable')}
+                      </p>
                       <p className="text-xs text-slate-500">
-                        {program.qualification.code}
+                        {textValue(program.qualification?.code, '—')}
                       </p>
                     </TableCell>
-                    <TableCell>{program.deliveryMode}</TableCell>
+                    <TableCell>{textValue(program.deliveryMode, '—')}</TableCell>
                     <TableCell>{displayDate(program.validUntil)}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">{program.status}</Badge>
+                      <Badge variant="outline">{textValue(program.status, 'Unknown')}</Badge>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -595,24 +614,27 @@ export default function ExternalTrainingDashboard({
                   return (
                     <TableRow key={learner.id}>
                       <TableCell>
-                        <p className="font-medium">{learner.displayName}</p>
+                        <p className="font-medium">
+                          {textValue(learner.displayName, 'Learner unavailable')}
+                        </p>
                         <p className="text-xs font-mono text-slate-500">
-                          {learner.externalLearnerId}
+                          {textValue(learner.externalLearnerId, '—')}
                         </p>
                       </TableCell>
                       <TableCell>
                         {enrollments[0] ? (
                           <>
-                            <p>{enrollments[0].enrollmentStatus}</p>
+                            <p>{textValue(enrollments[0].enrollmentStatus, 'Unknown')}</p>
                             <p className="text-xs font-mono text-slate-500">
-                              CTPR No.: {enrollments[0].registeredProgram.ctprNumber}
+                              CTPR No.:{' '}
+                              {textValue(enrollments[0].registeredProgram?.ctprNumber, '—')}
                             </p>
                           </>
                         ) : (
                           'No enrollment'
                         )}
                       </TableCell>
-                      <TableCell>{learner.completedCompetencyCount}</TableCell>
+                      <TableCell>{learner.completedCompetencyCount ?? 0}</TableCell>
                       <TableCell>
                         {eligibility ? (
                           <Badge
@@ -666,9 +688,11 @@ export default function ExternalTrainingDashboard({
             ) : selectedLearner ? (
               <div className="space-y-6">
                 <div>
-                  <p className="text-lg font-bold">{selectedLearner.displayName}</p>
+                  <p className="text-lg font-bold">
+                    {textValue(selectedLearner.displayName, 'Learner unavailable')}
+                  </p>
                   <p className="font-mono text-xs text-slate-500">
-                    {selectedLearner.externalLearnerId}
+                    {textValue(selectedLearner.externalLearnerId, '—')}
                   </p>
                 </div>
                 <div className="grid md:grid-cols-2 gap-6">
@@ -686,7 +710,7 @@ export default function ExternalTrainingDashboard({
                             className="p-3 rounded-lg bg-slate-50 border"
                           >
                             <p className="font-medium">
-                              {completion.competency.title}
+                              {textValue(completion.competency?.title, 'Competency unavailable')}
                             </p>
                             <p className="text-xs text-slate-500">
                               {completion.competency.code} ·{' '}
@@ -707,9 +731,11 @@ export default function ExternalTrainingDashboard({
                       <div className="space-y-3">
                         {selectedIssuedBadges.map((issued) => (
                           <div key={issued.id} className="p-3 rounded-lg bg-violet-50 border border-violet-200">
-                            <p className="font-medium">{issued.badgeName}</p>
+                            <p className="font-medium">
+                              {textValue(issued.badgeName, 'Badge unavailable')}
+                            </p>
                             <p className="font-mono text-xs text-slate-500 mt-1">
-                              {issued.verificationId}
+                              {textValue(issued.verificationId, '—')}
                             </p>
                             <Button
                               variant="outline"
@@ -729,7 +755,7 @@ export default function ExternalTrainingDashboard({
                 {verification && (
                   <div className="p-4 rounded-lg bg-emerald-50 border border-emerald-200">
                     <p className="font-bold text-emerald-900">
-                      Verified: {verification.badge.name}
+                      Verified: {textValue(verification.badge?.name, 'Badge unavailable')}
                     </p>
                     <p className="text-sm text-emerald-800 mt-1">
                       {verification.credentialId} · {verification.status} · issued{' '}
@@ -775,7 +801,9 @@ export default function ExternalTrainingDashboard({
                     <TableCell className="font-mono text-xs">
                       {request.requestNumber}
                     </TableCell>
-                    <TableCell>{request.badgeDefinition.name}</TableCell>
+                    <TableCell>
+                      {textValue(request.badgeDefinition?.name, 'Badge unavailable')}
+                    </TableCell>
                     <TableCell>
                       {requestItems(request).map((item) => item.learnerName).join(', ')}
                     </TableCell>
