@@ -7,11 +7,15 @@ import {
   Database,
   Layers,
   RefreshCw,
+  Search,
+  SlidersHorizontal,
   Users,
+  X,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Card,
   CardContent,
@@ -67,6 +71,12 @@ export default function ExternalTrainingDashboard({
   const [verification, setVerification] =
     useState<ExternalBadgeVerification | null>(null);
   const [verificationLoading, setVerificationLoading] = useState(false);
+  const [search, setSearch] = useState('');
+  const [eligibilityFilter, setEligibilityFilter] = useState('all');
+  const [enrollmentStatusFilter, setEnrollmentStatusFilter] = useState('all');
+  const [badgeRequestStatusFilter, setBadgeRequestStatusFilter] = useState('all');
+  const [issuedBadgeStatusFilter, setIssuedBadgeStatusFilter] = useState('all');
+  const [sortBy, setSortBy] = useState<'name' | 'status' | 'recent'>('name');
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -211,6 +221,105 @@ export default function ExternalTrainingDashboard({
     },
   ];
 
+  const normalizedSearch = search.trim().toLowerCase();
+  const matchesSearch = (...values: Array<string | null | undefined>) =>
+    !normalizedSearch || values.some((value) =>
+      value?.toLowerCase().includes(normalizedSearch),
+    );
+  const enrollmentStatuses = [...new Set(
+    learners.flatMap((learner) =>
+      learner.enrollments.map((enrollment) => enrollment.enrollmentStatus),
+    ),
+  )].sort();
+  const badgeRequestStatuses = [...new Set(requests.map((request) => request.status))].sort();
+  const issuedBadgeStatuses = [...new Set(
+    requests.flatMap((request) =>
+      request.items.flatMap((item) => item.issuedBadge ? [item.issuedBadge.status] : []),
+    ),
+  )].sort();
+  const resetFilters = () => {
+    setSearch('');
+    setEligibilityFilter('all');
+    setEnrollmentStatusFilter('all');
+    setBadgeRequestStatusFilter('all');
+    setIssuedBadgeStatusFilter('all');
+    setSortBy('name');
+  };
+  const hasActiveFilters = Boolean(
+    search ||
+      eligibilityFilter !== 'all' ||
+      enrollmentStatusFilter !== 'all' ||
+      badgeRequestStatusFilter !== 'all' ||
+      issuedBadgeStatusFilter !== 'all' ||
+      sortBy !== 'name',
+  );
+  const mostRecentEnrollment = (learner: ExternalLearnerSummary) => Math.max(
+    ...learner.enrollments.map((enrollment) => Date.parse(enrollment.enrolledAt)),
+    0,
+  );
+  const visiblePrograms = summary.registeredPrograms
+    .filter((program) => matchesSearch(
+      program.ctprNumber,
+      program.qualification.title,
+      program.qualification.code,
+      program.deliveryMode,
+      program.status,
+    ))
+    .sort((first, second) => {
+      if (sortBy === 'status') return first.status.localeCompare(second.status);
+      if (sortBy === 'recent') {
+        return Date.parse(second.registeredAt) - Date.parse(first.registeredAt);
+      }
+      return first.qualification.title.localeCompare(second.qualification.title);
+    });
+  const visibleLearners = learners
+    .filter((learner) => {
+      const eligible = learner.badgeEligibility.some((item) => item.eligible);
+      const notEligible = learner.badgeEligibility.some((item) => !item.eligible);
+      const matchesEligibility = eligibilityFilter === 'all' ||
+        (eligibilityFilter === 'eligible' && eligible) ||
+        (eligibilityFilter === 'not-eligible' && notEligible);
+      const matchesEnrollment = enrollmentStatusFilter === 'all' ||
+        learner.enrollments.some(
+          (enrollment) => enrollment.enrollmentStatus === enrollmentStatusFilter,
+        );
+
+      return matchesEligibility && matchesEnrollment && matchesSearch(
+        learner.displayName,
+        learner.externalLearnerId,
+        ...learner.enrollments.flatMap((enrollment) => [
+          enrollment.enrollmentStatus,
+          enrollment.completionStatus,
+          enrollment.registeredProgram.ctprNumber,
+          enrollment.registeredProgram.qualification.title,
+          enrollment.registeredProgram.qualification.code,
+        ]),
+      );
+    })
+    .sort((first, second) => {
+      if (sortBy === 'status') {
+        return (first.enrollments[0]?.enrollmentStatus || '').localeCompare(
+          second.enrollments[0]?.enrollmentStatus || '',
+        );
+      }
+      if (sortBy === 'recent') {
+        return mostRecentEnrollment(second) - mostRecentEnrollment(first);
+      }
+      return first.displayName.localeCompare(second.displayName);
+    });
+  const visibleRequests = requests.filter((request) => {
+    const matchesRequestStatus = badgeRequestStatusFilter === 'all' ||
+      request.status === badgeRequestStatusFilter;
+    const matchesIssuedStatus = issuedBadgeStatusFilter === 'all' ||
+      request.items.some((item) => item.issuedBadge?.status === issuedBadgeStatusFilter);
+
+    return matchesRequestStatus && matchesIssuedStatus && matchesSearch(
+      request.requestNumber,
+      request.badgeDefinition.name,
+      ...request.items.map((item) => item.learnerName),
+    );
+  });
+
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap justify-between items-start gap-4">
@@ -282,6 +391,98 @@ export default function ExternalTrainingDashboard({
         ))}
       </div>
 
+      <Card className="border-slate-200">
+        <CardContent className="p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <SlidersHorizontal className="h-4 w-4 text-slate-500" />
+              <p className="text-sm font-semibold text-slate-800">Search and filter demo records</p>
+            </div>
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" onClick={resetFilters}>
+                <X className="h-4 w-4 mr-1" />
+                Clear filters
+              </Button>
+            )}
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+            <div className="relative xl:col-span-2">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                className="pl-9"
+                placeholder="Search learners or programs"
+                aria-label="Search learners or programs"
+              />
+            </div>
+            <select
+              value={eligibilityFilter}
+              onChange={(event) => setEligibilityFilter(event.target.value)}
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              aria-label="Filter learners by eligibility"
+            >
+              <option value="all">All eligibility</option>
+              <option value="eligible">Eligible</option>
+              <option value="not-eligible">Not eligible</option>
+            </select>
+            <select
+              value={enrollmentStatusFilter}
+              onChange={(event) => setEnrollmentStatusFilter(event.target.value)}
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              aria-label="Filter learners by enrollment status"
+            >
+              <option value="all">All enrollments</option>
+              {enrollmentStatuses.map((status) => (
+                <option key={status} value={status}>{status}</option>
+              ))}
+            </select>
+            <select
+              value={badgeRequestStatusFilter}
+              onChange={(event) => setBadgeRequestStatusFilter(event.target.value)}
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              aria-label="Filter badge requests by status"
+            >
+              <option value="all">All requests</option>
+              {badgeRequestStatuses.map((status) => (
+                <option key={status} value={status}>{status}</option>
+              ))}
+            </select>
+            <select
+              value={issuedBadgeStatusFilter}
+              onChange={(event) => setIssuedBadgeStatusFilter(event.target.value)}
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              aria-label="Filter issued badges by status"
+            >
+              <option value="all">All issued badges</option>
+              {issuedBadgeStatuses.map((status) => (
+                <option key={status} value={status}>{status}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
+            <p>
+              Showing {visibleLearners.length} of {learners.length} learners,{' '}
+              {visiblePrograms.length} of {summary.registeredPrograms.length} programs, and{' '}
+              {visibleRequests.length} of {requests.length} requests.
+            </p>
+            <label className="flex items-center gap-2">
+              <span className="font-medium">Sort learners by</span>
+              <select
+                value={sortBy}
+                onChange={(event) => setSortBy(event.target.value as 'name' | 'status' | 'recent')}
+                className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                aria-label="Sort learners and programs"
+              >
+                <option value="name">Name</option>
+                <option value="status">Status</option>
+                <option value="recent">Most recent</option>
+              </select>
+            </label>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>Registered Programs</CardTitle>
@@ -291,6 +492,10 @@ export default function ExternalTrainingDashboard({
           {summary.registeredPrograms.length === 0 ? (
             <div className="py-10 text-center text-slate-500">
               No registered programs were returned.
+            </div>
+          ) : visiblePrograms.length === 0 ? (
+            <div className="py-10 text-center text-slate-500">
+              No registered programs match the current search.
             </div>
           ) : (
             <Table>
@@ -304,7 +509,7 @@ export default function ExternalTrainingDashboard({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {summary.registeredPrograms.map((program) => (
+                {visiblePrograms.map((program) => (
                   <TableRow key={program.id}>
                     <TableCell className="font-mono text-xs">
                       {program.ctprNumber}
@@ -340,6 +545,13 @@ export default function ExternalTrainingDashboard({
             <div className="py-10 text-center text-slate-500">
               No learners were returned for this Training Center.
             </div>
+          ) : visibleLearners.length === 0 ? (
+            <div className="py-10 text-center text-slate-500 space-y-3">
+              <p>No learners match the current filters.</p>
+              <Button variant="outline" size="sm" onClick={resetFilters}>
+                Clear filters
+              </Button>
+            </div>
           ) : (
             <Table>
               <TableHeader>
@@ -352,7 +564,7 @@ export default function ExternalTrainingDashboard({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {learners.map((learner) => {
+                {visibleLearners.map((learner) => {
                   const eligibility = learner.badgeEligibility[0];
                   return (
                     <TableRow key={learner.id}>
@@ -515,6 +727,10 @@ export default function ExternalTrainingDashboard({
             <div className="py-10 text-center text-slate-500">
               No badge requests were returned.
             </div>
+          ) : visibleRequests.length === 0 ? (
+            <div className="py-10 text-center text-slate-500">
+              No badge requests match the current filters.
+            </div>
           ) : (
             <Table>
               <TableHeader>
@@ -528,7 +744,7 @@ export default function ExternalTrainingDashboard({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {requests.map((request) => (
+                {visibleRequests.map((request) => (
                   <TableRow key={request.id}>
                     <TableCell className="font-mono text-xs">
                       {request.requestNumber}
