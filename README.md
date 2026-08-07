@@ -64,3 +64,194 @@ The application parses the sign-in email to automatically link and set up the co
 * **Visual Theme Separation**: Automatic visual identification badge (**"DEMO ACCOUNT"**) lights up across all dashboards when a demo user is logged in.
 * **Hermetic Record Encapsulation**: Dynamic proxy filters isolate testing data—demo accounts only interact with collections marked with `isDemo: true`, completely hidden from production users.
 * **Zero-Setup Seeding**: The application automatically provisions clean, realistic mock data templates and demo organizations inside Firestore when you first execute a demo login.
+
+---
+
+## External Information System API Demo (Training Center Phase)
+
+This repository contains a local-only, disabled-by-default demonstration of
+retrieving Training Center data from a temporary Supabase mock database.
+Supabase is not the Digital Badging Platform's permanent datastore and is not
+treated as the final T2MIS contract.
+
+### Architecture
+
+```text
+Training Center Dashboard
+  -> Digital Badging Integration API
+  -> ExternalDataSourceAdapter
+  -> Supabase mock database
+```
+
+React never connects to Supabase tables and never chooses the data source. The
+server-side `EXTERNAL_DATA_SOURCE` setting chooses the adapter:
+
+| Value | Status |
+| --- | --- |
+| `supabase` | Implemented temporary mock adapter |
+| `t2mis-api` | Reserved, deliberately unconfigured |
+| `t2mis-database` | Reserved, deliberately unconfigured |
+
+The adapter contract and standardized field requirements are documented in
+[`supabase/functions/api/ADAPTERS.md`](supabase/functions/api/ADAPTERS.md).
+No assumptions have been made about final T2MIS field names, database
+technology, API format, or authentication.
+
+### Phase 1 scope
+
+Only the Training Center dashboard is integrated. District Office, Learner, and
+public-verification dashboard integration are not changed in this phase.
+Firebase Authentication and all existing Firebase workflows remain available.
+
+The Integration API exposes only these read-only logical routes:
+
+```text
+GET /api/training-centers/{id}/dashboard-summary
+GET /api/training-centers/{id}/learners
+GET /api/learners/{id}
+GET /api/training-centers/{id}/badge-requests
+GET /api/badges/{verificationId}
+```
+
+When hosted as the Supabase Edge Function named `api`, the full URL includes
+Supabase's function prefix. For example:
+
+```text
+https://PROJECT_REF.supabase.co/functions/v1/api/training-centers/TC-DEMO-001/learners
+```
+
+### Local feature settings
+
+The feature is disabled unless explicitly enabled:
+
+```dotenv
+VITE_EXTERNAL_API_DEMO_ENABLED=false
+VITE_EXTERNAL_API_BASE_URL=
+VITE_EXTERNAL_TRAINING_CENTER_ID=TC-DEMO-001
+```
+
+When disabled, the existing Firestore-backed Training Center dashboard runs
+unchanged and no Integration API request is made. When enabled without an API
+base URL, the dashboard shows an intentional API configuration error instead of
+silently falling back to Firebase.
+
+### Mock database
+
+The migration creates:
+
+- `training_centers`
+- `qualifications`
+- `competencies`
+- `registered_programs`
+- `learners`
+- `enrollments`
+- `learner_competency_completions`
+- `badge_definitions`
+- `badge_requirements`
+- `badge_requests`
+- `badge_request_items`
+- `issued_badges`
+- `learner_badge_eligibility` read-only view
+
+The seed contains only fictional data:
+
+- Training Center `TC-DEMO-001`
+- One fictional qualification and registered program
+- Two required fictional competencies
+- Demo Learner Alpha: both competencies complete and eligible
+- Demo Learner Beta: one competency complete and not eligible
+- Demo Learner Gamma: eligible with an approved request and active issued badge
+- One pending request, one approved request, and one active issued badge
+
+All emails use the reserved `example.invalid` domain.
+
+### CTPR identifier mapping
+
+The mock registered-program identifier uses one canonical CTPR field:
+
+| Reference field | Database field | API field | Display label |
+| --- | --- | --- | --- |
+| CTPR Code / CTPR Number | `ctpr_number` | `ctprNumber` | CTPR No. |
+
+`registration_code` was renamed because it represented the same Certificate of
+TVET Program Registration Number identifier. Keeping both fields would duplicate
+the same value.
+
+## Create and Connect a Supabase Project Later
+
+The following steps are instructions only. They have not been run for this
+repository.
+
+1. Create a new project in the [Supabase Dashboard](https://supabase.com/dashboard).
+   Use a development-only project and store its database password in an approved
+   password manager.
+2. Install or invoke the current Supabase CLI, then authenticate through its
+   browser-based login flow:
+
+   ```bash
+   npx supabase@latest login
+   ```
+
+3. Link this local repository after replacing the placeholder with the public
+   project reference:
+
+   ```bash
+   npx supabase@latest link --project-ref PROJECT_REF
+   ```
+
+4. Review the migration and seed before applying them. When approved, apply the
+   migration and fictional seed using the current CLI workflow:
+
+   ```bash
+   npx supabase@latest db push --include-seed
+   ```
+
+5. Configure only server-side function settings. Supabase supplies
+   `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to deployed functions. Set the
+   adapter selector and the allowed frontend origin without printing secret
+   values:
+
+   ```bash
+   npx supabase@latest secrets set EXTERNAL_DATA_SOURCE=supabase
+   npx supabase@latest secrets set ALLOWED_ORIGIN=https://YOUR_FRONTEND_ORIGIN
+   ```
+
+6. After reviewing the function, deploy it:
+
+   ```bash
+   npx supabase@latest functions deploy api --no-verify-jwt
+   ```
+
+7. Configure the frontend with public values:
+
+   ```dotenv
+   VITE_EXTERNAL_API_DEMO_ENABLED=true
+   VITE_EXTERNAL_API_BASE_URL=https://PROJECT_REF.supabase.co/functions/v1
+   VITE_EXTERNAL_TRAINING_CENTER_ID=TC-DEMO-001
+   ```
+
+8. Rebuild the frontend and open the Training Center dashboard. The visible
+   "Mock External System" indicator confirms external demo mode.
+
+Stop and obtain approval before linking, pushing migrations, setting project
+secrets, deploying the Edge Function, or enabling the feature in a shared
+environment.
+
+### Public and secret configuration
+
+| Configuration | Classification |
+| --- | --- |
+| `VITE_EXTERNAL_API_DEMO_ENABLED` | Public build setting |
+| `VITE_EXTERNAL_API_BASE_URL` | Public endpoint |
+| `VITE_EXTERNAL_TRAINING_CENTER_ID` | Public fictional identifier |
+| Supabase project URL and project reference | Public identifiers |
+| Supabase publishable/legacy anon key | Public client identifier; unused by this demo frontend |
+| `EXTERNAL_DATA_SOURCE` | Server-only non-secret setting |
+| `ALLOWED_ORIGIN` | Server-only non-secret setting |
+| `SUPABASE_SERVICE_ROLE_KEY` or Supabase secret key | Secret; server only |
+| Database password or connection string | Secret |
+| Supabase CLI access token | Secret |
+
+Never prefix a secret with `VITE_`; Vite variables are included in the browser
+bundle. Do not place service-role keys, database passwords, access tokens, or
+service-account credentials in repository files.

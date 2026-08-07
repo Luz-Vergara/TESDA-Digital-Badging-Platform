@@ -33,6 +33,11 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Link } from 'react-router-dom';
+import ExternalTrainingDashboard from '@/src/components/training/ExternalTrainingDashboard';
+import {
+  externalDemoTrainingCenterId,
+  isExternalApiDemoEnabled,
+} from '@/src/config/environment';
 
 export default function TrainingDashboard() {
   const { user, userProfile, isAuthReady } = useFirebase();
@@ -43,6 +48,7 @@ export default function TrainingDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (isExternalApiDemoEnabled) return;
     if (!isAuthReady || !user) return;
 
     const tcId = userProfile?.organizationId || user.uid;
@@ -113,6 +119,14 @@ export default function TrainingDashboard() {
       unsubscribeActivity();
     };
   }, [user, isAuthReady, userProfile]);
+
+  if (isExternalApiDemoEnabled) {
+    return (
+      <ExternalTrainingDashboard
+        trainingCenterId={externalDemoTrainingCenterId}
+      />
+    );
+  }
 
   const stats = [
     { label: 'Total Learners', value: learners.length, icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
