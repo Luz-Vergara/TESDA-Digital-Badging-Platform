@@ -238,7 +238,7 @@ export default function LearnerApplications() {
                       <Badge variant="outline">{batch?.batchName || 'No specific batch'}</Badge>
                     </TableCell>
                     <TableCell className="text-xs text-slate-500">
-                      {enr.dateApplied ? new Date(enr.dateApplied.seconds * 1000).toLocaleDateString() : 'N/A'}
+                      {enr.dateApplied ? (typeof enr.dateApplied === 'object' && 'seconds' in enr.dateApplied ? new Date((enr.dateApplied as any).seconds * 1000).toLocaleDateString() : new Date(enr.dateApplied as any).toLocaleDateString()) : 'N/A'}
                     </TableCell>
                     <TableCell className="text-right pr-6">
                       <div className="flex justify-end gap-2">

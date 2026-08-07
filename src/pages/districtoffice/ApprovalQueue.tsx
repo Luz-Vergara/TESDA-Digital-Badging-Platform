@@ -49,12 +49,13 @@ export default function ApprovalQueue() {
     const q = query(
       collection(db, 'badgeRequests'),
       where('districtOfficeId', '==', districtId),
-      where('status', '==', 'Pending Review'),
-      orderBy('submittedAt', 'desc')
+      where('status', '==', 'Pending Review')
     );
 
     const unsubscribe = onSnapshot(q, async (snapshot) => {
-      const requestData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as BadgeRequest[];
+      const requestData = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .sort((a: any, b: any) => ((b.submittedAt?.seconds || 0) - (a.submittedAt?.seconds || 0))) as BadgeRequest[];
       setRequests(requestData);
       
       // Fetch offering titles for display

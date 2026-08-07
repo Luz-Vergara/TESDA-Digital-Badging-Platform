@@ -82,10 +82,12 @@ export default function TrainingRecords() {
     }
   };
 
-  const filteredLearners = learners.filter(l => 
-    `${l.firstName} ${l.lastName}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    l.qualification.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredLearners = learners.filter(l => {
+    const name = l.name || `${l.firstName || ''} ${l.lastName || ''}`.trim() || 'Learner';
+    const qual = l.qualification || l.programName || '';
+    const term = searchQuery.toLowerCase();
+    return name.toLowerCase().includes(term) || qual.toLowerCase().includes(term);
+  });
 
   if (loading) {
     return (
@@ -193,17 +195,17 @@ export default function TrainingRecords() {
                             <User className="h-4 w-4" />
                           </div>
                           <div className="flex flex-col">
-                            <span className="font-bold text-slate-900">{learner.firstName} {learner.lastName}</span>
+                            <span className="font-bold text-slate-900">{learner.name || `${learner.firstName || ''} ${learner.lastName || ''}`.trim() || 'Learner'}</span>
                             <span className="text-[10px] text-slate-500 uppercase tracking-tight">ID: {learner.id?.slice(-6)}</span>
                           </div>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <span className="text-sm font-medium text-slate-700">{learner.qualification}</span>
+                        <span className="text-sm font-medium text-slate-700">{learner.qualification || learner.programName || 'National Certificate'}</span>
                       </TableCell>
                       <TableCell>
                         <Select 
-                          value={learner.status} 
+                          value={learner.status || 'Enrolled'} 
                           onValueChange={(value) => updateStatus(learner.id!, value)}
                         >
                           <SelectTrigger className="w-[140px] h-8 text-xs">
@@ -218,7 +220,7 @@ export default function TrainingRecords() {
                       </TableCell>
                       <TableCell>
                         <span className="text-xs text-slate-500">
-                          {learner.updatedAt ? new Date(learner.updatedAt.seconds * 1000).toLocaleDateString() : 'N/A'}
+                          {learner.updatedAt ? (typeof learner.updatedAt === 'object' && 'seconds' in learner.updatedAt ? new Date((learner.updatedAt as any).seconds * 1000).toLocaleDateString() : new Date(learner.updatedAt as any).toLocaleDateString()) : 'N/A'}
                         </span>
                       </TableCell>
                       <TableCell className="text-right">

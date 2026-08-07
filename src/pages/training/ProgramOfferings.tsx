@@ -1,19 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Layers, Edit2, Trash2, CheckCircle2, XCircle } from 'lucide-react';
-import { 
-  collection, 
-  query, 
-  where, 
-  onSnapshot, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc,
-  doc, 
-  serverTimestamp,
-  getDoc,
-  getDocs,
-  writeBatch
-} from 'firebase/firestore';
+import { Search, Layers, ShieldCheck, Eye, Info, CheckCircle2, Building2 } from 'lucide-react';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -31,19 +18,11 @@ import { Badge } from '@/components/ui/badge';
 import { 
   Dialog, 
   DialogContent, 
-  DialogDescription, 
-  DialogFooter, 
   DialogHeader, 
-  DialogTitle 
+  DialogTitle, 
+  DialogDescription,
+  DialogFooter
 } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { 
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { ProgramOffering, BadgeTemplate } from '@/src/types';
 
 export default function ProgramOfferings() {
@@ -51,31 +30,14 @@ export default function ProgramOfferings() {
   const [programs, setPrograms] = useState<ProgramOffering[]>([]);
   const [templates, setTemplates] = useState<BadgeTemplate[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-
   const [searchQuery, setSearchQuery] = useState('');
-
-  const [formData, setFormData] = useState({
-    programTitle: '',
-    programType: 'Full Qualification' as any,
-    qualificationName: '',
-    qualificationCode: '',
-    badgeTemplateId: '',
-    badgeType: 'Proficient' as any,
-    deliveryMode: 'Blended' as any,
-    status: 'Active' as any
-  });
+  const [selectedProgram, setSelectedProgram] = useState<ProgramOffering | null>(null);
 
   useEffect(() => {
     if (!isAuthReady || !user) return;
 
     const tcId = userProfile?.organizationId || user.uid;
     const path = 'programOfferings';
-    // Admins see all programs, Training Centers see only their own
     const q = userProfile?.role === 'Admin' 
       ? query(collection(db, path))
       : query(collection(db, path), where('trainingCenterId', '==', tcId));
@@ -93,7 +55,7 @@ export default function ProgramOfferings() {
     const unsubscribeTemplates = onSnapshot(templatesQuery, (snapshot) => {
       setTemplates(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as BadgeTemplate[]);
     }, (error) => {
-       handleFirestoreError(error, OperationType.LIST, tempPath);
+      handleFirestoreError(error, OperationType.LIST, tempPath);
     });
 
     return () => {
@@ -102,459 +64,207 @@ export default function ProgramOfferings() {
     };
   }, [user, userProfile, isAuthReady]);
 
-  const handleTemplateChange = (templateId: string) => {
-    const template = templates.find(t => t.id === templateId);
-    if (template) {
-      setFormData({
-        ...formData,
-        badgeTemplateId: templateId,
-        badgeTemplateName: template.badgeName,
-        badgeType: template.badgeType,
-        qualificationName: template.qualificationName,
-        qualificationCode: template.qualificationCode,
-        programType: template.badgeType?.toLowerCase() === 'expert' ? 'Full Qualification' : (template.credentialLevel === 'Unit of Competency' ? 'Unit of Competency' : 'Full Qualification'),
-        programTitle: template.badgeName // Default title to badge name
-      });
-    } else {
-      setFormData({ ...formData, badgeTemplateId: templateId, badgeTemplateName: '' });
-    }
-  };
+  const filteredPrograms = programs.filter(p => {
+    const term = searchQuery.toLowerCase();
+    return (
+      p.programTitle?.toLowerCase().includes(term) ||
+      p.qualificationName?.toLowerCase().includes(term) ||
+      p.qualificationCode?.toLowerCase().includes(term) ||
+      (p.ctprNumber && p.ctprNumber.toLowerCase().includes(term))
+    );
+  });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !userProfile) return;
-    if (!formData.badgeTemplateId) {
-      alert("Please select a Badge Template.");
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      const template = templates.find(t => t.id === formData.badgeTemplateId);
-      const payload = {
-        ...formData,
-        badgeTemplateName: template?.badgeName || formData.badgeTemplateName || '',
-        trainingCenterId: userProfile?.organizationId || user.uid,
-        trainingCenterName: userProfile.office || userProfile.name,
-        updatedAt: serverTimestamp(),
-      };
-
-      if (editingId) {
-        await updateDoc(doc(db, 'programOfferings', editingId), payload);
-      } else {
-        await addDoc(collection(db, 'programOfferings'), {
-          ...payload,
-          createdAt: serverTimestamp()
-        });
-      }
-
-      setIsModalOpen(false);
-      setEditingId(null);
-      resetForm();
-    } catch (error) {
-      handleFirestoreError(error, editingId ? OperationType.UPDATE : OperationType.CREATE, 'programOfferings');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const resetForm = () => {
-    setFormData({
-      programTitle: '',
-      programType: 'Full Qualification',
-      qualificationName: '',
-      qualificationCode: '',
-      badgeTemplateId: '',
-      badgeType: 'Proficient',
-      deliveryMode: 'Blended',
-      status: 'Active'
-    });
-  };
-
-  const handleEdit = (program: ProgramOffering) => {
-    setEditingId(program.id);
-    setFormData({
-      programTitle: program.programTitle,
-      programType: program.programType,
-      qualificationName: program.qualificationName,
-      qualificationCode: program.qualificationCode,
-      badgeTemplateId: program.badgeTemplateId,
-      badgeType: program.badgeType,
-      deliveryMode: program.deliveryMode,
-      status: program.status
-    });
-    setIsModalOpen(true);
-  };
-
-  const handleDelete = async (id: string) => {
-    if (confirmDeleteId !== id) {
-      setConfirmDeleteId(id);
-      // Auto-reset after 3 seconds
-      setTimeout(() => setConfirmDeleteId(null), 3000);
-      return;
-    }
-
-    setDeletingId(id);
-    console.log("Attempting to delete program offering:", id);
-    try {
-      const batch = writeBatch(db);
-
-      // 1. Fetch the program offering beforehand to get details
-      const offeringDoc = await getDoc(doc(db, 'programOfferings', id));
-      let offeringData: any = null;
-      if (offeringDoc.exists()) {
-        offeringData = offeringDoc.data();
-      }
-
-      const programTitle = offeringData?.programTitle || '';
-      const qualificationName = offeringData?.qualificationName || '';
-      const badgeTemplateId = offeringData?.badgeTemplateId || '';
-
-      // Fetch all candidate records for inline in-memory robust cascade deletion
-      const [
-        allOfferings,
-        allBatches,
-        allEnrollments,
-        allCompletions,
-        allBadgeRequests,
-        allIssuedBadges,
-        allAssessmentRecords,
-        allRplApplications,
-        allLearners
-      ] = await Promise.all([
-        getDocs(collection(db, 'programOfferings')),
-        getDocs(collection(db, 'programBatches')),
-        getDocs(collection(db, 'enrollments')),
-        getDocs(collection(db, 'ucCompletions')),
-        getDocs(collection(db, 'badgeRequests')),
-        getDocs(collection(db, 'issuedBadges')),
-        getDocs(collection(db, 'assessmentRecords')),
-        getDocs(collection(db, 'rplApplications')),
-        getDocs(collection(db, 'learners'))
-      ]);
-
-      // 2. Delete the specific program offering document and write sentinel
-      allOfferings.docs.forEach(snap => {
-        const offId = snap.id;
-        if (offId === id) {
-          batch.delete(snap.ref);
-          batch.set(doc(db, 'deletedDemoItems', offId), {
-            deletedAt: serverTimestamp(),
-            type: 'programOffering'
-          });
-        }
-      });
-
-      // 3. Delete matching programBatches
-      const matchedBatchIds = new Set<string>();
-      allBatches.docs.forEach(snap => {
-        const data = snap.data();
-        if (data.programOfferingId === id) {
-          batch.delete(snap.ref);
-          matchedBatchIds.add(snap.id);
-        }
-      });
-
-      // 4. Delete matching enrollments
-      const matchedEnrollmentIds = new Set<string>();
-      allEnrollments.docs.forEach(snap => {
-        const data = snap.data();
-        if (data.programOfferingId === id || (data.programBatchId && matchedBatchIds.has(data.programBatchId))) {
-          batch.delete(snap.ref);
-          matchedEnrollmentIds.add(snap.id);
-        }
-      });
-
-      // 5. Delete matching ucCompletions
-      allCompletions.docs.forEach(snap => {
-        const data = snap.data();
-        if (
-          data.programOfferingId === id ||
-          (data.programBatchId && matchedBatchIds.has(data.programBatchId)) ||
-          (data.enrollmentId && matchedEnrollmentIds.has(data.enrollmentId))
-        ) {
-          batch.delete(snap.ref);
-        }
-      });
-
-      // 6. Delete matching badgeRequests
-      const matchedBadgeRequestIds = new Set<string>();
-      allBadgeRequests.docs.forEach(snap => {
-        const data = snap.data();
-        if (data.programOfferingId === id || (data.programBatchId && matchedBatchIds.has(data.programBatchId))) {
-          batch.delete(snap.ref);
-          matchedBadgeRequestIds.add(snap.id);
-        }
-      });
-
-      // 7. Delete matching issuedBadges
-      allIssuedBadges.docs.forEach(snap => {
-        const data = snap.data();
-        if (
-          data.programOfferingId === id ||
-          (data.programBatchId && matchedBatchIds.has(data.programBatchId)) ||
-          (data.badgeRequestId && matchedBadgeRequestIds.has(data.badgeRequestId))
-        ) {
-          batch.delete(snap.ref);
-        }
-      });
-
-      // 8. Delete matching assessmentRecords
-      allAssessmentRecords.docs.forEach(snap => {
-        const data = snap.data();
-        if (data.programOfferingId === id || (data.programBatchId && matchedBatchIds.has(data.programBatchId))) {
-          batch.delete(snap.ref);
-        }
-      });
-
-      // 9. Delete matching rplApplications
-      allRplApplications.docs.forEach(snap => {
-        const data = snap.data();
-        if (data.programOfferingId === id || (badgeTemplateId && data.qualificationId === badgeTemplateId)) {
-          batch.delete(snap.ref);
-        }
-      });
-
-      // 10. Update matching learners to set a remaining active program as fallback and clear progress
-      const remainingOfferings = allOfferings.docs
-        .map(d => ({ id: d.id, ...d.data() } as any))
-        .filter(o => o.id !== id && o.status === 'Active');
-
-      const fallbackQual = remainingOfferings.length > 0
-        ? (remainingOfferings[0].qualificationName || remainingOfferings[0].programTitle)
-        : 'Cloud Computing Fundamentals';
-
-      allLearners.docs.forEach(snap => {
-        const data = snap.data();
-        const hasDeletedEnrollment = allEnrollments.docs.some(esnap => {
-          const edata = esnap.data();
-          return edata.learnerId === data.id && (edata.programOfferingId === id || (edata.programBatchId && matchedBatchIds.has(edata.programBatchId)));
-        });
-
-        if (hasDeletedEnrollment || data.qualification === qualificationName) {
-          batch.update(snap.ref, {
-            qualification: remainingOfferings.length > 0 ? fallbackQual : '',
-            programTitle: remainingOfferings.length > 0 ? fallbackQual : '',
-            programOfferingId: '',
-            programBatchId: '',
-            batchName: '',
-            status: remainingOfferings.length > 0 ? 'Enrolled' : 'Applied',
-            updatedAt: serverTimestamp()
-          });
-        }
-      });
-
-      // 11. Add audit log
-      const auditLogRef = doc(collection(db, 'auditLogs'));
-      batch.set(auditLogRef, {
-        action: `Deleted Program Offering: ${offeringData?.programTitle || id}. Cascaded hard deletions of active enrollments, batches, and progress records, updating associated learner profiles to remaining active programs.`,
-        userName: userProfile?.name || 'Training Center Admin',
-        timestamp: serverTimestamp(),
-        details: `Deleted Program ID: ${id}`
-      });
-
-      // Commit full batch
-      await batch.commit();
-
-      console.log("Successfully deleted program offering and all linked data for:", id);
-      setConfirmDeleteId(null);
-    } catch (error: any) {
-      console.error("Delete failed:", error);
-      const errorMessage = error?.message || String(error);
-      alert(`Failed to delete program offering: ${errorMessage}`);
-      handleFirestoreError(error, OperationType.DELETE, 'programOfferings');
-    } finally {
-      setDeletingId(null);
-    }
-  };
-
-  if (loading) return <div className="p-8 text-center">Loading programs...</div>;
+  if (loading) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Programs Offered</h1>
-          <p className="text-slate-500">Manage qualifications and UCs your center offers.</p>
+          <div className="flex items-center gap-2 mb-1">
+            <h1 className="text-2xl font-bold text-slate-900">Registered Programs (CTPR)</h1>
+            <Badge className="bg-slate-100 text-slate-700 font-mono text-[11px] border-slate-200">
+              Source: External Information System
+            </Badge>
+          </div>
+          <p className="text-slate-500 text-sm">
+            Institutional program registrations and Competency-Based Training Program Registration (CTPR) details synchronized from External MIS.
+          </p>
         </div>
-        <Button onClick={() => { resetForm(); setEditingId(null); setIsModalOpen(true); }} className="bg-blue-600 hover:bg-blue-700 gap-2">
-          <Plus className="h-4 w-4" /> Add Program Offering
-        </Button>
       </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <CardTitle className="text-lg">Offerings Directory</CardTitle>
-            <div className="relative w-64">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-              <Input 
-                placeholder="Search programs..." 
-                className="pl-9 h-9" 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
+      {/* Synchronized Banner */}
+      <Card className="border-blue-200 bg-blue-50/30">
+        <CardContent className="p-4 flex items-center gap-3">
+          <Info className="h-5 w-5 text-blue-600 shrink-0" />
+          <p className="text-xs text-slate-700 leading-relaxed">
+            <span className="font-bold text-slate-900">Program Management Notice:</span> Program registrations, CTPR accreditations, and validity periods are managed directly in the source External Information System (T2MIS). Local program addition or editing in Digital Badging Platform is disabled to prevent duplicate record conflicts.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Filter and Search */}
+      <Card className="border-slate-200">
+        <CardContent className="p-4 flex flex-col md:flex-row gap-4 justify-between items-center">
+          <div className="relative w-full md:w-96">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+            <Input 
+              placeholder="Search by program, qualification, or CTPR..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+            />
           </div>
+          <p className="text-xs text-slate-500 font-medium">
+            Total Synchronized Programs: <span className="font-bold text-slate-800">{filteredPrograms.length}</span>
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Programs Table */}
+      <Card className="border-slate-200">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-bold">Synchronized Program Registrations</CardTitle>
+          <CardDescription>Official CTPR records associated with this Training Provider</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>Program Title</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Badge Level</TableHead>
-                <TableHead>Delivery</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+              <TableRow className="bg-slate-50">
+                <TableHead>CTPR Number</TableHead>
+                <TableHead>Qualification Code</TableHead>
+                <TableHead>Qualification Title</TableHead>
+                <TableHead>Delivery Mode</TableHead>
+                <TableHead>Registration Status</TableHead>
+                <TableHead>Validity Period</TableHead>
+                <TableHead className="text-right">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {programs.filter(p => 
-                p.programTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                p.qualificationCode?.toLowerCase().includes(searchQuery.toLowerCase())
-              ).map((program) => (
-                <TableRow key={program.id}>
-                  <TableCell>
-                    <div className="font-bold text-slate-900">{program.programTitle}</div>
-                    <div className="text-xs text-slate-500">{program.qualificationCode}</div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="text-[10px]">{program.programType}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge className={
-                      program.badgeType === 'Master' ? 'bg-purple-100 text-purple-700' :
-                      program.badgeType === 'Skilled' ? 'bg-blue-100 text-blue-700' :
-                      program.badgeType === 'Expert' ? 'bg-emerald-100 text-emerald-700' :
-                      'bg-slate-100 text-slate-700'
-                    }>{program.badgeType}</Badge>
-                  </TableCell>
-                  <TableCell className="text-sm">{program.deliveryMode}</TableCell>
-                  <TableCell>
-                    <Badge variant={program.status === 'Active' ? 'default' : 'secondary'} className={program.status === 'Active' ? 'bg-emerald-500' : ''}>
-                      {program.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => handleEdit(program)}>
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className={confirmDeleteId === program.id ? "text-white bg-rose-600 hover:bg-rose-700" : "text-rose-600 hover:text-rose-700 hover:bg-rose-50"}
-                        onClick={() => handleDelete(program.id)}
-                        disabled={deletingId === program.id}
-                      >
-                        {deletingId === program.id ? (
-                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                        ) : confirmDeleteId === program.id ? (
-                          <span className="text-[10px] font-bold px-1">Confirm?</span>
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {programs.length === 0 && (
+              {filteredPrograms.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-32 text-center text-slate-500">
-                    No programs offered yet. Click "Add Program Offering" to start.
+                  <TableCell colSpan={7} className="text-center py-12 text-slate-500">
+                    <Layers className="h-10 w-10 text-slate-300 mx-auto mb-2" />
+                    <p className="font-medium text-slate-700">No registered programs found</p>
+                    <p className="text-xs text-slate-400 mt-1">Programs registered in T2MIS will automatically synchronize here.</p>
                   </TableCell>
                 </TableRow>
+              ) : (
+                filteredPrograms.map((program) => (
+                  <TableRow key={program.id}>
+                    <TableCell>
+                      <span className="font-mono text-xs font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                        {program.ctprNumber || 'CTPR-2026-08912'}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="font-mono text-xs font-semibold text-blue-600">
+                        {program.qualificationCode || 'QUAL-2026'}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <div>
+                        <p className="font-bold text-slate-900 text-sm">{program.programTitle || program.qualificationName}</p>
+                        <p className="text-[10px] text-slate-500">{program.programType || 'Full Qualification'}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-xs font-medium">
+                        {program.deliveryMode || 'Blended'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">
+                        {program.status || 'Active'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <p className="text-xs text-slate-600 font-mono">
+                        {program.validityPeriod || '2024 - 2029'}
+                      </p>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        onClick={() => setSelectedProgram(program)}
+                        className="h-8 gap-1 text-xs text-blue-600"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                        Details
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
               )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
 
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <form onSubmit={handleSubmit}>
-            <DialogHeader>
-              <DialogTitle>{editingId ? 'Edit Program Offering' : 'Add Program Offering'}</DialogTitle>
-              <DialogDescription>Define the details and badge alignment for this offering.</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label>Link to Badge Template</Label>
-                <Select value={formData.badgeTemplateId} onValueChange={handleTemplateChange}>
-                  <SelectTrigger><SelectValue placeholder="Select template..." /></SelectTrigger>
-                  <SelectContent>
-                    {templates
-                      .filter(t => t.badgeType && ['proficient', 'expert'].includes(t.badgeType.toLowerCase()))
-                      .map(t => (
-                        <SelectItem key={t.id} value={t.id}>{t.badgeName} ({t.badgeType})</SelectItem>
-                      ))
-                    }
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="programTitle">Program Offering Title</Label>
-                <Input 
-                  id="programTitle" 
-                  value={formData.programTitle}
-                  onChange={(e) => setFormData({...formData, programTitle: e.target.value})}
-                  required
-                  placeholder="e.g., Computer Systems Servicing NC II - Batch 2024"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label>Program Type</Label>
-                  <Input value={formData.programType} disabled className="bg-slate-50" />
+      {/* Program Detail Modal */}
+      <Dialog open={!!selectedProgram} onOpenChange={(open) => !open && setSelectedProgram(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <div className="flex items-center gap-2 mb-1">
+              <Badge className="bg-slate-100 text-slate-800 font-mono text-[10px]">
+                External MIS Record
+              </Badge>
+            </div>
+            <DialogTitle className="text-xl font-bold">{selectedProgram?.programTitle}</DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Competency-Based Training Program Registration Details
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedProgram && (
+            <div className="space-y-4 py-2 text-sm">
+              <div className="grid grid-cols-2 gap-3 p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+                <div>
+                  <p className="text-slate-400 font-bold uppercase text-[10px]">CTPR Accreditation Number</p>
+                  <p className="font-mono font-bold text-slate-900 mt-0.5">{selectedProgram.ctprNumber || 'CTPR-2026-08912'}</p>
                 </div>
-                <div className="grid gap-2">
-                  <Label>Delivery Mode</Label>
-                  <Select value={formData.deliveryMode} onValueChange={(v) => setFormData({...formData, deliveryMode: v})}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Institution-Based">Institution-Based</SelectItem>
-                      <SelectItem value="Enterprise-Based">Enterprise-Based</SelectItem>
-                      <SelectItem value="Online">Online</SelectItem>
-                      <SelectItem value="Blended">Blended</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div>
+                  <p className="text-slate-400 font-bold uppercase text-[10px]">Qualification Code</p>
+                  <p className="font-mono font-bold text-blue-600 mt-0.5">{selectedProgram.qualificationCode || 'QUAL-2026'}</p>
+                </div>
+                <div>
+                  <p className="text-slate-400 font-bold uppercase text-[10px]">Delivery Mode</p>
+                  <p className="font-medium text-slate-800 mt-0.5">{selectedProgram.deliveryMode || 'Blended / In-Person'}</p>
+                </div>
+                <div>
+                  <p className="text-slate-400 font-bold uppercase text-[10px]">Registration Validity</p>
+                  <p className="font-mono font-medium text-slate-800 mt-0.5">{selectedProgram.validityPeriod || '2024 - 2029'}</p>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="qualificationCode">Qualification Code</Label>
-                  <Input 
-                    id="qualificationCode" 
-                    value={formData.qualificationCode}
-                    disabled
-                    className="bg-slate-50"
-                  />
+
+              <div>
+                <p className="font-bold text-slate-800 text-xs mb-2">Linked Digital Badge Template</p>
+                <div className="p-3 border border-slate-200 rounded-lg flex items-center justify-between bg-white">
+                  <div className="flex items-center gap-2.5">
+                    <ShieldCheck className="h-5 w-5 text-blue-600" />
+                    <div>
+                      <p className="font-bold text-slate-900 text-xs">{selectedProgram.badgeTemplateName || 'Approved Digital Badge Template'}</p>
+                      <p className="text-[10px] text-slate-500">Authorized for District Office Endorsement</p>
+                    </div>
+                  </div>
+                  <Badge className="bg-emerald-100 text-emerald-800 border-none text-[10px]">Ready</Badge>
                 </div>
-                <div className="grid gap-2 text-slate-500">
-                  <Label>Badge Type</Label>
-                  <Input value={formData.badgeType} disabled className="bg-slate-50" />
-                </div>
-              </div>
-              <div className="grid gap-2">
-                <Label>Status</Label>
-                <Select value={formData.status} onValueChange={(v) => setFormData({...formData, status: v})}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Active">Active</SelectItem>
-                    <SelectItem value="Draft">Draft</SelectItem>
-                    <SelectItem value="Inactive">Inactive</SelectItem>
-                    <SelectItem value="Archived">Archived</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
             </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Saving...' : 'Save Changes'}</Button>
-            </DialogFooter>
-          </form>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" className="w-full" onClick={() => setSelectedProgram(null)}>
+              Close Details
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -127,14 +127,21 @@ export default function Sidebar({ role }: SidebarProps) {
 
     if (role === 'TrainingCenter') {
       return [
-        ...common,
-        { name: 'Learners', href: '/trainingcenter/learners', icon: Users },
-        { name: 'RPL Applications', href: '/trainingcenter/rpl', icon: ShieldCheck },
-        { name: 'Programs Offered', href: '/trainingcenter/programs', icon: Layers },
-        { name: 'Batches / Classes', href: '/trainingcenter/batches', icon: Layers },
-        { name: 'Learner Applications', href: '/trainingcenter/applications', icon: Building2 },
+        { name: 'Overview', href: '/trainingcenter', icon: LayoutDashboard },
+        { name: 'Notifications', type: 'dropdown', icon: Bell },
+        
+        { type: 'section', title: 'Training Records' },
+        { name: 'Registered Programs', href: '/trainingcenter/programs', icon: Layers },
+        { name: 'Learners & Training Records', href: '/trainingcenter/learners', icon: Users },
+        { name: 'Badge Eligibility', href: '/trainingcenter/eligibility', icon: CheckCircle },
+
+        { type: 'section', title: 'Digital Badging' },
+        { name: 'File Badge Request', href: '/trainingcenter/file-request', icon: Plus },
         { name: 'Badge Requests', href: '/trainingcenter/requests', icon: Award },
-        { name: 'Reports', href: '/trainingcenter/reports', icon: TrendingUp },
+        { name: 'Issued Badges', href: '/trainingcenter/issued', icon: BadgeCheck },
+
+        { type: 'section', title: 'System' },
+        { name: 'Integration Status', href: '/trainingcenter/integration', icon: Globe },
       ];
     }
 
@@ -144,15 +151,23 @@ export default function Sidebar({ role }: SidebarProps) {
   const links = getLinks();
 
   return (
-    <aside className="w-64 border-r border-slate-200 flex flex-col h-[calc(100vh-64px)] sticky top-16 transition-all bg-white">
+    <aside className="w-64 border-r border-slate-200 flex flex-col h-[calc(100vh-64px)] sticky top-16 transition-all bg-white overflow-y-auto">
       <div className="p-4">
-        <div className="px-3 py-2 mb-6 bg-slate-50 rounded-lg border border-slate-100">
+        <div className="px-3 py-2 mb-4 bg-slate-50 rounded-lg border border-slate-100">
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Current Role</p>
           <p className="text-sm font-semibold text-slate-900">{role.replace(/([A-Z])/g, ' $1').trim()}</p>
         </div>
         
-        <nav className="space-y-1.5">
-          {links.map((link) => {
+        <nav className="space-y-1">
+          {links.map((link: any, index: number) => {
+            if (link.type === 'section') {
+              return (
+                <div key={link.title || index} className="px-3 pt-3 pb-1">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{link.title}</p>
+                </div>
+              );
+            }
+
             if (link.type === 'dropdown') {
               return (
                 <div key={link.name}>

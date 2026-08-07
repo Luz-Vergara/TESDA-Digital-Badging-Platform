@@ -130,10 +130,15 @@ export default function RPLApplications() {
   // Quick state helpers
   const filteredApps = useMemo(() => {
     return applications.filter(app => {
+      const term = searchQuery.toLowerCase();
+      const learnerName = app.learnerName || '';
+      const qualName = app.qualificationName || '';
+      const status = app.status || '';
+
       const matchSearch = 
-        app.learnerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        app.qualificationName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        app.status.toLowerCase().includes(searchQuery.toLowerCase());
+        learnerName.toLowerCase().includes(term) ||
+        qualName.toLowerCase().includes(term) ||
+        status.toLowerCase().includes(term);
 
       const matchTab = activeTab === 'All' || 
         (activeTab === 'Submitted' && app.status === 'Submitted') ||

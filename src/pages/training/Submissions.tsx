@@ -72,11 +72,13 @@ export default function Submissions() {
     return () => unsubscribe();
   }, [user, isAuthReady]);
 
-  const filteredRequests = requests.filter(r => 
-    r.learnerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    r.badgeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    r.id?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredRequests = requests.filter(r => {
+    const term = searchQuery.toLowerCase();
+    const learner = r.learnerName || '';
+    const badge = r.badgeName || r.badgeTitle || '';
+    const id = r.id || '';
+    return learner.toLowerCase().includes(term) || badge.toLowerCase().includes(term) || id.toLowerCase().includes(term);
+  });
 
   if (loading) {
     return (
@@ -149,7 +151,7 @@ export default function Submissions() {
                         </div>
                       </TableCell>
                       <TableCell className="text-xs text-slate-500">
-                        {request.submittedAt ? new Date(request.submittedAt.seconds * 1000).toLocaleDateString() : 'N/A'}
+                        {request.submittedAt ? (typeof request.submittedAt === 'object' && 'seconds' in request.submittedAt ? new Date((request.submittedAt as any).seconds * 1000).toLocaleDateString() : new Date(request.submittedAt as any).toLocaleDateString()) : 'N/A'}
                       </TableCell>
                       <TableCell>
                         <Badge className={

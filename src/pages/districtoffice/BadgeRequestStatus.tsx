@@ -67,21 +67,21 @@ export default function BadgeRequestStatus() {
 
       let q = query(
         collection(db, 'issuedBadges'),
-        where('districtOfficeId', 'in', districtIdentifiers),
-        orderBy('submittedAt', 'desc')
+        where('districtOfficeId', 'in', districtIdentifiers)
       );
 
       if (statusFilter !== 'All') {
         q = query(
           collection(db, 'issuedBadges'),
           where('districtOfficeId', 'in', districtIdentifiers),
-          where('status', '==', statusFilter),
-          orderBy('submittedAt', 'desc')
+          where('status', '==', statusFilter)
         );
       }
 
       const unsub = onSnapshot(q, (snapshot) => {
-        setRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+          .sort((a: any, b: any) => ((b.submittedAt?.seconds || 0) - (a.submittedAt?.seconds || 0)));
+        setRequests(data);
         setLoading(false);
       });
 

@@ -189,7 +189,7 @@ export default function UCCompletions() {
                     <TableCell className="pl-6 font-medium">
                       <div className="flex flex-col">
                         <span>{enrollment?.learnerName || 'Learner'}</span>
-                        <span className="text-[10px] text-slate-400 font-mono uppercase">ID: {comp.learnerId.slice(-8).toUpperCase()}</span>
+                        <span className="text-[10px] text-slate-400 font-mono uppercase">ID: {comp.learnerId ? comp.learnerId.slice(-8).toUpperCase() : 'N/A'}</span>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -199,7 +199,7 @@ export default function UCCompletions() {
                       </div>
                     </TableCell>
                     <TableCell className="text-sm">
-                      {comp.completedAt ? new Date(comp.completedAt.seconds * 1000).toLocaleDateString() : 'N/A'}
+                      {comp.completedAt ? (typeof comp.completedAt === 'object' && 'seconds' in comp.completedAt ? new Date((comp.completedAt as any).seconds * 1000).toLocaleDateString() : new Date(comp.completedAt as any).toLocaleDateString()) : 'N/A'}
                     </TableCell>
                     <TableCell>
                       <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 shadow-none">

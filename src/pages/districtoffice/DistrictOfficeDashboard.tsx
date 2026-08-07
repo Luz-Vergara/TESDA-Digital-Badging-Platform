@@ -92,9 +92,7 @@ export default function DistrictOfficeDashboard() {
       // Recent requests for table
       const qRecent = query(
         collection(db, pathIssued),
-        where('districtOfficeId', 'in', districtIdentifiers),
-        orderBy('submittedAt', 'desc'),
-        limit(5)
+        where('districtOfficeId', 'in', districtIdentifiers)
       );
 
     const unsubRequests = onSnapshot(qRequests, (snapshot) => {
@@ -121,7 +119,10 @@ export default function DistrictOfficeDashboard() {
     });
 
     const unsubRecent = onSnapshot(qRecent, (snapshot) => {
-      setRecentRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+        .sort((a: any, b: any) => ((b.submittedAt?.seconds || 0) - (a.submittedAt?.seconds || 0)))
+        .slice(0, 5);
+      setRecentRequests(docs);
       setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, pathIssued);

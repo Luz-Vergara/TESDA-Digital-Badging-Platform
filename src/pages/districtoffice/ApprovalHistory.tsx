@@ -53,24 +53,26 @@ export default function ApprovalHistory() {
     const qApproved = query(
       collection(db, path),
       where('districtOfficeId', '==', districtId),
-      where('status', '==', 'Approved'),
-      orderBy('approvedAt', 'desc')
+      where('status', '==', 'Approved')
     );
 
     // Rejected query
     const qRejected = query(
       collection(db, path),
       where('districtOfficeId', '==', districtId),
-      where('status', '==', 'Rejected'),
-      orderBy('approvedAt', 'desc')
+      where('status', '==', 'Rejected')
     );
 
     const unsubApproved = onSnapshot(qApproved, (snapshot) => {
-      setApprovedRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as BadgeIssuanceRequest[]);
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+        .sort((a: any, b: any) => ((b.approvedAt?.seconds || 0) - (a.approvedAt?.seconds || 0))) as BadgeIssuanceRequest[];
+      setApprovedRequests(data);
     }, (error) => handleFirestoreError(error, OperationType.GET, path));
 
     const unsubRejected = onSnapshot(qRejected, (snapshot) => {
-      setRejectedRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as BadgeIssuanceRequest[]);
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+        .sort((a: any, b: any) => ((b.approvedAt?.seconds || 0) - (a.approvedAt?.seconds || 0))) as BadgeIssuanceRequest[];
+      setRejectedRequests(data);
       setLoading(false);
     }, (error) => handleFirestoreError(error, OperationType.GET, path));
 

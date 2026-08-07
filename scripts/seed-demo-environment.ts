@@ -57,6 +57,7 @@ async function seedDemoEnvironment() {
   const candidatePasswords = [
     process.env.DEMO_PASSWORD,
     'demo123456',
+    '123456',
     'password123',
     'demo123',
     'password',
