@@ -34,8 +34,9 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Link } from 'react-router-dom';
-import ExternalTrainingDashboard from '@/src/components/training/ExternalTrainingDashboard';
 import { isExternalApiDemoEnabled } from '@/src/config/environment';
+import { externalApi } from '@/src/services/externalApi';
+import type { ExternalDashboardSummary } from '@/src/types/external-api';
 
 export default function TrainingDashboard() {
   const { user, userProfile, isAuthReady } = useFirebase();
@@ -45,7 +46,7 @@ export default function TrainingDashboard() {
   const [districtOffice, setDistrictOffice] = useState<any>(null);
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [externalLink, setExternalLink] = useState<any | null>(null);
+  const [externalSummary, setExternalSummary] = useState<ExternalDashboardSummary | null>(null);
 
   useEffect(() => {
     if (!isAuthReady || !user) return;
@@ -100,13 +101,7 @@ export default function TrainingDashboard() {
         });
     }
 
-    if (isExternalApiDemoEnabled) {
-      getDoc(doc(db, 'integrationTrainingCenterLinks', tcId))
-        .then((link) => setExternalLink(link.exists() ? link.data() : null))
-        .catch((error) => handleFirestoreError(error, OperationType.GET, `integrationTrainingCenterLinks/${tcId}`));
-    } else {
-      setExternalLink(null);
-    }
+    if (isExternalApiDemoEnabled) void externalApi.getMyTrainingCenterDashboardSummary().then((result) => setExternalSummary(result.data)).catch(() => setExternalSummary(null));
 
     // 5. Audit Logs
     const activityQuery = query(
@@ -130,15 +125,15 @@ export default function TrainingDashboard() {
     };
   }, [user, isAuthReady, userProfile]);
 
-  const activeEnrollments = learners.filter(l => l.status === 'Enrolled' || l.status === 'In Progress').length;
-  const completedLearners = learners.filter(l => l.status === 'Completed' || l.status === 'Graduate').length;
-  const eligibleLearners = learners.length; // All completed/enrolled learners evaluated in External MIS
+  const activeEnrollments = externalSummary?.counts.activeEnrollments ?? learners.filter(l => l.status === 'Enrolled' || l.status === 'In Progress').length;
+  const completedLearners = externalSummary?.counts.completedCompetencies ?? 0;
+  const eligibleLearners = externalSummary?.counts.eligibleLearners ?? 0;
   const pendingRequests = badgeRequests.filter(r => r.status === 'Pending' || r.status === 'Submitted').length;
   const approvedRequests = badgeRequests.filter(r => r.status === 'Approved').length;
   const issuedBadgesCount = issuedBadges.length;
 
   const stats = [
-    { label: 'Total Learners (External MIS)', value: learners.length, icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
+    { label: 'Total Learners (External MIS)', value: externalSummary?.counts.learners ?? learners.length, icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
     { label: 'Active Enrollments', value: activeEnrollments, icon: Activity, color: 'text-emerald-600', bg: 'bg-emerald-50' },
     { label: 'Completed Trainees', value: completedLearners, icon: CheckCircle2, color: 'text-indigo-600', bg: 'bg-indigo-50' },
     { label: 'Badge-Eligible', value: eligibleLearners, icon: CheckCircle, color: 'text-emerald-700', bg: 'bg-emerald-100' },
@@ -211,23 +206,6 @@ export default function TrainingDashboard() {
           </div>
         </CardContent>
       </Card>
-
-      {isExternalApiDemoEnabled && (
-        externalLink?.active !== false && externalLink ? (
-          <ExternalTrainingDashboard
-            firebaseTrainingCenterId={userProfile?.organizationId || user?.uid || ''}
-            firebaseTrainingCenterName={userProfile?.office || userProfile?.name || 'Training Center'}
-            firebaseUserId={user?.uid || ''}
-            districtOfficeId={userProfile?.assignedDistrictId}
-          />
-        ) : (
-          <Card className="border-amber-200 bg-amber-50/40">
-            <CardContent className="p-4 text-sm text-amber-800">
-              External records are enabled, but this Training Center does not have an approved platform integration link.
-            </CardContent>
-          </Card>
-        )
-      )}
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">

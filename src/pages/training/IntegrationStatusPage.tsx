@@ -16,21 +16,26 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
+import { externalApi, ExternalApiError } from '@/src/services/externalApi';
 
 export default function IntegrationStatusPage() {
   const { userProfile } = useFirebase();
   const [testing, setTesting] = useState(false);
-  const [lastSync, setLastSync] = useState<string>('2 minutes ago');
+  const [lastSync, setLastSync] = useState<string>('Not checked');
   const [testResult, setTestResult] = useState<string | null>(null);
 
-  const handleTestConnection = () => {
+  const handleTestConnection = async () => {
     setTesting(true);
     setTestResult(null);
-    setTimeout(() => {
+    try {
+      const result = await externalApi.getMyTrainingCenterDashboardSummary();
       setTesting(false);
-      setLastSync('Just now');
-      setTestResult('API Connection Successful: External Information System (T2MIS) endpoint pinged with 200 OK (Latency: 42ms).');
-    }, 1200);
+      setLastSync(new Date(result.meta.retrievedAt).toLocaleString());
+      setTestResult(`Integration API authenticated successfully. ${result.data.registeredPrograms.length} scoped program record(s) were returned.`);
+    } catch (error) {
+      setTesting(false);
+      setTestResult(error instanceof ExternalApiError ? `Connection failed: ${error.message}` : 'Connection failed: the Integration API could not be reached.');
+    }
   };
 
   return (

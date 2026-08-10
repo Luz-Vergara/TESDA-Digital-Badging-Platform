@@ -30,14 +30,17 @@ import NamingConventions from './pages/qso/NamingConventions';
 import ICTODashboard from './pages/icto/ICTODashboard';
 
 import TrainingDashboard from './pages/training/TrainingDashboard';
+import LearnerManagement from './pages/training/LearnerManagement';
+import ProgramOfferings from './pages/training/ProgramOfferings';
 import ProgramBatches from './pages/training/ProgramBatches';
 import LearnerApplications from './pages/training/LearnerApplications';
 import UCCompletions from './pages/training/UCCompletions';
 import BadgeRequests from './pages/training/BadgeRequests';
 import RPLApplications from './pages/training/RPLApplications';
+import BadgeEligibility from './pages/training/BadgeEligibility';
+import FileBadgeRequest from './pages/training/FileBadgeRequest';
 import IssuedBadges from './pages/training/IssuedBadges';
 import IntegrationStatusPage from './pages/training/IntegrationStatusPage';
-import ExternalTrainingCenterRoute from './components/training/ExternalTrainingCenterRoute';
 import DashboardLayout from './components/layout/DashboardLayout';
 
 export default function App() {
@@ -108,10 +111,10 @@ export default function App() {
           {/* Training Center Portal */}
           <Route path="/trainingcenter" element={<DashboardLayout role="TrainingCenter" />}>
             <Route index element={<TrainingDashboard />} />
-            <Route path="learners" element={<ExternalTrainingCenterRoute initialView="learners" />} />
-            <Route path="eligibility" element={<ExternalTrainingCenterRoute initialView="eligibility" />} />
-            <Route path="file-request" element={<ExternalTrainingCenterRoute initialView="eligibility" />} />
-            <Route path="programs" element={<ExternalTrainingCenterRoute initialView="programs" />} />
+            <Route path="learners" element={<LearnerManagement />} />
+            <Route path="eligibility" element={<BadgeEligibility />} />
+            <Route path="file-request" element={<FileBadgeRequest />} />
+            <Route path="programs" element={<ProgramOfferings />} />
             <Route path="requests" element={<BadgeRequests />} />
             <Route path="issued" element={<IssuedBadges />} />
             <Route path="integration" element={<IntegrationStatusPage />} />
