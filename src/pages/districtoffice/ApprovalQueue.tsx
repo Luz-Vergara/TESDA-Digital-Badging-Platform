@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  Search, 
-  Filter, 
-  Eye, 
-  CheckCircle2, 
+import {
+  Search,
+  Filter,
+  Eye,
+  CheckCircle2,
   XCircle,
   Clock,
   Building2,
@@ -17,13 +17,13 @@ import { useFirebase } from '@/src/lib/FirebaseProvider';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { BadgeRequest, ProgramOffering } from '@/src/types';
@@ -49,14 +49,15 @@ export default function ApprovalQueue() {
     const q = query(
       collection(db, 'badgeRequests'),
       where('districtOfficeId', '==', districtId),
-      where('status', '==', 'Pending Review'),
-      orderBy('submittedAt', 'desc')
+      where('status', '==', 'Pending Review')
     );
 
     const unsubscribe = onSnapshot(q, async (snapshot) => {
-      const requestData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as BadgeRequest[];
+      const requestData = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .sort((a: any, b: any) => ((b.submittedAt?.seconds || 0) - (a.submittedAt?.seconds || 0))) as BadgeRequest[];
       setRequests(requestData);
-      
+
       // Fetch offering titles for display
       if (requestData.length > 0) {
         const offeringIds = [...new Set(requestData.map(r => r.programOfferingId))];
@@ -64,7 +65,7 @@ export default function ApprovalQueue() {
         const offeringData = offeringDocs.filter(d => d.exists()).map(d => ({ id: d.id, ...d.data() })) as ProgramOffering[];
         setOfferings(offeringData);
       }
-      
+
       setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'badgeRequests');
@@ -100,8 +101,8 @@ export default function ApprovalQueue() {
           <div className="flex gap-2">
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-              <Input 
-                placeholder="Search requests..." 
+              <Input
+                placeholder="Search requests..."
                 className="pl-9 w-64"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -150,9 +151,9 @@ export default function ApprovalQueue() {
                       {req.submittedAt ? new Date(req.submittedAt.seconds * 1000).toLocaleDateString() : 'N/A'}
                     </TableCell>
                     <TableCell className="text-right pr-6">
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         className="text-blue-600 font-bold gap-1.5"
                         onClick={() => {
                           setSelectedRequest(req);
@@ -175,7 +176,7 @@ export default function ApprovalQueue() {
         </CardContent>
       </Card>
 
-      <RequestDetailsModal 
+      <RequestDetailsModal
         request={selectedRequest}
         isOpen={isModalOpen}
         onClose={() => {

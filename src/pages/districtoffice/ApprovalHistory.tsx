@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  Search, 
-  Filter, 
-  Eye, 
-  CheckCircle2, 
+import {
+  Search,
+  Filter,
+  Eye,
+  CheckCircle2,
   XCircle,
   Building2,
   User,
@@ -16,13 +16,13 @@ import { useFirebase } from '@/src/lib/FirebaseProvider';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -48,29 +48,31 @@ export default function ApprovalHistory() {
 
     const districtId = userProfile.organizationId;
     const path = 'issuedBadges';
-    
+
     // Approved query
     const qApproved = query(
       collection(db, path),
       where('districtOfficeId', '==', districtId),
-      where('status', '==', 'Approved'),
-      orderBy('approvedAt', 'desc')
+      where('status', '==', 'Approved')
     );
 
     // Rejected query
     const qRejected = query(
       collection(db, path),
       where('districtOfficeId', '==', districtId),
-      where('status', '==', 'Rejected'),
-      orderBy('approvedAt', 'desc')
+      where('status', '==', 'Rejected')
     );
 
     const unsubApproved = onSnapshot(qApproved, (snapshot) => {
-      setApprovedRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as BadgeIssuanceRequest[]);
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+        .sort((a: any, b: any) => ((b.approvedAt?.seconds || 0) - (a.approvedAt?.seconds || 0))) as BadgeIssuanceRequest[];
+      setApprovedRequests(data);
     }, (error) => handleFirestoreError(error, OperationType.GET, path));
 
     const unsubRejected = onSnapshot(qRejected, (snapshot) => {
-      setRejectedRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as BadgeIssuanceRequest[]);
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+        .sort((a: any, b: any) => ((b.approvedAt?.seconds || 0) - (a.approvedAt?.seconds || 0))) as BadgeIssuanceRequest[];
+      setRejectedRequests(data);
       setLoading(false);
     }, (error) => handleFirestoreError(error, OperationType.GET, path));
 
@@ -86,7 +88,7 @@ export default function ApprovalHistory() {
   };
 
   const renderTable = (data: BadgeIssuanceRequest[], type: 'Approved' | 'Rejected') => {
-    const filtered = data.filter(req => 
+    const filtered = data.filter(req =>
       req.learnerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       req.badgeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       req.issuerName.toLowerCase().includes(searchQuery.toLowerCase())
@@ -145,9 +147,9 @@ export default function ApprovalHistory() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
+                    <Button
+                      variant="outline"
+                      size="sm"
                       className="h-8 gap-1.5"
                       onClick={() => handleViewDetails(req)}
                     >
@@ -209,9 +211,9 @@ export default function ApprovalHistory() {
           <div className="flex gap-2">
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-              <Input 
-                placeholder="Search history..." 
-                className="pl-9 w-64 h-9 text-sm" 
+              <Input
+                placeholder="Search history..."
+                className="pl-9 w-64 h-9 text-sm"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -239,7 +241,7 @@ export default function ApprovalHistory() {
         </TabsContent>
       </Tabs>
 
-      <RequestDetailsModal 
+      <RequestDetailsModal
         request={selectedRequest}
         isOpen={isModalOpen}
         onClose={() => {

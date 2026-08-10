@@ -11,7 +11,8 @@
     "lint": "tsc --noEmit",
     "cleanup-demo": "tsx scripts/cleanup-demo.ts",
     "sync-integration-scopes": "tsx scripts/sync-integration-scopes.ts",
-    "check:integration-api": "npx --yes deno@2.1.4 check --config supabase/functions/api/deno.json supabase/functions/api/index.ts"
+    "check:integration-api": "npx --yes deno@2.1.4 check --config supabase/functions/api/deno.json supabase/functions/api/index.ts",
+    "seed-demo": "tsx scripts/seed-demo-environment.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.0",

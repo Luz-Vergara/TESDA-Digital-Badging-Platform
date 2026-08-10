@@ -16,9 +16,10 @@ interface Props {
   firebaseTrainingCenterName: string;
   firebaseUserId: string;
   districtOfficeId?: string;
+  initialView?: ExternalTrainingView;
 }
 
-type View = 'programs' | 'learners' | 'eligibility' | 'requests' | 'issued';
+export type ExternalTrainingView = 'programs' | 'learners' | 'eligibility' | 'requests' | 'issued';
 type FirebaseRecord = Record<string, unknown> & { id: string };
 
 const messageFor = (error: unknown) => error instanceof ExternalApiError ? error.message : 'The external training records could not be loaded.';
@@ -35,14 +36,14 @@ function EligibilityBadge({ item }: { item: ExternalBadgeEligibility }) {
   </Badge>;
 }
 
-export default function ExternalTrainingDashboard({ firebaseTrainingCenterId, firebaseTrainingCenterName, firebaseUserId, districtOfficeId }: Props) {
+export default function ExternalTrainingDashboard({ firebaseTrainingCenterId, firebaseTrainingCenterName, firebaseUserId, districtOfficeId, initialView = 'programs' }: Props) {
   const [summary, setSummary] = useState<ExternalDashboardSummary | null>(null);
   const [learners, setLearners] = useState<ExternalLearnerSummary[]>([]);
   const [templates, setTemplates] = useState<BadgeTemplate[]>([]);
   const [requests, setRequests] = useState<FirebaseRecord[]>([]);
   const [issuedBadges, setIssuedBadges] = useState<FirebaseRecord[]>([]);
   const [templateByEligibility, setTemplateByEligibility] = useState<Record<string, string>>({});
-  const [activeView, setActiveView] = useState<View>('programs');
+  const [activeView, setActiveView] = useState<ExternalTrainingView>(initialView);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -71,6 +72,7 @@ export default function ExternalTrainingDashboard({ firebaseTrainingCenterId, fi
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { setActiveView(initialView); }, [initialView]);
 
   // Firestore remains the source of truth for workflow state; these listeners
   // deliberately do not use the external service for requests or issued badges.
@@ -163,7 +165,7 @@ export default function ExternalTrainingDashboard({ firebaseTrainingCenterId, fi
   if (error && !summary) return <Card className="border-rose-200"><CardContent className="p-6 text-rose-700 space-y-3"><p>{error}</p><Button variant="outline" onClick={() => void load()}><RefreshCw className="h-4 w-4 mr-2" />Retry</Button></CardContent></Card>;
   if (!summary) return null;
 
-  const views: { id: View; label: string; icon: typeof Database }[] = [
+  const views: { id: ExternalTrainingView; label: string; icon: typeof Database }[] = [
     { id: 'programs', label: 'Registered Programs / CTPR', icon: Database }, { id: 'learners', label: 'Learners & Training Records', icon: Users },
     { id: 'eligibility', label: 'Badge Eligibility', icon: CheckCircle }, { id: 'requests', label: 'Badge Requests', icon: FileText }, { id: 'issued', label: 'Issued Badges', icon: Award },
   ];

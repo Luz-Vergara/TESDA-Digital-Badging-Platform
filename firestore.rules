@@ -1,7 +1,7 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
+
     // 1. THE GLOBAL SAFETY NET
     match /{document=**} {
       allow read, write: if false;
@@ -10,21 +10,62 @@ service cloud.firestore {
     // ===============================================================
     // HELPER FUNCTIONS
     // ===============================================================
-    
+
     function isSignedIn() { return request.auth != null; }
     function incoming() { return request.resource.data; }
     function existing() { return resource.data; }
     function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
     function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
-    function isIncomingDemo() { return request.auth != null && request.resource.data.get('isDemo', false) == true; }
-    function isExistingDemo() { return resource != null && resource.data.get('isDemo', false) == true; }
 
-    // Role-based helpers
-    function getUserData() {
-      let path = /databases/$(database)/documents/users/$(request.auth.uid);
-      return exists(path) ? get(path).data : {};
+    // PROTOTYPE ONLY:
+    // Replace demo email allowlist with Firebase custom claims before production deployment.
+    function isDemoUser() {
+      return isSignedIn()
+        && request.auth.token.email is string
+        && request.auth.token.email in [
+          'qso@demo.com',
+          'training@demo.com',
+          'training1@demo.com',
+          'training2@demo.com',
+          'district@demo.com',
+          'learner@demo.com',
+          'learner2@demo.com',
+          'learner3@demo.com',
+          'learner4@demo.com',
+          'learner5@demo.com',
+          'icto@demo.com',
+          'admin@demo.com'
+        ];
     }
 
+    function expectedDemoRole() {
+      let email = request.auth.token.email;
+      return email == 'admin@demo.com' ? 'Admin' :
+             email == 'qso@demo.com' ? 'qso_admin' :
+             email == 'icto@demo.com' ? 'icto_admin' :
+             email == 'district@demo.com' ? 'DistrictOffice' :
+             (email == 'training@demo.com' || email == 'training1@demo.com' || email == 'training2@demo.com') ? 'TrainingCenter' :
+             'Learner';
+    }
+
+    // Trusted Tenant Helpers
+    function currentUserData() {
+      let path = /databases/$(database)/documents/users/$(request.auth.uid);
+      return isSignedIn() && exists(path) ? get(path).data : {};
+    }
+
+    // Kept as an alias for the approved integration authorization helpers.
+    function getUserData() { return currentUserData(); }
+
+    function currentOrganizationId() {
+      return currentUserData().get('organizationId', '');
+    }
+
+    function currentDistrictId() {
+      return currentUserData().get('assignedDistrictId', '');
+    }
+
+    // Role-based helpers
     function hasRole(role) {
       let path = /databases/$(database)/documents/users/$(request.auth.uid);
       return isSignedIn() && exists(path) && get(path).data.get('role', '') == role;
@@ -34,23 +75,36 @@ service cloud.firestore {
       let path = /databases/$(database)/documents/users/$(request.auth.uid);
       let adminEmails = ["lmvergara@tesda.gov.ph", "domsrock123@gmail.com", "admin@tesda.gov.ph", "qso.csdd@tesda.gov.ph", "luzvergara0512@gmail.com"];
       return isSignedIn() && (
-        request.auth.token.email in adminEmails ||
-        (exists(path) && get(path).data.get('role', '') == 'Admin')
+        (request.auth.token.email is string && request.auth.token.email in adminEmails) ||
+        (exists(path) && get(path).data.get('role', '') == 'Admin') ||
+        (isDemoUser() && request.auth.token.email == 'admin@demo.com')
       );
     }
 
-    function isQSO() { return isAdmin() || hasRole('qso_admin'); }
-    function isICTO() { return isAdmin() || hasRole('icto_admin'); }
-    function isDistrictOffice() { return isAdmin() || hasRole('DistrictOffice'); }
-    
-    function isDistrictMatch(districtId) {
-      let path = /databases/$(database)/documents/users/$(request.auth.uid);
-      return isAdmin() || (isDistrictOffice() && exists(path) && (
-        get(path).data.get('assignedDistrictId', '') == districtId ||
-        get(path).data.get('organizationId', '') == districtId
-      ));
+    function isQSO() {
+      return isAdmin() || hasRole('qso_admin') || (isDemoUser() && request.auth.token.email == 'qso@demo.com');
     }
-    function isTrainingCenter() { return isAdmin() || hasRole('TrainingCenter'); }
+
+    function isICTO() {
+      return isAdmin() || hasRole('icto_admin') || (isDemoUser() && request.auth.token.email == 'icto@demo.com');
+    }
+
+    function isDistrictOffice() {
+      return isAdmin() || hasRole('DistrictOffice') || (isDemoUser() && expectedDemoRole() == 'DistrictOffice');
+    }
+
+    function isDistrictMatch(districtId) {
+      return isAdmin() || (
+        isDistrictOffice() && (
+          currentDistrictId() == districtId ||
+          currentOrganizationId() == districtId
+        )
+      );
+    }
+
+    function isTrainingCenter() {
+      return isAdmin() || hasRole('TrainingCenter') || (isDemoUser() && expectedDemoRole() == 'TrainingCenter');
+    }
 
     // Badge workflow authority is based on the platform organization links,
     // never on a client-provided role or Training Center ID alone.
@@ -157,7 +211,6 @@ service cloud.firestore {
              data.status in ['Enrolled', 'Completed', 'Dropped'];
     }
 
-    // Since many fields may be omitted/optional in client-written documents, we use soft checks
     function isValidAssessmentRecord(data) {
       return data.keys().hasAll(['learnerId', 'qualification', 'pathway', 'result', 'organizationId']) &&
              data.pathway in ['National Competency Assessment', 'Recognition of Prior Learning (RPL)'] &&
@@ -196,26 +249,34 @@ service cloud.firestore {
     // ===============================================================
 
     match /users/{userId} {
-      allow get: if true; // Allow public lookups of user profiles (e.g., student name) for badge verification
-      allow list: if isSignedIn() && (isAdmin() || isDistrictOffice() || isQSO() || isICTO() || isTrainingCenter() || (resource.data.email == request.auth.token.email) || isExistingDemo());
-      
-      allow create: if isSignedIn() && (isOwner(userId) || isAdmin() || isTrainingCenter() || isIncomingDemo());
-      
-      allow update: if isAdmin() || isIncomingDemo() || (
-        isOwner(userId) && 
-        incoming().get('role', existing().get('role', 'Learner')) == existing().get('role', 'Learner')
-      ) || (
-        isTrainingCenter() && 
-        existing().role == 'Learner' && 
-        incoming().role == 'Learner'
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && (isAdmin() || isDistrictOffice() || isQSO() || isICTO() || isTrainingCenter() || (resource.data.email == request.auth.token.email) || isDemoUser());
+
+      allow create: if isSignedIn() && (
+        isAdmin() ||
+        (isTrainingCenter() && incoming().role == 'Learner') ||
+        (isOwner(userId) && !isDemoUser() && incoming().role == 'Learner' && incoming().get('isDemo', false) == false) ||
+        (isOwner(userId) && isDemoUser() && incoming().email == request.auth.token.email && incoming().get('isDemo', false) == true && incoming().role == expectedDemoRole())
       );
-      
+
+      allow update: if isAdmin() || (
+        isOwner(userId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'photoURL', 'contactNumber', 'updatedAt', 'phone', 'address', 'firstName', 'lastName'])
+      ) || (
+        isTrainingCenter() &&
+        existing().role == 'Learner' &&
+        incoming().role == 'Learner' &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'photoURL', 'contactNumber', 'updatedAt', 'phone', 'address', 'status', 'assignedDistrictId', 'firstName', 'lastName'])
+      ) || (
+        isDemoUser() && isOwner(userId) && incoming().get('isDemo', false) == true
+      );
+
       allow delete: if isAdmin();
     }
 
     match /organizations/{orgId} {
       allow read: if true;
-      allow write: if isAdmin() || isIncomingDemo();
+      allow write: if isAdmin() || (isDemoUser() && incoming().get('isDemo', false) == true);
     }
 
     // Canonical platform/business links. The private Supabase API scopes are
@@ -234,7 +295,7 @@ service cloud.firestore {
 
     match /badgeTemplates/{templateId} {
       allow read: if true;
-      allow write: if isQSO() || isIncomingDemo();
+      allow write: if isQSO() || isAdmin() || (isDemoUser() && incoming().get('isDemo', false) == true);
     }
 
     match /issuedBadges/{issuedBadgeId} {
@@ -247,46 +308,54 @@ service cloud.firestore {
     }
 
     match /learners/{learnerId} {
-      allow get: if true; // Allow public lookup of learner profiles for verification
-      allow list: if isSignedIn(); 
-      allow create: if isTrainingCenter() || isQSO() || isDistrictOffice() || isAdmin() || isIncomingDemo();
-      allow update: if isTrainingCenter() || isQSO() || isDistrictOffice() || isAdmin() || isIncomingDemo() || isExistingDemo();
-      allow delete: if isAdmin() || isExistingDemo();
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isTrainingCenter() || isQSO() || isDistrictOffice() || isAdmin() || (isDemoUser() && incoming().get('isDemo', false) == true);
+      allow update: if isTrainingCenter() || isQSO() || isDistrictOffice() || isAdmin() || (isDemoUser() && existing().get('isDemo', false) == true);
+      allow delete: if isAdmin() || (isDemoUser() && existing().get('isDemo', false) == true);
     }
 
     match /programOfferings/{offeringId} {
       allow read: if isSignedIn();
-      allow create: if isTrainingCenter() || isAdmin() || isIncomingDemo();
-      allow update: if isAdmin() || (isTrainingCenter() && existing().trainingCenterId == request.auth.uid) || isIncomingDemo();
-      allow delete: if isAdmin() || (isTrainingCenter() && existing().trainingCenterId == request.auth.uid) || isExistingDemo();
+      allow create: if (isTrainingCenter() && incoming().trainingCenterId == currentOrganizationId()) || isAdmin() || (isDemoUser() && incoming().get('isDemo', false) == true);
+      allow update: if isAdmin() || (isTrainingCenter() && existing().trainingCenterId == currentOrganizationId() && incoming().trainingCenterId == existing().trainingCenterId) || (isDemoUser() && existing().get('isDemo', false) == true && incoming().get('isDemo', false) == true);
+      allow delete: if isAdmin() || (isTrainingCenter() && existing().trainingCenterId == currentOrganizationId()) || (isDemoUser() && existing().get('isDemo', false) == true);
     }
 
     match /programBatches/{batchId} {
       allow read: if isSignedIn();
-      allow create: if isTrainingCenter() || isAdmin() || isIncomingDemo();
-      allow update: if isAdmin() || (isTrainingCenter() && existing().trainingCenterId == request.auth.uid) || isIncomingDemo();
-      allow delete: if isAdmin() || (isTrainingCenter() && existing().trainingCenterId == request.auth.uid) || isExistingDemo();
+      allow create: if (isTrainingCenter() && incoming().trainingCenterId == currentOrganizationId()) || isAdmin() || (isDemoUser() && incoming().get('isDemo', false) == true);
+      allow update: if isAdmin() || (isTrainingCenter() && existing().trainingCenterId == currentOrganizationId() && incoming().trainingCenterId == existing().trainingCenterId) || (isDemoUser() && existing().get('isDemo', false) == true && incoming().get('isDemo', false) == true);
+      allow delete: if isAdmin() || (isTrainingCenter() && existing().trainingCenterId == currentOrganizationId()) || (isDemoUser() && existing().get('isDemo', false) == true);
     }
 
     match /enrollments/{enrollmentId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isAdmin() || isExistingDemo();
+      allow create: if isSignedIn() && (
+        incoming().learnerId == request.auth.uid ||
+        (isTrainingCenter() && incoming().trainingCenterId == currentOrganizationId()) ||
+        isAdmin() ||
+        (isDemoUser() && incoming().get('isDemo', false) == true)
+      );
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        (isTrainingCenter() && existing().trainingCenterId == currentOrganizationId() && incoming().trainingCenterId == existing().trainingCenterId) ||
+        (existing().learnerId == request.auth.uid && incoming().learnerId == existing().learnerId) ||
+        (isDemoUser() && existing().get('isDemo', false) == true)
+      );
+      allow delete: if isAdmin() || (isDemoUser() && existing().get('isDemo', false) == true);
     }
 
     match /ucCompletions/{completionId} {
       allow read: if isSignedIn();
-      allow create: if isTrainingCenter() || isAdmin() || isIncomingDemo();
-      allow update: if isTrainingCenter() || isAdmin() || isIncomingDemo();
-      allow delete: if isAdmin() || isExistingDemo();
+      allow create: if (isTrainingCenter() && incoming().trainingCenterId == currentOrganizationId()) || isAdmin() || (isDemoUser() && incoming().get('isDemo', false) == true);
+      allow update: if isAdmin() || (isTrainingCenter() && existing().trainingCenterId == currentOrganizationId() && incoming().trainingCenterId == existing().trainingCenterId) || (isDemoUser() && existing().get('isDemo', false) == true);
+      allow delete: if isAdmin() || (isDemoUser() && existing().get('isDemo', false) == true);
     }
 
     match /badgeRequests/{requestId} {
       allow get: if true; // Public individual request lookup for external QR/URL verification
-      
       allow list: if isSignedIn();
-      
       allow create: if isSignedIn() &&
         isTrainingCenterFor(incoming().get('trainingCenterId', '')) &&
         hasValidExternalRequestIdentity(requestId, incoming());
@@ -305,28 +374,28 @@ service cloud.firestore {
 
     match /badges/{badgeId} {
       allow read: if true;
-      allow write: if isQSO() || isIncomingDemo();
+      allow write: if isQSO() || isAdmin() || (isDemoUser() && incoming().get('isDemo', false) == true);
     }
 
     match /assessmentRecords/{recordId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin() || isIncomingDemo();
-      allow delete: if isAdmin() || isExistingDemo();
+      allow write: if isAdmin() || (isDemoUser() && incoming().get('isDemo', false) == true);
+      allow delete: if isAdmin() || (isDemoUser() && existing().get('isDemo', false) == true);
     }
 
     match /deletedDemoItems/{itemId} {
       allow read: if true;
-      allow write: if isSignedIn();
+      allow write: if isAdmin() || isDemoUser();
     }
 
     match /rplApplications/{appId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn();
-      allow update: if isAdmin() || isTrainingCenter() || 
-                    (isSignedIn() && existing().learnerId == request.auth.uid && 
+      allow update: if isAdmin() || isTrainingCenter() ||
+                    (isSignedIn() && existing().learnerId == request.auth.uid &&
                      incoming().get('status', '') == existing().get('status', '')) ||
-                    isIncomingDemo();
-      allow delete: if isAdmin() || isExistingDemo();
+                    (isDemoUser() && existing().get('isDemo', false) == true);
+      allow delete: if isAdmin() || (isDemoUser() && existing().get('isDemo', false) == true);
     }
   }
 }

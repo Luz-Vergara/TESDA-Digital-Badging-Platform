@@ -30,13 +30,14 @@ import NamingConventions from './pages/qso/NamingConventions';
 import ICTODashboard from './pages/icto/ICTODashboard';
 
 import TrainingDashboard from './pages/training/TrainingDashboard';
-import LearnerManagement from './pages/training/LearnerManagement';
-import ProgramOfferings from './pages/training/ProgramOfferings';
 import ProgramBatches from './pages/training/ProgramBatches';
 import LearnerApplications from './pages/training/LearnerApplications';
 import UCCompletions from './pages/training/UCCompletions';
 import BadgeRequests from './pages/training/BadgeRequests';
 import RPLApplications from './pages/training/RPLApplications';
+import IssuedBadges from './pages/training/IssuedBadges';
+import IntegrationStatusPage from './pages/training/IntegrationStatusPage';
+import ExternalTrainingCenterRoute from './components/training/ExternalTrainingCenterRoute';
 import DashboardLayout from './components/layout/DashboardLayout';
 
 export default function App() {
@@ -50,7 +51,7 @@ export default function App() {
           <Route path="/orientation" element={<Orientation />} />
           <Route path="/verify" element={<Verification />} />
           <Route path="/verify/:verificationId" element={<Verification />} />
-          
+
           {/* Learner Portal */}
           <Route path="/learner" element={<DashboardLayout role="Learner" />}>
             <Route index element={<LearnerDashboard />} />
@@ -107,13 +108,17 @@ export default function App() {
           {/* Training Center Portal */}
           <Route path="/trainingcenter" element={<DashboardLayout role="TrainingCenter" />}>
             <Route index element={<TrainingDashboard />} />
-            <Route path="learners" element={<LearnerManagement />} />
+            <Route path="learners" element={<ExternalTrainingCenterRoute initialView="learners" />} />
+            <Route path="eligibility" element={<ExternalTrainingCenterRoute initialView="eligibility" />} />
+            <Route path="file-request" element={<ExternalTrainingCenterRoute initialView="eligibility" />} />
+            <Route path="programs" element={<ExternalTrainingCenterRoute initialView="programs" />} />
+            <Route path="requests" element={<BadgeRequests />} />
+            <Route path="issued" element={<IssuedBadges />} />
+            <Route path="integration" element={<IntegrationStatusPage />} />
             <Route path="rpl" element={<RPLApplications />} />
-            <Route path="programs" element={<ProgramOfferings />} />
             <Route path="batches" element={<ProgramBatches />} />
             <Route path="applications" element={<LearnerApplications />} />
             <Route path="completions" element={<UCCompletions />} />
-            <Route path="requests" element={<BadgeRequests />} />
             <Route path="reports" element={<div className="p-8 text-center text-slate-500 font-medium">Training Center performance reports (Coming Soon)</div>} />
             <Route path="notifications" element={<div className="p-8 text-center text-slate-500">Notifications (Coming Soon)</div>} />
           </Route>

@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  CheckCircle, 
-  XCircle, 
-  Clock, 
+import {
+  CheckCircle,
+  XCircle,
+  Clock,
   AlertTriangle,
   ArrowRight,
   Calendar,
@@ -92,9 +92,7 @@ export default function DistrictOfficeDashboard() {
       // Recent requests for table
       const qRecent = query(
         collection(db, pathIssued),
-        where('districtOfficeId', 'in', districtIdentifiers),
-        orderBy('submittedAt', 'desc'),
-        limit(5)
+        where('districtOfficeId', 'in', districtIdentifiers)
       );
 
     const unsubRequests = onSnapshot(qRequests, (snapshot) => {
@@ -121,7 +119,10 @@ export default function DistrictOfficeDashboard() {
     });
 
     const unsubRecent = onSnapshot(qRecent, (snapshot) => {
-      setRecentRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+        .sort((a: any, b: any) => ((b.submittedAt?.seconds || 0) - (a.submittedAt?.seconds || 0)))
+        .slice(0, 5);
+      setRecentRequests(docs);
       setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, pathIssued);
@@ -236,24 +237,24 @@ export default function DistrictOfficeDashboard() {
           <section>
             <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">Quick Actions</h3>
             <div className="grid sm:grid-cols-3 gap-4">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="h-24 flex-col gap-2 hover:bg-blue-50 hover:border-blue-200 transition-all border-slate-200"
                 onClick={() => navigate('/districtoffice/queue')}
               >
                 <ClipboardCheck className="h-6 w-6 text-blue-600" />
                 <span>Approval Queue</span>
               </Button>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="h-24 flex-col gap-2 hover:bg-indigo-50 hover:border-indigo-200 transition-all border-slate-200"
                 onClick={() => navigate('/districtoffice/status')}
               >
                 <TrendingUp className="h-6 w-6 text-indigo-600" />
                 <span>Request Status</span>
               </Button>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="h-24 flex-col gap-2 hover:bg-emerald-50 hover:border-emerald-200 transition-all border-slate-200"
                 onClick={() => navigate('/districtoffice/training-centers')}
               >
@@ -310,7 +311,7 @@ export default function DistrictOfficeDashboard() {
                       </TableCell>
                       <TableCell>
                         <Badge className={
-                          req.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' : 
+                          req.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' :
                           req.status === 'Pending Approval' ? 'bg-amber-100 text-amber-700' :
                           'bg-slate-100 text-slate-700'
                         } variant="outline">
@@ -385,8 +386,8 @@ export default function DistrictOfficeDashboard() {
                 </div>
                 <p className="text-xl font-bold text-blue-700">{stats.trainingCenters}</p>
               </div>
-              <Button 
-                variant="secondary" 
+              <Button
+                variant="secondary"
                 className="w-full text-xs font-bold gap-2"
                 onClick={() => navigate('/districtoffice/training-centers')}
               >

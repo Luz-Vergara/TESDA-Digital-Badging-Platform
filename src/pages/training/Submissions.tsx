@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  History as HistoryIcon, 
-  Search, 
-  Filter, 
+import {
+  History as HistoryIcon,
+  Search,
+  Filter,
   Eye,
   FileText,
   Clock,
@@ -11,33 +11,33 @@ import {
   AlertCircle,
   Upload
 } from 'lucide-react';
-import { 
-  collection, 
-  query, 
-  where, 
-  onSnapshot 
+import {
+  collection,
+  query,
+  where,
+  onSnapshot
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogDescription, 
-  DialogFooter, 
-  DialogHeader, 
-  DialogTitle 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
 } from '@/components/ui/dialog';
 import { BadgeIssuanceRequest } from '@/src/types';
 
@@ -72,11 +72,13 @@ export default function Submissions() {
     return () => unsubscribe();
   }, [user, isAuthReady]);
 
-  const filteredRequests = requests.filter(r => 
-    r.learnerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    r.badgeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    r.id?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredRequests = requests.filter(r => {
+    const term = searchQuery.toLowerCase();
+    const learner = r.learnerName || '';
+    const badge = r.badgeName || r.badgeTitle || '';
+    const id = r.id || '';
+    return learner.toLowerCase().includes(term) || badge.toLowerCase().includes(term) || id.toLowerCase().includes(term);
+  });
 
   if (loading) {
     return (
@@ -104,9 +106,9 @@ export default function Submissions() {
           <div className="flex gap-2">
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-              <Input 
-                placeholder="Search by learner, badge, or ID..." 
-                className="pl-9 w-72 h-9 text-sm" 
+              <Input
+                placeholder="Search by learner, badge, or ID..."
+                className="pl-9 w-72 h-9 text-sm"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -149,7 +151,7 @@ export default function Submissions() {
                         </div>
                       </TableCell>
                       <TableCell className="text-xs text-slate-500">
-                        {request.submittedAt ? new Date(request.submittedAt.seconds * 1000).toLocaleDateString() : 'N/A'}
+                        {request.submittedAt ? (typeof request.submittedAt === 'object' && 'seconds' in request.submittedAt ? new Date((request.submittedAt as any).seconds * 1000).toLocaleDateString() : new Date(request.submittedAt as any).toLocaleDateString()) : 'N/A'}
                       </TableCell>
                       <TableCell>
                         <Badge className={
@@ -161,9 +163,9 @@ export default function Submissions() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           className="h-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
                           onClick={() => {
                             setSelectedRequest(request);
@@ -198,7 +200,7 @@ export default function Submissions() {
               Full information for badge request #{selectedRequest?.id?.slice(-8).toUpperCase()}
             </DialogDescription>
           </DialogHeader>
-          
+
           {selectedRequest && (
             <div className="space-y-6 py-4">
               <div className="grid grid-cols-2 gap-6">
@@ -224,9 +226,9 @@ export default function Submissions() {
               <div className="space-y-1">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Evidence & Remarks</p>
                 {selectedRequest.evidenceUrl ? (
-                  <a 
-                    href={selectedRequest.evidenceUrl} 
-                    target="_blank" 
+                  <a
+                    href={selectedRequest.evidenceUrl}
+                    target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-2 text-sm text-blue-600 hover:underline mt-1"
                   >
@@ -265,7 +267,7 @@ export default function Submissions() {
               </div>
             </div>
           )}
-          
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDetailsModalOpen(false)}>Close</Button>
           </DialogFooter>

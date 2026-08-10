@@ -1,38 +1,38 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  FileText, 
-  Search, 
-  Filter, 
-  CheckCircle2, 
+import {
+  FileText,
+  Search,
+  Filter,
+  CheckCircle2,
   Clock,
   ChevronRight,
   BookOpen,
   User
 } from 'lucide-react';
-import { 
-  collection, 
-  query, 
-  where, 
-  onSnapshot, 
-  updateDoc, 
-  doc, 
-  serverTimestamp 
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+  updateDoc,
+  doc,
+  serverTimestamp
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { 
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -82,10 +82,12 @@ export default function TrainingRecords() {
     }
   };
 
-  const filteredLearners = learners.filter(l => 
-    `${l.firstName} ${l.lastName}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    l.qualification.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredLearners = learners.filter(l => {
+    const name = l.name || `${l.firstName || ''} ${l.lastName || ''}`.trim() || 'Learner';
+    const qual = l.qualification || l.programName || '';
+    const term = searchQuery.toLowerCase();
+    return name.toLowerCase().includes(term) || qual.toLowerCase().includes(term);
+  });
 
   if (loading) {
     return (
@@ -159,9 +161,9 @@ export default function TrainingRecords() {
           <div className="flex gap-2">
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-              <Input 
-                placeholder="Search trainees..." 
-                className="pl-9 w-64 h-9 text-sm" 
+              <Input
+                placeholder="Search trainees..."
+                className="pl-9 w-64 h-9 text-sm"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -193,17 +195,17 @@ export default function TrainingRecords() {
                             <User className="h-4 w-4" />
                           </div>
                           <div className="flex flex-col">
-                            <span className="font-bold text-slate-900">{learner.firstName} {learner.lastName}</span>
+                            <span className="font-bold text-slate-900">{learner.name || `${learner.firstName || ''} ${learner.lastName || ''}`.trim() || 'Learner'}</span>
                             <span className="text-[10px] text-slate-500 uppercase tracking-tight">ID: {learner.id?.slice(-6)}</span>
                           </div>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <span className="text-sm font-medium text-slate-700">{learner.qualification}</span>
+                        <span className="text-sm font-medium text-slate-700">{learner.qualification || learner.programName || 'National Certificate'}</span>
                       </TableCell>
                       <TableCell>
-                        <Select 
-                          value={learner.status} 
+                        <Select
+                          value={learner.status || 'Enrolled'}
                           onValueChange={(value) => updateStatus(learner.id!, value)}
                         >
                           <SelectTrigger className="w-[140px] h-8 text-xs">
@@ -218,7 +220,7 @@ export default function TrainingRecords() {
                       </TableCell>
                       <TableCell>
                         <span className="text-xs text-slate-500">
-                          {learner.updatedAt ? new Date(learner.updatedAt.seconds * 1000).toLocaleDateString() : 'N/A'}
+                          {learner.updatedAt ? (typeof learner.updatedAt === 'object' && 'seconds' in learner.updatedAt ? new Date((learner.updatedAt as any).seconds * 1000).toLocaleDateString() : new Date(learner.updatedAt as any).toLocaleDateString()) : 'N/A'}
                         </span>
                       </TableCell>
                       <TableCell className="text-right">

@@ -12,9 +12,9 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { 
-  Award, ShieldCheck, Search, Eye, Filter, CheckCircle2, Building, 
-  ListChecks, Loader2, AlertTriangle, ExternalLink, RefreshCw, FileCheck, ThumbsUp, HelpCircle 
+import {
+  Award, ShieldCheck, Search, Eye, Filter, CheckCircle2, Building,
+  ListChecks, Loader2, AlertTriangle, ExternalLink, RefreshCw, FileCheck, ThumbsUp, HelpCircle
 } from 'lucide-react';
 import { RPLApplication, RPLEvidence, RPLCompetencyReview, Organization } from '@/src/types';
 
@@ -62,14 +62,14 @@ export default function RPLApplications() {
     if (!isAuthReady) return;
 
     const officeName = userProfile?.office || 'demo-training-center';
-    
+
     // Create query to fetch matching training center RPLs or those with For Assignment status
     const rplCol = collection(db, 'rplApplications');
     const unsubRPL = onSnapshot(rplCol, (snapshot) => {
       const allRPLs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as RPLApplication));
       // Triage filtering
       const filtered = allRPLs.filter(app => {
-        const matchesEvaluator = app.trainingCenterId === userProfile?.organizationId || 
+        const matchesEvaluator = app.trainingCenterId === userProfile?.organizationId ||
                                 app.trainingCenterName === officeName ||
                                 app.status === 'For Training Center Assignment' ||
                                 app.trainingCenterId === 'unassigned';
@@ -98,11 +98,11 @@ export default function RPLApplications() {
   const handleOpenEvaluator = (app: RPLApplication) => {
     setSelectedApp(app);
     setIsDetailOpen(true);
-    
+
     // Smart auto-preset for local operational checklist based on application parameters
     const gapDone = app.gapTrainingStatus === 'Completed';
     const endorsed = app.endorsedToAssessmentCenter;
-    
+
     setChecklist({
       item1_submitted: true,
       item2_linkedToCenter: app.trainingCenterId !== 'unassigned',
@@ -130,12 +130,17 @@ export default function RPLApplications() {
   // Quick state helpers
   const filteredApps = useMemo(() => {
     return applications.filter(app => {
-      const matchSearch = 
-        app.learnerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        app.qualificationName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        app.status.toLowerCase().includes(searchQuery.toLowerCase());
+      const term = searchQuery.toLowerCase();
+      const learnerName = app.learnerName || '';
+      const qualName = app.qualificationName || '';
+      const status = app.status || '';
 
-      const matchTab = activeTab === 'All' || 
+      const matchSearch =
+        learnerName.toLowerCase().includes(term) ||
+        qualName.toLowerCase().includes(term) ||
+        status.toLowerCase().includes(term);
+
+      const matchTab = activeTab === 'All' ||
         (activeTab === 'Submitted' && app.status === 'Submitted') ||
         (activeTab === 'For Evidence Review' && app.status === 'For Evidence Review') ||
         (activeTab === 'For Competency Mapping' && app.status === 'For Competency Mapping') ||
@@ -181,8 +186,8 @@ export default function RPLApplications() {
 
   // Update competency evaluation check
   const handleUpdateCompetencyStatus = async (
-    compId: string, 
-    compStatus: 'Credited through RPL' | 'For Gap Training' | 'For Demonstration' | 'Needs Additional Evidence' | 'Not Credited', 
+    compId: string,
+    compStatus: 'Credited through RPL' | 'For Gap Training' | 'For Demonstration' | 'Needs Additional Evidence' | 'Not Credited',
     remarks: string,
     linkedEvIds: string[]
   ) => {
@@ -190,11 +195,11 @@ export default function RPLApplications() {
 
     const updatedReviews = selectedApp.competencyReviews.map(review => {
       if (review.id === compId) {
-        return { 
-          ...review, 
-          status: compStatus, 
-          remarks: remarks || review.remarks, 
-          evidenceIds: linkedEvIds 
+        return {
+          ...review,
+          status: compStatus,
+          remarks: remarks || review.remarks,
+          evidenceIds: linkedEvIds
         };
       }
       return review;
@@ -221,12 +226,12 @@ export default function RPLApplications() {
       });
 
       // Maintain modal reactivity
-      setSelectedApp(prev => prev ? { 
-        ...prev, 
-        competencyReviews: updatedReviews, 
+      setSelectedApp(prev => prev ? {
+        ...prev,
+        competencyReviews: updatedReviews,
         gapTrainingRequired: hasGap,
         gapTrainingStatus: hasGap ? (prev.gapTrainingStatus === 'None' ? 'In Progress' : prev.gapTrainingStatus) : 'None',
-        status: mainStatus 
+        status: mainStatus
       } : null);
 
       // Refresh checklist status automatically
@@ -426,8 +431,8 @@ export default function RPLApplications() {
 
                   <div className="flex items-center gap-2 self-start sm:self-center">
                     {hasUnassigned ? (
-                      <Button 
-                        size="sm" 
+                      <Button
+                        size="sm"
                         className="bg-blue-600 text-white font-semibold flex items-center gap-1 text-xs"
                         onClick={() => handleClaimTriage(app)}
                       >
@@ -435,9 +440,9 @@ export default function RPLApplications() {
                         Triage/Claim Evaluation
                       </Button>
                     ) : (
-                      <Button 
-                        size="sm" 
-                        variant="default" 
+                      <Button
+                        size="sm"
+                        variant="default"
                         className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold flex items-center gap-1 text-xs"
                         onClick={() => handleOpenEvaluator(app)}
                       >
@@ -501,8 +506,8 @@ export default function RPLApplications() {
                           {selectedApp.gapTrainingRequired ? 'Required' : 'None Identified'}
                         </Badge>
                         {selectedApp.gapTrainingRequired && (
-                          <Select 
-                            value={selectedApp.gapTrainingStatus} 
+                          <Select
+                            value={selectedApp.gapTrainingStatus}
                             onValueChange={(val: any) => handleToggleGapTrainingStatus(val)}
                           >
                             <SelectTrigger className="h-6 w-28 text-[9px] bg-white text-slate-800">
@@ -539,10 +544,10 @@ export default function RPLApplications() {
                           </Badge>
                         </div>
                         <p className="text-slate-500 max-w-xl leading-relaxed">{ev.description}</p>
-                        <a 
-                          href={ev.url} 
-                          target="_blank" 
-                          rel="noreferrer" 
+                        <a
+                          href={ev.url}
+                          target="_blank"
+                          rel="noreferrer"
                           className="text-blue-600 underline font-mono text-[10px] flex items-center gap-1 mt-1 hover:text-indigo-600"
                         >
                           <ExternalLink className="h-3 w-3" />
@@ -559,16 +564,16 @@ export default function RPLApplications() {
                       <div className="flex flex-col gap-1.5 border-l border-slate-100 pl-4">
                         <Label className="text-[9px] font-bold text-slate-500 uppercase font-mono">Document Verdict</Label>
                         <div className="flex items-center gap-1.5">
-                          <Button 
-                            size="sm" 
-                            variant="default" 
+                          <Button
+                            size="sm"
+                            variant="default"
                             className="bg-emerald-600 text-white rounded px-2 h-7 font-bold text-[10px]"
                             onClick={() => handleUpdateEvidenceStatus(ev.id, 'Accepted', 'Passed authenticity audit.')}
                           >
                             Accept
                           </Button>
-                          <Button 
-                            size="sm" 
+                          <Button
+                            size="sm"
                             variant="destructive"
                             className="bg-rose-600 text-white rounded px-2 h-7 font-bold text-[10px]"
                             onClick={() => {
@@ -622,8 +627,8 @@ export default function RPLApplications() {
                       <div className="flex flex-col gap-2 shrink-0 md:border-l md:border-slate-100 md:pl-4">
                         <div className="space-y-1">
                           <Label className="text-[10px] font-bold text-slate-500 font-mono">Competency Verdict</Label>
-                          <Select 
-                            value={comp.status} 
+                          <Select
+                            value={comp.status}
                             onValueChange={(val: any) => {
                               const r = prompt("Write dynamic competency evaluator remarks:") || 'Valid credentials.';
                               // Auto link all accepted evidence IDs
@@ -746,7 +751,7 @@ export default function RPLApplications() {
                   </div>
                   <div className="space-y-1.5">
                     <Label className="font-semibold text-slate-700">Endorsement evaluation notes</Label>
-                    <Input 
+                    <Input
                       placeholder="Add brief evaluator recommendation..."
                       className="bg-white"
                       value={endorsementRemarks}
@@ -755,8 +760,8 @@ export default function RPLApplications() {
                   </div>
                 </div>
                 <div className="flex justify-end gap-2 pt-2">
-                  <Button 
-                    size="sm" 
+                  <Button
+                    size="sm"
                     className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white font-bold h-9"
                     onClick={handleEndorseCandidate}
                     disabled={!selectedACId}
