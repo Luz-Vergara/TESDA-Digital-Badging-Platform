@@ -1,834 +1,204 @@
-import { useCallback, useEffect, useState } from 'react';
-import {
-  Activity,
-  Award,
-  Building2,
-  CheckCircle,
-  Database,
-  Layers,
-  RefreshCw,
-  Search,
-  SlidersHorizontal,
-  Users,
-  X,
-} from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Award, BookOpenCheck, CheckCircle, Database, FileText, RefreshCw, Send, Users } from 'lucide-react';
+import { collection, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
+import { db } from '@/src/lib/firebase';
+import { externalApi, ExternalApiError } from '@/src/services/externalApi';
+import type { ExternalBadgeEligibility, ExternalDashboardSummary, ExternalLearnerDetails, ExternalLearnerSummary, ExternalRegisteredProgram } from '@/src/types/external-api';
+import type { BadgeTemplate } from '@/src/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { externalApi, ExternalApiError } from '@/src/services/externalApi';
-import type {
-  ExternalApiMeta,
-  ExternalBadgeRequest,
-  ExternalBadgeVerification,
-  ExternalCompetencyCompletion,
-  ExternalDashboardSummary,
-  ExternalIssuedBadge,
-  ExternalLearnerDetails,
-  ExternalLearnerSummary,
-  ExternalRegisteredProgram,
-} from '@/src/types/external-api';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 interface Props {
-  trainingCenterId: string;
+  firebaseTrainingCenterId: string;
+  firebaseTrainingCenterName: string;
+  firebaseUserId: string;
+  districtOfficeId?: string;
 }
 
-function displayDate(value: string | null): string {
-  if (!value) return '—';
-  return new Date(value).toLocaleDateString();
+type View = 'programs' | 'learners' | 'eligibility' | 'requests' | 'issued';
+type FirebaseRecord = Record<string, unknown> & { id: string };
+
+const messageFor = (error: unknown) => error instanceof ExternalApiError ? error.message : 'The external training records could not be loaded.';
+const date = (value?: string | null) => value ? new Date(value).toLocaleDateString() : '—';
+const statusClass = (status: string) => /active|completed|eligible|approved|issued/i.test(status)
+  ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100'
+  : /expired|rejected|revoked|inactive/i.test(status)
+    ? 'bg-rose-100 text-rose-800 hover:bg-rose-100'
+    : 'bg-amber-100 text-amber-800 hover:bg-amber-100';
+
+function EligibilityBadge({ item }: { item: ExternalBadgeEligibility }) {
+  return <Badge className={item.eligible ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100' : 'bg-amber-100 text-amber-800 hover:bg-amber-100'}>
+    {item.eligible ? 'Eligible' : 'Not yet eligible'}
+  </Badge>;
 }
 
-function errorMessage(error: unknown): string {
-  if (error instanceof ExternalApiError) return error.message;
-  return 'The external dashboard data could not be loaded.';
-}
-
-function asArray<T>(value: T[] | null | undefined): T[] {
-  return Array.isArray(value) ? value : [];
-}
-
-function textValue(value: unknown, fallback = ''): string {
-  return typeof value === 'string' && value.trim() ? value : fallback;
-}
-
-function dateTimestamp(value: unknown): number {
-  if (typeof value !== 'string') return 0;
-  const timestamp = Date.parse(value);
-  return Number.isNaN(timestamp) ? 0 : timestamp;
-}
-
-export default function ExternalTrainingDashboard({
-  trainingCenterId,
-}: Props) {
+export default function ExternalTrainingDashboard({ firebaseTrainingCenterId, firebaseTrainingCenterName, firebaseUserId, districtOfficeId }: Props) {
   const [summary, setSummary] = useState<ExternalDashboardSummary | null>(null);
   const [learners, setLearners] = useState<ExternalLearnerSummary[]>([]);
-  const [requests, setRequests] = useState<ExternalBadgeRequest[]>([]);
-  const [meta, setMeta] = useState<ExternalApiMeta | null>(null);
+  const [templates, setTemplates] = useState<BadgeTemplate[]>([]);
+  const [requests, setRequests] = useState<FirebaseRecord[]>([]);
+  const [issuedBadges, setIssuedBadges] = useState<FirebaseRecord[]>([]);
+  const [templateByEligibility, setTemplateByEligibility] = useState<Record<string, string>>({});
+  const [activeView, setActiveView] = useState<View>('programs');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedLearner, setSelectedLearner] =
-    useState<ExternalLearnerDetails | null>(null);
-  const [learnerLoading, setLearnerLoading] = useState(false);
-  const [learnerError, setLearnerError] = useState<string | null>(null);
-  const [verification, setVerification] =
-    useState<ExternalBadgeVerification | null>(null);
-  const [verificationLoading, setVerificationLoading] = useState(false);
-  const [search, setSearch] = useState('');
-  const [eligibilityFilter, setEligibilityFilter] = useState('all');
-  const [enrollmentStatusFilter, setEnrollmentStatusFilter] = useState('all');
-  const [badgeRequestStatusFilter, setBadgeRequestStatusFilter] = useState('all');
-  const [issuedBadgeStatusFilter, setIssuedBadgeStatusFilter] = useState('all');
-  const [sortBy, setSortBy] = useState<'name' | 'status' | 'recent'>('name');
+  const [notice, setNotice] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState<string | null>(null);
+  const [selectedLearner, setSelectedLearner] = useState<ExternalLearnerDetails | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
-  const loadDashboard = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const load = useCallback(async () => {
+    setLoading(true); setError(null);
     try {
-      const [summaryResult, learnerResult, requestResult] = await Promise.all([
-        externalApi.getTrainingCenterDashboardSummary(trainingCenterId),
-        externalApi.getTrainingCenterLearners(trainingCenterId),
-        externalApi.getTrainingCenterBadgeRequests(trainingCenterId),
+      const [dashboard, learnerResult, templateResult] = await Promise.all([
+        externalApi.getMyTrainingCenterDashboardSummary(),
+        externalApi.getMyTrainingCenterLearners(),
+        getDocs(query(collection(db, 'badgeTemplates'), where('status', 'in', ['Approved', 'Active']))),
       ]);
-      setSummary(summaryResult.data);
-      setLearners(asArray(learnerResult.data));
-      setRequests(asArray(requestResult.data));
-      setMeta(summaryResult.meta);
-    } catch (caught) {
-      setError(errorMessage(caught));
-    } finally {
-      setLoading(false);
-    }
-  }, [trainingCenterId]);
+      setSummary(dashboard.data);
+      setLearners(Array.isArray(learnerResult.data) ? learnerResult.data : []);
+      setTemplates(templateResult.docs.map((item) => ({ id: item.id, ...item.data() })) as BadgeTemplate[]);
+      const defaults: Record<string, string> = {};
+      learnerResult.data.forEach((learner) => learner.badgeEligibility.forEach((eligibility) => {
+        if (eligibility.firebaseBadgeTemplateId) defaults[eligibility.id] = eligibility.firebaseBadgeTemplateId;
+      }));
+      setTemplateByEligibility((current) => ({ ...defaults, ...current }));
+    } catch (caught) { setError(messageFor(caught)); }
+    finally { setLoading(false); }
+  }, []);
 
+  useEffect(() => { void load(); }, [load]);
+
+  // Firestore remains the source of truth for workflow state; these listeners
+  // deliberately do not use the external service for requests or issued badges.
   useEffect(() => {
-    void loadDashboard();
-  }, [loadDashboard]);
+    if (!firebaseTrainingCenterId) return;
+    const requestQuery = query(collection(db, 'badgeRequests'), where('trainingCenterId', '==', firebaseTrainingCenterId));
+    const issuedQuery = query(collection(db, 'issuedBadges'), where('trainingCenterId', '==', firebaseTrainingCenterId));
+    const unsubscribeRequests = onSnapshot(requestQuery, (snapshot) => setRequests(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))));
+    const unsubscribeIssued = onSnapshot(issuedQuery, (snapshot) => setIssuedBadges(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))));
+    return () => { unsubscribeRequests(); unsubscribeIssued(); };
+  }, [firebaseTrainingCenterId]);
 
-  const showLearner = async (learnerId: string) => {
-    setLearnerLoading(true);
-    setLearnerError(null);
-    setSelectedLearner(null);
-    setVerification(null);
-    try {
-      const result = await externalApi.getLearnerDetails(learnerId);
-      setSelectedLearner(result.data);
-    } catch (caught) {
-      setLearnerError(errorMessage(caught));
-    } finally {
-      setLearnerLoading(false);
-    }
+  const allEligibility = useMemo(() => learners.flatMap((learner) => learner.badgeEligibility.map((eligibility) => ({ learner, eligibility }))), [learners]);
+  const requestExists = useCallback((eligibility: ExternalBadgeEligibility, templateId?: string) => {
+    const key = templateId ? `${eligibility.trainingCenterId}:${eligibility.enrollmentId}:${templateId}` : null;
+    return key ? requests.some((request) => request.externalEligibilityKey === key) : false;
+  }, [requests]);
+
+  const openLearner = async (learnerUli: string) => {
+    setDetailLoading(true); setSelectedLearner(null); setError(null);
+    try { setSelectedLearner((await externalApi.getLearnerDetails(learnerUli)).data); }
+    catch (caught) { setError(messageFor(caught)); }
+    finally { setDetailLoading(false); }
   };
 
-  const showVerification = async (verificationId: string) => {
-    setVerificationLoading(true);
-    setVerification(null);
+  const submitEligibility = async (learner: ExternalLearnerSummary, eligibility: ExternalBadgeEligibility) => {
+    if (!districtOfficeId) { setError('This Training Center is not linked to a District Office.'); return; }
+    const templateId = templateByEligibility[eligibility.id];
+    const template = templates.find((item) => item.id === templateId);
+    if (!template) { setError('Select an active Firebase badge template before filing this request.'); return; }
+    if (requestExists(eligibility, template.id)) { setNotice('A request for this learner, enrollment, and badge template has already been filed.'); setActiveView('requests'); return; }
+    setSubmitting(eligibility.id); setError(null); setNotice(null);
     try {
-      const result = await externalApi.getBadgeVerification(verificationId);
-      setVerification(result.data);
-    } catch (caught) {
-      setLearnerError(errorMessage(caught));
-    } finally {
-      setVerificationLoading(false);
-    }
+      const link = await getDoc(doc(db, 'integrationLearnerLinks', learner.learnerUli));
+      const firebaseLearnerId = link.exists() && link.data().active !== false ? link.data().firebaseLearnerId : null;
+      if (typeof firebaseLearnerId !== 'string' || !firebaseLearnerId) throw new Error(`No active Firebase learner link exists for ULI ${learner.learnerUli}.`);
+      const externalEligibilityKey = `${eligibility.trainingCenterId}:${eligibility.enrollmentId}:${template.id}`;
+      const externalRequestId = `external-${externalEligibilityKey}`;
+      await setDoc(doc(db, 'badgeRequests', externalRequestId), {
+        requestType: 'Individual', requestNumber: `EXT-${Date.now()}`, badgeIdStatus: 'Pending District Approval',
+        trainingCenterId: firebaseTrainingCenterId, trainingCenterName: firebaseTrainingCenterName,
+        programOfferingId: `external:${eligibility.enrollmentId}`, learnerIds: [firebaseLearnerId],
+        badgeTemplateId: template.id, badgeTemplateName: template.badgeName, badgeType: template.badgeType,
+        programTitle: learner.enrollments.find((item) => item.id === eligibility.enrollmentId)?.registeredProgram.qualification.title || template.badgeName,
+        qualificationName: template.qualificationName, qualificationCode: template.qualificationCode,
+        districtOfficeId, status: 'Pending Review', submittedBy: firebaseUserId,
+        externalEligibilityKey,
+        externalEligibility: {
+          externalTrainingCenterId: eligibility.trainingCenterId, learnerUli: eligibility.learnerUli,
+          externalEnrollmentId: eligibility.enrollmentId, sourceRecordId: eligibility.sourceRecordId,
+          ctprNumber: eligibility.ctprNumber, requiredCompetencyCount: eligibility.requiredCompetencyCount,
+          completedCompetencyCount: eligibility.completedCompetencyCount, missingCompetencyCodes: eligibility.missingCompetencyCodes,
+          evaluatedAt: eligibility.evaluatedAt, retrievedAt: new Date().toISOString(),
+        },
+        templateDetails: {
+          badgeName: template.badgeName, description: template.description, criteria: template.criteria,
+          alignment: template.alignment, qualificationName: template.qualificationName,
+          qualificationCode: template.qualificationCode, badgeType: template.badgeType, credentialLevel: template.credentialLevel,
+        },
+        submittedAt: serverTimestamp(), createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+      });
+      setNotice('Badge request filed. Its external eligibility evidence is now immutable in Firestore.');
+      setActiveView('requests');
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'The Firebase badge request could not be created.'); }
+    finally { setSubmitting(null); }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
-        <p className="text-sm text-slate-500">
-          Loading Training Center data through the Integration API…
-        </p>
-      </div>
-    );
-  }
+  const requestButton = (learner: ExternalLearnerSummary, eligibility: ExternalBadgeEligibility) => {
+    const templateId = templateByEligibility[eligibility.id];
+    const alreadyFiled = requestExists(eligibility, templateId);
+    return <div className="flex items-center gap-2">
+      <select aria-label={`Badge template for ${learner.displayName}`} className="h-9 min-w-44 rounded border border-slate-300 bg-white px-2 text-sm" value={templateId || ''} onChange={(event) => setTemplateByEligibility((current) => ({ ...current, [eligibility.id]: event.target.value }))}>
+        <option value="">Select template</option>{templates.map((template) => <option key={template.id} value={template.id}>{template.badgeName}</option>)}
+      </select>
+      <Button size="sm" onClick={() => void submitEligibility(learner, eligibility)} disabled={submitting === eligibility.id || alreadyFiled}>
+        <Send className="h-3.5 w-3.5 mr-1" />{alreadyFiled ? 'Request filed' : submitting === eligibility.id ? 'Filing' : 'File request'}
+      </Button>
+    </div>;
+  };
 
-  if (error || !summary) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">
-            Training Center Dashboard
-          </h1>
-          <p className="text-slate-500">External information system demo</p>
-        </div>
-        <Card className="border-rose-200 bg-rose-50/50">
-          <CardContent className="p-8 text-center space-y-4">
-            <Database className="h-10 w-10 text-rose-500 mx-auto" />
-            <div>
-              <p className="font-bold text-rose-900">Integration API unavailable</p>
-              <p className="text-sm text-rose-700 mt-1">
-                {error || 'No dashboard summary was returned.'}
-              </p>
-            </div>
-            <Button variant="outline" onClick={() => void loadDashboard()}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Retry
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  const programRows = (program: ExternalRegisteredProgram) => <TableRow key={program.id}>
+    <TableCell className="font-mono text-xs">{program.ctprNumber}</TableCell>
+    <TableCell><p className="font-medium">{program.qualification.title}</p><p className="text-xs text-slate-500">{program.qualification.code}{program.qualification.pqfLevel ? ` · PQF ${program.qualification.pqfLevel}` : ''}</p></TableCell>
+    <TableCell>{summary?.trainingCenter.name}</TableCell>
+    <TableCell><Badge className={statusClass(program.status)}>{program.status}</Badge></TableCell>
+    <TableCell className="text-xs"><p>Program: <span className="font-mono">{program.externalProgramId}</span></p><p>Center: <span className="font-mono">{program.trainingCenterId}</span></p></TableCell>
+  </TableRow>;
 
-  const stats = [
-    {
-      label: 'Learners',
-      value: summary.counts?.learners ?? 0,
-      icon: Users,
-      color: 'text-blue-600',
-      bg: 'bg-blue-50',
-    },
-    {
-      label: 'Active Enrollments',
-      value: summary.counts?.activeEnrollments ?? 0,
-      icon: Activity,
-      color: 'text-emerald-600',
-      bg: 'bg-emerald-50',
-    },
-    {
-      label: 'Registered Programs',
-      value: asArray(summary?.registeredPrograms).length,
-      icon: Layers,
-      color: 'text-indigo-600',
-      bg: 'bg-indigo-50',
-    },
-    {
-      label: 'Completed Competencies',
-      value: summary.counts?.completedCompetencies ?? 0,
-      icon: CheckCircle,
-      color: 'text-teal-600',
-      bg: 'bg-teal-50',
-    },
-    {
-      label: 'Eligible Learners',
-      value: summary.counts?.eligibleLearners ?? 0,
-      icon: CheckCircle,
-      color: 'text-green-600',
-      bg: 'bg-green-50',
-    },
-    {
-      label: 'Pending Requests',
-      value: summary.counts?.pendingBadgeRequests ?? 0,
-      icon: Award,
-      color: 'text-amber-600',
-      bg: 'bg-amber-50',
-    },
-    {
-      label: 'Issued Badges',
-      value: summary.counts?.issuedBadges ?? 0,
-      icon: Award,
-      color: 'text-purple-600',
-      bg: 'bg-purple-50',
-    },
+  if (loading) return <Card className="border-violet-200"><CardContent className="p-8 text-center text-slate-500">Loading external training records…</CardContent></Card>;
+  if (error && !summary) return <Card className="border-rose-200"><CardContent className="p-6 text-rose-700 space-y-3"><p>{error}</p><Button variant="outline" onClick={() => void load()}><RefreshCw className="h-4 w-4 mr-2" />Retry</Button></CardContent></Card>;
+  if (!summary) return null;
+
+  const views: { id: View; label: string; icon: typeof Database }[] = [
+    { id: 'programs', label: 'Registered Programs / CTPR', icon: Database }, { id: 'learners', label: 'Learners & Training Records', icon: Users },
+    { id: 'eligibility', label: 'Badge Eligibility', icon: CheckCircle }, { id: 'requests', label: 'Badge Requests', icon: FileText }, { id: 'issued', label: 'Issued Badges', icon: Award },
   ];
 
-  const programs = asArray<ExternalRegisteredProgram>(summary.registeredPrograms);
-  const learnerEnrollments = (learner: ExternalLearnerSummary) =>
-    asArray(learner.enrollments);
-  const learnerEligibility = (learner: ExternalLearnerSummary) =>
-    asArray(learner.badgeEligibility);
-  const requestItems = (request: ExternalBadgeRequest) => asArray(request.items);
-  const normalizedSearch = search.trim().toLowerCase();
-  const matchesSearch = (...values: unknown[]) =>
-    !normalizedSearch || values.some((value) =>
-      String(value ?? '').toLowerCase().includes(normalizedSearch),
-    );
-  const enrollmentStatuses = [...new Set(
-    learners.flatMap((learner) =>
-      learnerEnrollments(learner)
-        .map((enrollment) => textValue(enrollment.enrollmentStatus))
-        .filter(Boolean),
-    ),
-  )].sort();
-  const badgeRequestStatuses = [...new Set(
-    requests.map((request) => textValue(request.status)).filter(Boolean),
-  )].sort();
-  const issuedBadgeStatuses = [...new Set(
-    requests.flatMap((request) =>
-      requestItems(request).flatMap((item) => {
-        const status = textValue(item.issuedBadge?.status);
-        return status ? [status] : [];
-      }),
-    ),
-  )].sort();
-  const resetFilters = () => {
-    setSearch('');
-    setEligibilityFilter('all');
-    setEnrollmentStatusFilter('all');
-    setBadgeRequestStatusFilter('all');
-    setIssuedBadgeStatusFilter('all');
-    setSortBy('name');
-  };
-  const hasActiveFilters = Boolean(
-    search ||
-      eligibilityFilter !== 'all' ||
-      enrollmentStatusFilter !== 'all' ||
-      badgeRequestStatusFilter !== 'all' ||
-      issuedBadgeStatusFilter !== 'all' ||
-      sortBy !== 'name',
-  );
-  const mostRecentEnrollment = (learner: ExternalLearnerSummary) => Math.max(
-    ...learnerEnrollments(learner).map((enrollment) => dateTimestamp(enrollment.enrolledAt)),
-    0,
-  );
-  const visiblePrograms = programs
-    .filter((program) => matchesSearch(
-      program.ctprNumber,
-      program.qualification?.title,
-      program.qualification?.code,
-      program.deliveryMode,
-      program.status,
-    ))
-    .sort((first, second) => {
-      if (sortBy === 'status') {
-        return String(first.status ?? '').localeCompare(String(second.status ?? ''));
-      }
-      if (sortBy === 'recent') {
-        return dateTimestamp(second.registeredAt) - dateTimestamp(first.registeredAt);
-      }
-      return String(first.qualification?.title ?? '').localeCompare(
-        String(second.qualification?.title ?? ''),
-      );
-    });
-  const visibleLearners = learners
-    .filter((learner) => {
-      const eligibility = learnerEligibility(learner);
-      const enrollments = learnerEnrollments(learner);
-      const eligible = eligibility.some((item) => item.eligible);
-      const notEligible = eligibility.some((item) => !item.eligible);
-      const matchesEligibility = eligibilityFilter === 'all' ||
-        (eligibilityFilter === 'eligible' && eligible) ||
-        (eligibilityFilter === 'not-eligible' && notEligible);
-      const matchesEnrollment = enrollmentStatusFilter === 'all' ||
-        enrollments.some(
-          (enrollment) => enrollment.enrollmentStatus === enrollmentStatusFilter,
-        );
-
-      return matchesEligibility && matchesEnrollment && matchesSearch(
-        learner.displayName,
-        learner.externalLearnerId,
-        ...enrollments.flatMap((enrollment) => [
-          enrollment.enrollmentStatus,
-          enrollment.completionStatus,
-          enrollment.registeredProgram?.ctprNumber,
-          enrollment.registeredProgram?.qualification?.title,
-          enrollment.registeredProgram?.qualification?.code,
-        ]),
-      );
-    })
-    .sort((first, second) => {
-      if (sortBy === 'status') {
-        return (learnerEnrollments(first)[0]?.enrollmentStatus || '').localeCompare(
-          learnerEnrollments(second)[0]?.enrollmentStatus || '',
-        );
-      }
-      if (sortBy === 'recent') {
-        return mostRecentEnrollment(second) - mostRecentEnrollment(first);
-      }
-      return textValue(first.displayName).localeCompare(textValue(second.displayName));
-    });
-  const visibleRequests = requests.filter((request) => {
-    const matchesRequestStatus = badgeRequestStatusFilter === 'all' ||
-      request.status === badgeRequestStatusFilter;
-    const matchesIssuedStatus = issuedBadgeStatusFilter === 'all' ||
-      requestItems(request).some((item) => item.issuedBadge?.status === issuedBadgeStatusFilter);
-
-    return matchesRequestStatus && matchesIssuedStatus && matchesSearch(
-      request.requestNumber,
-      request.badgeDefinition?.name,
-      ...requestItems(request).map((item) => item.learnerName),
-    );
-  });
-  const selectedCompetencyCompletions = selectedLearner
-    ? asArray<ExternalCompetencyCompletion>(selectedLearner.competencyCompletions)
-    : [];
-  const selectedIssuedBadges = selectedLearner
-    ? asArray<ExternalIssuedBadge>(selectedLearner.issuedBadges)
-    : [];
-
-  return (
-    <div className="space-y-8">
-      <div className="flex flex-wrap justify-between items-start gap-4">
-        <div>
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-3xl font-bold text-slate-900">
-              Training Center Dashboard
-            </h1>
-            <Badge className="bg-violet-100 text-violet-800 border-violet-200 hover:bg-violet-100">
-              <Database className="h-3 w-3 mr-1" />
-              Mock External System
-            </Badge>
-          </div>
-          <p className="text-slate-500 mt-1">
-            Data retrieved through the Digital Badging Integration API
-          </p>
-        </div>
-        <div className="flex gap-3">
-          <Link to="/trainingcenter/learners">
-            <Button className="bg-blue-600 hover:bg-blue-700">Manage Learners</Button>
-          </Link>
-          <Button variant="outline" onClick={() => void loadDashboard()}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh API Data
-          </Button>
-        </div>
+  return <Card className="border-violet-200">
+    <CardHeader className="flex flex-row items-start justify-between gap-4">
+      <div><CardTitle className="flex items-center gap-2"><Database className="h-5 w-5 text-violet-600" />External training records</CardTitle><CardDescription>{summary.trainingCenter.name} · authenticated Integration API evidence</CardDescription></div>
+      <Badge className="bg-violet-100 text-violet-800 border-violet-200 hover:bg-violet-100">External evidence</Badge>
+    </CardHeader>
+    <CardContent className="space-y-5">
+      {error && <p role="alert" className="rounded border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
+      {notice && <p role="status" className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[["Learners", summary.counts.learners, Users], ["Eligible", summary.counts.eligibleLearners, CheckCircle], ["Programs", summary.registeredPrograms.length, Database], ["Completed competencies", summary.counts.completedCompetencies, BookOpenCheck]].map(([label, value, Icon]: any) => <div key={label} className="rounded border border-slate-200 p-3"><Icon className="h-4 w-4 text-violet-600 mb-2" /><p className="font-bold">{value}</p><p className="text-xs text-slate-500">{label}</p></div>)}
       </div>
+      <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex flex-wrap gap-2" role="tablist" aria-label="External training views">
+        {views.map(({ id, label, icon: Icon }) => <Button key={id} size="sm" variant={activeView === id ? 'default' : 'outline'} onClick={() => setActiveView(id)} role="tab" aria-selected={activeView === id}><Icon className="mr-1 h-3.5 w-3.5" />{label}</Button>)}
+      </div><Button variant="outline" size="sm" onClick={() => void load()}><RefreshCw className="h-4 w-4 mr-2" />Refresh external evidence</Button></div>
 
-      <Card className="border-violet-200 bg-violet-50/40">
-        <CardContent className="p-5 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <Building2 className="h-6 w-6 text-violet-700 mt-1" />
-            <div>
-              <p className="font-bold text-slate-900">
-                {textValue(summary.trainingCenter?.name, 'Training Center')}
-              </p>
-              <p className="text-sm text-slate-600">
-                {summary.trainingCenter.code} · {summary.trainingCenter.districtName}
-              </p>
-              <p className="text-xs text-slate-500 mt-1">
-                {textValue(summary.trainingCenter?.address?.line, 'Address unavailable')},{' '}
-                {textValue(summary.trainingCenter?.address?.city, '—')},{' '}
-                {textValue(summary.trainingCenter?.address?.province, '—')}
-              </p>
-            </div>
-          </div>
-          <div className="text-right text-xs text-slate-500">
-            <p>Adapter selected on the server</p>
-            <p className="font-mono mt-1">
-              {meta?.dataSource || 'external'} · {meta ? displayDate(meta.retrievedAt) : ''}
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      {activeView === 'programs' && <section aria-label="Registered Programs and CTPR" className="space-y-3"><div><h3 className="font-semibold">Registered Programs / CTPR</h3><p className="text-sm text-slate-500">Current registrations returned for this Training Center by the Integration API.</p></div><Table><TableHeader><TableRow><TableHead>CTPR number</TableHead><TableHead>Qualification</TableHead><TableHead>Training Center</TableHead><TableHead>Registration status</TableHead><TableHead>External identifiers</TableHead></TableRow></TableHeader><TableBody>{summary.registeredPrograms.length ? summary.registeredPrograms.map(programRows) : <TableRow><TableCell colSpan={5} className="h-24 text-center text-slate-500">No registered programs were returned.</TableCell></TableRow>}</TableBody></Table></section>}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-4">
-        {stats.map((stat) => (
-          <Card key={stat.label} className="border-slate-200">
-            <CardContent className="p-4">
-              <div className={`p-2 rounded-lg ${stat.bg} ${stat.color} w-fit mb-3`}>
-                <stat.icon className="h-4 w-4" />
-              </div>
-              <p className="text-2xl font-bold text-slate-900">{stat.value}</p>
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-1">
-                {stat.label}
-              </p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {activeView === 'learners' && <section aria-label="Learners and Training Records" className="space-y-3"><div><h3 className="font-semibold">Learners & Training Records</h3><p className="text-sm text-slate-500">Open a learner to inspect protected enrollment and competency-completion evidence.</p></div><Table><TableHeader><TableRow><TableHead>Learner / ULI</TableHead><TableHead>Enrollment</TableHead><TableHead>Qualification / CTPR</TableHead><TableHead>Completion</TableHead><TableHead>Competency progress</TableHead><TableHead>Eligibility</TableHead><TableHead /></TableRow></TableHeader><TableBody>{learners.flatMap((learner) => learner.enrollments.map((enrollment) => { const eligibility = learner.badgeEligibility.find((item) => item.enrollmentId === enrollment.id); return <TableRow key={enrollment.id}><TableCell><p className="font-medium">{learner.displayName}</p><p className="font-mono text-xs text-slate-500">{learner.learnerUli}</p></TableCell><TableCell><p>{enrollment.enrollmentStatus}</p><p className="text-xs text-slate-500">ID: {enrollment.externalEnrollmentId}</p></TableCell><TableCell><p>{enrollment.registeredProgram.qualification.title}</p><p className="font-mono text-xs text-slate-500">{enrollment.registeredProgram.ctprNumber}</p></TableCell><TableCell><Badge className={statusClass(enrollment.completionStatus)}>{enrollment.completionStatus}</Badge></TableCell><TableCell>{eligibility ? <span>{eligibility.completedCompetencyCount}/{eligibility.requiredCompetencyCount} completed</span> : 'No badge evidence'}</TableCell><TableCell>{eligibility ? <EligibilityBadge item={eligibility} /> : '—'}</TableCell><TableCell className="text-right"><Button variant="outline" size="sm" onClick={() => void openLearner(learner.learnerUli)}>View record</Button></TableCell></TableRow>; }))}</TableBody></Table></section>}
 
-      <Card className="border-slate-200">
-        <CardContent className="p-4 space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <SlidersHorizontal className="h-4 w-4 text-slate-500" />
-              <p className="text-sm font-semibold text-slate-800">Search and filter demo records</p>
-            </div>
-            {hasActiveFilters && (
-              <Button variant="ghost" size="sm" onClick={resetFilters}>
-                <X className="h-4 w-4 mr-1" />
-                Clear filters
-              </Button>
-            )}
-          </div>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-            <div className="relative xl:col-span-2">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <Input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                className="pl-9"
-                placeholder="Search learners or programs"
-                aria-label="Search learners or programs"
-              />
-            </div>
-            <select
-              value={eligibilityFilter}
-              onChange={(event) => setEligibilityFilter(event.target.value)}
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-              aria-label="Filter learners by eligibility"
-            >
-              <option value="all">All eligibility</option>
-              <option value="eligible">Eligible</option>
-              <option value="not-eligible">Not eligible</option>
-            </select>
-            <select
-              value={enrollmentStatusFilter}
-              onChange={(event) => setEnrollmentStatusFilter(event.target.value)}
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-              aria-label="Filter learners by enrollment status"
-            >
-              <option value="all">All enrollments</option>
-              {enrollmentStatuses.map((status) => (
-                <option key={status} value={status}>{status}</option>
-              ))}
-            </select>
-            <select
-              value={badgeRequestStatusFilter}
-              onChange={(event) => setBadgeRequestStatusFilter(event.target.value)}
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-              aria-label="Filter badge requests by status"
-            >
-              <option value="all">All requests</option>
-              {badgeRequestStatuses.map((status) => (
-                <option key={status} value={status}>{status}</option>
-              ))}
-            </select>
-            <select
-              value={issuedBadgeStatusFilter}
-              onChange={(event) => setIssuedBadgeStatusFilter(event.target.value)}
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-              aria-label="Filter issued badges by status"
-            >
-              <option value="all">All issued badges</option>
-              {issuedBadgeStatuses.map((status) => (
-                <option key={status} value={status}>{status}</option>
-              ))}
-            </select>
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
-            <p>
-              Showing {visibleLearners.length} of {learners.length} learners,{' '}
-              {visiblePrograms.length} of {programs.length} programs, and{' '}
-              {visibleRequests.length} of {requests.length} requests.
-            </p>
-            <label className="flex items-center gap-2">
-              <span className="font-medium">Sort learners by</span>
-              <select
-                value={sortBy}
-                onChange={(event) => setSortBy(event.target.value as 'name' | 'status' | 'recent')}
-                className="h-8 rounded-md border border-input bg-background px-2 text-xs"
-                aria-label="Sort learners and programs"
-              >
-                <option value="name">Name</option>
-                <option value="status">Status</option>
-                <option value="recent">Most recent</option>
-              </select>
-            </label>
-          </div>
-        </CardContent>
-      </Card>
+      {activeView === 'eligibility' && <section aria-label="Badge Eligibility" className="space-y-3"><div><h3 className="font-semibold">Badge Eligibility</h3><p className="text-sm text-slate-500">Eligibility is evaluated from the external enrollment and competency record. Requests save this evidence as an immutable Firestore snapshot.</p></div><Table><TableHeader><TableRow><TableHead>Learner / ULI</TableHead><TableHead>External enrollment evidence</TableHead><TableHead>Competency evidence</TableHead><TableHead>Eligibility</TableHead><TableHead>File Badge Request</TableHead></TableRow></TableHeader><TableBody>{allEligibility.map(({ learner, eligibility }) => <TableRow key={eligibility.id}><TableCell><p className="font-medium">{learner.displayName}</p><p className="font-mono text-xs text-slate-500">{learner.learnerUli}</p></TableCell><TableCell><p>CTPR: {eligibility.ctprNumber}</p><p className="text-xs text-slate-500">Enrollment: {eligibility.enrollmentId}</p></TableCell><TableCell><p>{eligibility.completedCompetencyCount}/{eligibility.requiredCompetencyCount} required competencies completed</p>{eligibility.missingCompetencyCodes.length > 0 && <p className="text-xs text-amber-700">Missing: {eligibility.missingCompetencyCodes.join(', ')}</p>}</TableCell><TableCell><EligibilityBadge item={eligibility} /></TableCell><TableCell>{eligibility.eligible ? requestButton(learner, eligibility) : <span className="text-sm text-slate-500">Complete missing competencies first</span>}</TableCell></TableRow>)}</TableBody></Table></section>}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Registered Programs</CardTitle>
-          <CardDescription>Programs supplied by the mock external system</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {programs.length === 0 ? (
-            <div className="py-10 text-center text-slate-500">
-              No registered programs were returned.
-            </div>
-          ) : visiblePrograms.length === 0 ? (
-            <div className="py-10 text-center text-slate-500">
-              No registered programs match the current search.
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>CTPR No.</TableHead>
-                  <TableHead>Qualification</TableHead>
-                  <TableHead>Delivery</TableHead>
-                  <TableHead>Valid Until</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {visiblePrograms.map((program) => (
-                  <TableRow key={program.id}>
-                    <TableCell className="font-mono text-xs">
-                      {textValue(program.ctprNumber, '—')}
-                    </TableCell>
-                    <TableCell>
-                      <p className="font-medium">
-                        {textValue(program.qualification?.title, 'Qualification unavailable')}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        {textValue(program.qualification?.code, '—')}
-                      </p>
-                    </TableCell>
-                    <TableCell>{textValue(program.deliveryMode, '—')}</TableCell>
-                    <TableCell>{displayDate(program.validUntil)}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{textValue(program.status, 'Unknown')}</Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      {activeView === 'requests' && <section aria-label="Badge Requests" className="space-y-3"><div><h3 className="font-semibold">Badge Requests</h3><p className="text-sm text-slate-500">Firestore workflow records, including the immutable external eligibility snapshot.</p></div><Table><TableHeader><TableRow><TableHead>Request</TableHead><TableHead>Learner / CTPR</TableHead><TableHead>Badge</TableHead><TableHead>Status</TableHead><TableHead>Evidence snapshot</TableHead></TableRow></TableHeader><TableBody>{requests.length ? requests.map((request) => { const evidence = request.externalEligibility as Record<string, unknown> | undefined; return <TableRow key={request.id}><TableCell><p className="font-mono text-xs">{String(request.requestNumber || request.id)}</p><p className="text-xs text-slate-500">{String(request.requestType || 'Individual')}</p></TableCell><TableCell><p>{evidence ? String(evidence.learnerUli || '—') : 'Platform request'}</p><p className="text-xs text-slate-500">{evidence ? String(evidence.ctprNumber || '—') : '—'}</p></TableCell><TableCell>{String(request.badgeTemplateName || request.programTitle || '—')}</TableCell><TableCell><Badge className={statusClass(String(request.status || 'Pending'))}>{String(request.status || 'Pending')}</Badge></TableCell><TableCell className="text-xs">{evidence ? `${String(evidence.completedCompetencyCount || 0)}/${String(evidence.requiredCompetencyCount || 0)} competency snapshot` : 'Not external'}</TableCell></TableRow>; }) : <TableRow><TableCell colSpan={5} className="h-24 text-center text-slate-500">No badge requests have been filed for this Training Center.</TableCell></TableRow>}</TableBody></Table></section>}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Learners and Eligibility</CardTitle>
-          <CardDescription>
-            Enrollment, competency, and eligibility summaries from the Integration API
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {learners.length === 0 ? (
-            <div className="py-10 text-center text-slate-500">
-              No learners were returned for this Training Center.
-            </div>
-          ) : visibleLearners.length === 0 ? (
-            <div className="py-10 text-center text-slate-500 space-y-3">
-              <p>No learners match the current filters.</p>
-              <Button variant="outline" size="sm" onClick={resetFilters}>
-                Clear filters
-              </Button>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Learner</TableHead>
-                  <TableHead>Enrollment</TableHead>
-                  <TableHead>Competencies</TableHead>
-                  <TableHead>Badge Eligibility</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {visibleLearners.map((learner) => {
-                  const eligibility = learnerEligibility(learner)[0];
-                  const enrollments = learnerEnrollments(learner);
-                  return (
-                    <TableRow key={learner.id}>
-                      <TableCell>
-                        <p className="font-medium">
-                          {textValue(learner.displayName, 'Learner unavailable')}
-                        </p>
-                        <p className="text-xs font-mono text-slate-500">
-                          {textValue(learner.externalLearnerId, '—')}
-                        </p>
-                      </TableCell>
-                      <TableCell>
-                        {enrollments[0] ? (
-                          <>
-                            <p>{textValue(enrollments[0].enrollmentStatus, 'Unknown')}</p>
-                            <p className="text-xs font-mono text-slate-500">
-                              CTPR No.:{' '}
-                              {textValue(enrollments[0].registeredProgram?.ctprNumber, '—')}
-                            </p>
-                          </>
-                        ) : (
-                          'No enrollment'
-                        )}
-                      </TableCell>
-                      <TableCell>{learner.completedCompetencyCount ?? 0}</TableCell>
-                      <TableCell>
-                        {eligibility ? (
-                          <Badge
-                            className={
-                              eligibility.eligible
-                                ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100'
-                                : 'bg-amber-100 text-amber-800 hover:bg-amber-100'
-                            }
-                          >
-                            {eligibility.eligible ? 'Eligible' : 'Not Eligible'} ·{' '}
-                            {eligibility.completedCompetencyCount}/
-                            {eligibility.requiredCompetencyCount}
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline">Not evaluated</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => void showLearner(learner.id)}
-                        >
-                          Details
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      {activeView === 'issued' && <section aria-label="Issued Badges" className="space-y-3"><div><h3 className="font-semibold">Issued Badges</h3><p className="text-sm text-slate-500">Firestore-issued credentials are available to the learner wallet and public verification flow.</p></div><Table><TableHeader><TableRow><TableHead>Badge ID</TableHead><TableHead>Learner</TableHead><TableHead>Badge</TableHead><TableHead>Status</TableHead><TableHead>Verification</TableHead></TableRow></TableHeader><TableBody>{issuedBadges.length ? issuedBadges.map((badge) => <TableRow key={badge.id}><TableCell className="font-mono text-xs">{String(badge.badgeId || badge.id)}</TableCell><TableCell>{String(badge.learnerName || badge.learnerId || '—')}</TableCell><TableCell>{String(badge.badgeName || badge.badgeTemplateName || '—')}</TableCell><TableCell><Badge className={statusClass(String(badge.status || 'Issued'))}>{String(badge.status || 'Issued')}</Badge></TableCell><TableCell className="font-mono text-xs">{String(badge.verificationId || 'Pending')}</TableCell></TableRow>) : <TableRow><TableCell colSpan={5} className="h-24 text-center text-slate-500">No badges have been issued for this Training Center yet.</TableCell></TableRow>}</TableBody></Table></section>}
+    </CardContent>
 
-      {(learnerLoading || learnerError || selectedLearner) && (
-        <Card className="border-blue-200">
-          <CardHeader>
-            <CardTitle>Learner Detail</CardTitle>
-            <CardDescription>
-              Loaded from GET /api/learners/{'{id}'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {learnerLoading ? (
-              <div className="py-10 text-center text-slate-500">
-                Loading learner details…
-              </div>
-            ) : learnerError ? (
-              <div className="py-8 text-center text-rose-700">{learnerError}</div>
-            ) : selectedLearner ? (
-              <div className="space-y-6">
-                <div>
-                  <p className="text-lg font-bold">
-                    {textValue(selectedLearner.displayName, 'Learner unavailable')}
-                  </p>
-                  <p className="font-mono text-xs text-slate-500">
-                    {textValue(selectedLearner.externalLearnerId, '—')}
-                  </p>
-                </div>
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div>
-                    <p className="font-semibold mb-3">Completed competencies</p>
-                    {selectedCompetencyCompletions.length === 0 ? (
-                      <p className="text-sm text-slate-500">
-                        No competency completions found.
-                      </p>
-                    ) : (
-                      <div className="space-y-2">
-                        {selectedCompetencyCompletions.map((completion) => (
-                          <div
-                            key={completion.id}
-                            className="p-3 rounded-lg bg-slate-50 border"
-                          >
-                            <p className="font-medium">
-                              {textValue(completion.competency?.title, 'Competency unavailable')}
-                            </p>
-                            <p className="text-xs text-slate-500">
-                              {completion.competency.code} ·{' '}
-                              {displayDate(completion.completedAt)}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <p className="font-semibold mb-3">Issued badges</p>
-                    {selectedIssuedBadges.length === 0 ? (
-                      <p className="text-sm text-slate-500">
-                        No issued badge found for this learner.
-                      </p>
-                    ) : (
-                      <div className="space-y-3">
-                        {selectedIssuedBadges.map((issued) => (
-                          <div key={issued.id} className="p-3 rounded-lg bg-violet-50 border border-violet-200">
-                            <p className="font-medium">
-                              {textValue(issued.badgeName, 'Badge unavailable')}
-                            </p>
-                            <p className="font-mono text-xs text-slate-500 mt-1">
-                              {textValue(issued.verificationId, '—')}
-                            </p>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="mt-3"
-                              disabled={verificationLoading}
-                              onClick={() => void showVerification(issued.verificationId)}
-                            >
-                              {verificationLoading ? 'Verifying…' : 'Verify Badge'}
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                {verification && (
-                  <div className="p-4 rounded-lg bg-emerald-50 border border-emerald-200">
-                    <p className="font-bold text-emerald-900">
-                      Verified: {textValue(verification.badge?.name, 'Badge unavailable')}
-                    </p>
-                    <p className="text-sm text-emerald-800 mt-1">
-                      {verification.credentialId} · {verification.status} · issued{' '}
-                      {displayDate(verification.issuedAt)}
-                    </p>
-                  </div>
-                )}
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Badge Requests</CardTitle>
-          <CardDescription>Pending and approved requests from the mock source</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {requests.length === 0 ? (
-            <div className="py-10 text-center text-slate-500">
-              No badge requests were returned.
-            </div>
-          ) : visibleRequests.length === 0 ? (
-            <div className="py-10 text-center text-slate-500">
-              No badge requests match the current filters.
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Request</TableHead>
-                  <TableHead>Badge</TableHead>
-                  <TableHead>Learner</TableHead>
-                  <TableHead>Submitted</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Issued Badge</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {visibleRequests.map((request) => (
-                  <TableRow key={request.id}>
-                    <TableCell className="font-mono text-xs">
-                      {request.requestNumber}
-                    </TableCell>
-                    <TableCell>
-                      {textValue(request.badgeDefinition?.name, 'Badge unavailable')}
-                    </TableCell>
-                    <TableCell>
-                      {requestItems(request).map((item) => item.learnerName).join(', ')}
-                    </TableCell>
-                    <TableCell>{displayDate(request.submittedAt)}</TableCell>
-                    <TableCell>
-                      <Badge
-                        className={
-                          request.status === 'Approved'
-                            ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100'
-                            : 'bg-amber-100 text-amber-800 hover:bg-amber-100'
-                        }
-                      >
-                        {request.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {requestItems(request)[0]?.issuedBadge?.credentialId || '—'}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  );
+    <Dialog open={detailLoading || !!selectedLearner} onOpenChange={(open) => { if (!open) { setSelectedLearner(null); setDetailLoading(false); } }}>
+      <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto"><DialogHeader><DialogTitle>{selectedLearner ? `${selectedLearner.displayName} — learner enrollment details` : 'Loading learner record…'}</DialogTitle><DialogDescription>{selectedLearner?.learnerUli || 'Protected external training record'}</DialogDescription></DialogHeader>
+        {detailLoading && <p className="py-8 text-center text-slate-500">Loading protected learner record…</p>}
+        {selectedLearner && <div className="space-y-6"><section><h4 className="mb-2 font-semibold">Enrollments</h4><Table><TableHeader><TableRow><TableHead>Enrollment</TableHead><TableHead>Qualification / CTPR</TableHead><TableHead>Status</TableHead><TableHead>Dates</TableHead></TableRow></TableHeader><TableBody>{selectedLearner.enrollments.map((enrollment) => <TableRow key={enrollment.id}><TableCell className="font-mono text-xs">{enrollment.externalEnrollmentId}</TableCell><TableCell><p>{enrollment.registeredProgram.qualification.title}</p><p className="font-mono text-xs text-slate-500">{enrollment.registeredProgram.ctprNumber}</p></TableCell><TableCell><Badge className={statusClass(enrollment.completionStatus)}>{enrollment.completionStatus}</Badge></TableCell><TableCell className="text-xs">Enrolled {date(enrollment.enrolledAt)}{enrollment.completedAt ? ` · Completed ${date(enrollment.completedAt)}` : ''}</TableCell></TableRow>)}</TableBody></Table></section><section><h4 className="mb-2 font-semibold">Completed competencies</h4>{selectedLearner.competencyCompletions.length ? <Table><TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Competency</TableHead><TableHead>Completed</TableHead><TableHead>Verified by</TableHead></TableRow></TableHeader><TableBody>{selectedLearner.competencyCompletions.map((completion) => <TableRow key={completion.id}><TableCell className="font-mono text-xs">{completion.competency.code}</TableCell><TableCell>{completion.competency.title}</TableCell><TableCell>{date(completion.completedAt)}</TableCell><TableCell>{completion.verifiedBy}</TableCell></TableRow>)}</TableBody></Table> : <p className="text-sm text-slate-500">No completed competencies were returned.</p>}</section><section><h4 className="mb-2 font-semibold">Missing competency evidence</h4>{selectedLearner.badgeEligibility.some((item) => item.missingCompetencyCodes.length) ? <div className="space-y-2">{selectedLearner.badgeEligibility.filter((item) => item.missingCompetencyCodes.length).map((item) => <p key={item.id} className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">CTPR {item.ctprNumber}: {item.missingCompetencyCodes.join(', ')}</p>)}</div> : <p className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">All competencies required by the external eligibility definition are complete.</p>}</section></div>}
+      </DialogContent>
+    </Dialog>
+  </Card>;
 }

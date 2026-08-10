@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "cleanup-demo": "tsx scripts/cleanup-demo.ts"
+    "cleanup-demo": "tsx scripts/cleanup-demo.ts",
+    "sync-integration-scopes": "tsx scripts/sync-integration-scopes.ts",
+    "check:integration-api": "npx --yes deno@2.1.4 check --config supabase/functions/api/deno.json supabase/functions/api/index.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.0",
@@ -37,9 +39,11 @@
     "vite": "^6.2.0"
   },
   "devDependencies": {
+    "@supabase/supabase-js": "^2.111.0",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",
+    "firebase-admin": "^13.4.0",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",

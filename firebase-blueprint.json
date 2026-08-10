@@ -252,6 +252,33 @@
       },
       "required": ["learnerId", "learnerName", "trainingCenterId", "programOfferingId", "enrollmentStatus"]
     },
+    "IntegrationTrainingCenterLink": {
+      "title": "Approved Training Center external-record link",
+      "type": "object",
+      "properties": {
+        "firebaseOrganizationId": { "type": "string" },
+        "externalTrainingCenterId": { "type": "string" },
+        "active": { "type": "boolean" },
+        "linkVersion": { "type": "integer" },
+        "approvedBy": { "type": "string" },
+        "approvedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["firebaseOrganizationId", "externalTrainingCenterId", "active", "linkVersion"]
+    },
+    "IntegrationLearnerLink": {
+      "title": "Approved Firebase learner to external ULI link",
+      "type": "object",
+      "properties": {
+        "firebaseLearnerId": { "type": "string" },
+        "firebaseTrainingCenterId": { "type": "string" },
+        "learnerUli": { "type": "string" },
+        "active": { "type": "boolean" },
+        "linkVersion": { "type": "integer" },
+        "confirmedBy": { "type": "string" },
+        "confirmedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["firebaseLearnerId", "firebaseTrainingCenterId", "learnerUli", "active", "linkVersion"]
+    },
     "UCCompletion": {
       "title": "UCCompletion",
       "description": "Tracking completion of specific UCs or program components.",
@@ -290,5 +317,7 @@
     "/programBatches/{batchId}": { "schema": "ProgramBatch", "description": "Program batches" },
     "/enrollments/{enrollmentId}": { "schema": "Enrollment", "description": "Learner enrollments" },
     "/ucCompletions/{completionId}": { "schema": "UCCompletion", "description": "UC completions" }
+    ,"/integrationTrainingCenterLinks/{organizationId}": { "schema": "IntegrationTrainingCenterLink", "description": "Canonical platform-to-external Training Center links" }
+    ,"/integrationLearnerLinks/{learnerUli}": { "schema": "IntegrationLearnerLink", "description": "Canonical Firebase UID-to-external ULI links" }
   }
 }

@@ -291,8 +291,21 @@ export interface BadgeRequest {
   pathway?: string;
   rejectionRemarks?: string;
   approvedBy?: string;
-  approvedAt?: any;
-}
+    approvedAt?: any;
+    externalEligibilityKey?: string;
+    externalEligibility?: {
+      externalTrainingCenterId: string;
+      learnerUli: string;
+      externalEnrollmentId: string;
+      sourceRecordId: string;
+      ctprNumber: string;
+      requiredCompetencyCount: number;
+      completedCompetencyCount: number;
+      missingCompetencyCodes: string[];
+      evaluatedAt: string;
+      retrievedAt: string;
+    };
+  }
 
 export interface NewIssuedBadge {
   id: string;

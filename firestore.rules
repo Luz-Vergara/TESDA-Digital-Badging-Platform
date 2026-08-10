@@ -52,6 +52,83 @@ service cloud.firestore {
     }
     function isTrainingCenter() { return isAdmin() || hasRole('TrainingCenter'); }
 
+    // Badge workflow authority is based on the platform organization links,
+    // never on a client-provided role or Training Center ID alone.
+    function isTrainingCenterFor(trainingCenterId) {
+      return isAdmin() || (
+        hasRole('TrainingCenter') &&
+        getUserData().get('organizationId', '') == trainingCenterId
+      );
+    }
+
+    function isApprovalAuthorityFor(data) {
+      let districtOfficeId = data.get('districtOfficeId', '');
+      return isAdmin() || isQSO() || (
+        hasRole('DistrictOffice') && (
+          getUserData().get('organizationId', '') == districtOfficeId ||
+          getUserData().get('assignedDistrictId', '') == districtOfficeId
+        )
+      );
+    }
+
+    function isExternalBadgeRequest(data) {
+      return data.keys().hasAny(['externalEligibilityKey', 'externalEligibility']);
+    }
+
+    // An external request has a deterministic document ID. Because Training
+    // Centers have no update permission, a second concurrent create becomes
+    // an update attempt and is denied after the first create wins.
+    function hasValidExternalRequestIdentity(requestId, data) {
+      return !isExternalBadgeRequest(data) || (
+        data.keys().hasAll(['externalEligibilityKey', 'externalEligibility']) &&
+        data.get('externalEligibilityKey', '') is string &&
+        data.get('externalEligibilityKey', '').matches('^[A-Za-z0-9_:-]+$') &&
+        requestId == 'external-' + data.get('externalEligibilityKey', '') &&
+        data.get('externalEligibility', {}) is map &&
+        data.get('externalEligibility', {}).keys().hasAll([
+          'externalTrainingCenterId', 'learnerUli', 'externalEnrollmentId',
+          'sourceRecordId', 'ctprNumber', 'requiredCompetencyCount',
+          'completedCompetencyCount', 'missingCompetencyCodes', 'evaluatedAt',
+          'retrievedAt'
+        ])
+      );
+    }
+
+    function externalEligibilityIsImmutable() {
+      return incoming().get('externalEligibilityKey', '') == existing().get('externalEligibilityKey', '') &&
+        incoming().get('externalEligibility', {}) == existing().get('externalEligibility', {});
+    }
+
+    function onlyApprovalFieldsChanged() {
+      return incoming().diff(existing()).affectedKeys().hasOnly([
+        'status', 'badgeIdStatus', 'approvedBy', 'approvedAt', 'updatedAt',
+        'issuedBadgeSummary', 'verificationId', 'badgeId', 'rejectionReason',
+        'rejectedBy', 'rejectedAt'
+      ]);
+    }
+
+    function isValidApprovalTransition() {
+      return existing().get('status', '') == 'Pending Review' && (
+        (
+          incoming().get('status', '') == 'Approved' &&
+          incoming().get('approvedBy', '') == request.auth.uid &&
+          incoming().get('badgeIdStatus', '') == 'Issued'
+        ) || (
+          incoming().get('status', '') == 'Rejected' &&
+          incoming().get('rejectedBy', '') == request.auth.uid
+        )
+      );
+    }
+
+    function hasApprovedSourceRequest(data) {
+      let badgeRequestId = data.get('badgeRequestId', '');
+      let requestPath = /databases/$(database)/documents/badgeRequests/$(badgeRequestId);
+      return badgeRequestId is string &&
+        exists(requestPath) &&
+        getAfter(requestPath).data.get('status', '') == 'Approved' &&
+        getAfter(requestPath).data.get('districtOfficeId', '') == data.get('districtOfficeId', '');
+    }
+
     // ===============================================================
     // VALIDATION BLUEPRINTS
     // ===============================================================
@@ -141,6 +218,20 @@ service cloud.firestore {
       allow write: if isAdmin() || isIncomingDemo();
     }
 
+    // Canonical platform/business links. The private Supabase API scopes are
+    // provisioned from these approved documents by a server-side task.
+    match /integrationTrainingCenterLinks/{organizationId} {
+      allow read: if isAdmin() || (isTrainingCenter() && getUserData().get('organizationId', '') == organizationId);
+      allow write: if isAdmin();
+    }
+
+    match /integrationLearnerLinks/{learnerUli} {
+      allow get: if isAdmin() ||
+        (isSignedIn() && resource.data.get('firebaseLearnerId', '') == request.auth.uid) ||
+        (isTrainingCenter() && resource.data.get('firebaseTrainingCenterId', '') == getUserData().get('organizationId', ''));
+      allow list, write: if isAdmin();
+    }
+
     match /badgeTemplates/{templateId} {
       allow read: if true;
       allow write: if isQSO() || isIncomingDemo();
@@ -148,9 +239,11 @@ service cloud.firestore {
 
     match /issuedBadges/{issuedBadgeId} {
       allow read: if true; // Public verification allowed
-      allow create: if isSignedIn() && (isDistrictOffice() || isQSO() || isTrainingCenter() || isAdmin() || isIncomingDemo());
-      allow update: if isSignedIn() && (isDistrictOffice() || isQSO() || isTrainingCenter() || isAdmin() || isIncomingDemo());
-      allow delete: if isAdmin() || isExistingDemo();
+      allow create: if isSignedIn() &&
+        isApprovalAuthorityFor(incoming()) &&
+        hasApprovedSourceRequest(incoming());
+      allow update: if isSignedIn() && isApprovalAuthorityFor(existing());
+      allow delete: if isAdmin();
     }
 
     match /learners/{learnerId} {
@@ -194,9 +287,15 @@ service cloud.firestore {
       
       allow list: if isSignedIn();
       
-      allow create: if isTrainingCenter() || isAdmin() || isIncomingDemo();
-      allow update: if isSignedIn() && (isDistrictOffice() || isQSO() || isTrainingCenter() || isAdmin() || isIncomingDemo());
-      allow delete: if isAdmin() || isExistingDemo();
+      allow create: if isSignedIn() &&
+        isTrainingCenterFor(incoming().get('trainingCenterId', '')) &&
+        hasValidExternalRequestIdentity(requestId, incoming());
+      allow update: if isSignedIn() &&
+        isApprovalAuthorityFor(existing()) &&
+        externalEligibilityIsImmutable() &&
+        onlyApprovalFieldsChanged() &&
+        isValidApprovalTransition();
+      allow delete: if isAdmin();
     }
 
     match /auditLogs/{logId} {

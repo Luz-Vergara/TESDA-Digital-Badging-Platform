@@ -1,34 +1,12 @@
-import type {
-  BadgeRequest,
-  BadgeVerification,
-  DashboardSummary,
-  LearnerDetails,
-  LearnerSummary,
-} from "../types.ts";
+import type { DashboardSummary, LearnerDetails, LearnerSummary } from "../types.ts";
 
 /**
- * Stable integration boundary for external TESDA information systems.
- *
- * Source adapters own authentication, source queries, and source-specific field
- * names. They must return only the standardized Digital Badging API contracts.
- * React never selects or imports an adapter.
+ * Server-only integration boundary. Adapters own source-specific credentials
+ * and fields; callers receive the stable Digital Badging external-record API.
  */
 export interface ExternalDataSourceAdapter {
-  getTrainingCenterDashboardSummary(
-    trainingCenterId: string,
-  ): Promise<DashboardSummary | null>;
-
-  getTrainingCenterLearners(
-    trainingCenterId: string,
-  ): Promise<LearnerSummary[]>;
-
-  getLearnerDetails(learnerId: string): Promise<LearnerDetails | null>;
-
-  getTrainingCenterBadgeRequests(
-    trainingCenterId: string,
-  ): Promise<BadgeRequest[]>;
-
-  getBadgeVerification(
-    verificationId: string,
-  ): Promise<BadgeVerification | null>;
+  getTrainingCenterDashboardSummary(trainingCenterId: string): Promise<DashboardSummary | null>;
+  getTrainingCenterLearners(trainingCenterId: string): Promise<LearnerSummary[]>;
+  getLearnerDetails(learnerUli: string): Promise<LearnerDetails | null>;
+  learnerBelongsToTrainingCenter(learnerUli: string, trainingCenterId: string): Promise<boolean>;
 }

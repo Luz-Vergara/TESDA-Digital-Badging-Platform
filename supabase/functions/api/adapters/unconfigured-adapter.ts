@@ -1,7 +1,5 @@
 import type { ExternalDataSourceAdapter } from "./external-data-source-adapter.ts";
 import type {
-  BadgeRequest,
-  BadgeVerification,
   DashboardSummary,
   LearnerDetails,
   LearnerSummary,
@@ -33,19 +31,14 @@ export class UnconfiguredExternalAdapter implements ExternalDataSourceAdapter {
     return this.unavailable();
   }
 
-  getLearnerDetails(_learnerId: string): Promise<LearnerDetails | null> {
+  getLearnerDetails(_learnerUli: string): Promise<LearnerDetails | null> {
     return this.unavailable();
   }
 
-  getTrainingCenterBadgeRequests(
+  learnerBelongsToTrainingCenter(
+    _learnerUli: string,
     _trainingCenterId: string,
-  ): Promise<BadgeRequest[]> {
-    return this.unavailable();
-  }
-
-  getBadgeVerification(
-    _verificationId: string,
-  ): Promise<BadgeVerification | null> {
+  ): Promise<boolean> {
     return this.unavailable();
   }
 }

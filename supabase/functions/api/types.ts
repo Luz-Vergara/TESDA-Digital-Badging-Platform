@@ -7,15 +7,8 @@ export interface TrainingCenter {
   name: string;
   status: "Active" | "Inactive";
   districtName: string;
-  address: {
-    line: string;
-    city: string;
-    province: string;
-  };
-  contact: {
-    email: string | null;
-    phone: string | null;
-  };
+  address: { line: string; city: string; province: string };
+  contact: { email: string | null; phone: string | null };
 }
 
 export interface Qualification {
@@ -42,6 +35,7 @@ export interface RegisteredProgram {
 export interface Enrollment {
   id: string;
   externalEnrollmentId: string;
+  sourceRecordId: string;
   learnerId: string;
   registeredProgram: RegisteredProgram;
   enrollmentStatus: string;
@@ -55,26 +49,22 @@ export interface CompetencyCompletion {
   externalCompletionId: string;
   learnerId: string;
   enrollmentId: string;
-  competency: {
-    id: string;
-    externalCompetencyId: string;
-    code: string;
-    title: string;
-  };
+  competency: { id: string; externalCompetencyId: string; code: string; title: string };
   status: "Completed" | "Revoked";
   completedAt: string;
   verifiedBy: string;
 }
 
+/** External eligibility evidence. Firebase owns the linked badge template. */
 export interface BadgeEligibility {
+  id: string;
   learnerId: string;
+  learnerUli: string;
   enrollmentId: string;
-  badgeDefinition: {
-    id: string;
-    code: string;
-    name: string;
-    badgeType: string;
-  };
+  sourceRecordId: string;
+  trainingCenterId: string;
+  ctprNumber: string;
+  firebaseBadgeTemplateId: string | null;
   eligible: boolean;
   requiredCompetencyCount: number;
   completedCompetencyCount: number;
@@ -84,7 +74,7 @@ export interface BadgeEligibility {
 
 export interface Learner {
   id: string;
-  externalLearnerId: string;
+  learnerUli: string;
   displayName: string;
   email: string | null;
 }
@@ -97,53 +87,10 @@ export interface LearnerSummary extends Learner {
   badgeEligibility: BadgeEligibility[];
 }
 
-export interface IssuedBadge {
-  id: string;
-  externalIssuedBadgeId: string;
-  verificationId: string;
-  credentialId: string;
-  learnerId: string;
-  trainingCenterId: string;
-  badgeDefinitionId: string;
-  badgeName: string;
-  badgeType: string;
-  status: "Active" | "Expired" | "Revoked";
-  issuedAt: string;
-  expiresAt: string | null;
-}
-
 export interface LearnerDetails extends Learner {
   enrollments: Enrollment[];
   competencyCompletions: CompetencyCompletion[];
   badgeEligibility: BadgeEligibility[];
-  issuedBadges: IssuedBadge[];
-}
-
-export interface BadgeRequestItem {
-  id: string;
-  learnerId: string;
-  learnerName: string;
-  enrollmentId: string;
-  eligibilityStatus: "Eligible" | "Not Eligible";
-  issuedBadge: IssuedBadge | null;
-}
-
-export interface BadgeRequest {
-  id: string;
-  externalBadgeRequestId: string;
-  requestNumber: string;
-  trainingCenterId: string;
-  badgeDefinition: {
-    id: string;
-    code: string;
-    name: string;
-    badgeType: string;
-  };
-  status: "Pending" | "Approved" | "Rejected";
-  submittedAt: string;
-  reviewedAt: string | null;
-  reviewRemarks: string | null;
-  items: BadgeRequestItem[];
 }
 
 export interface DashboardSummary {
@@ -154,34 +101,7 @@ export interface DashboardSummary {
     activeEnrollments: number;
     completedCompetencies: number;
     eligibleLearners: number;
-    pendingBadgeRequests: number;
-    approvedBadgeRequests: number;
-    issuedBadges: number;
   };
-}
-
-export interface BadgeVerification {
-  verificationId: string;
-  credentialId: string;
-  status: "Active" | "Expired" | "Revoked";
-  badge: {
-    id: string;
-    code: string;
-    name: string;
-    badgeType: string;
-    description: string;
-    criteria: string;
-  };
-  learner: {
-    externalLearnerId: string;
-    displayName: string;
-  };
-  issuer: {
-    trainingCenterId: string;
-    name: string;
-  };
-  issuedAt: string;
-  expiresAt: string | null;
 }
 
 export interface ApiMeta {

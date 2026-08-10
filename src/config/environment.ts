@@ -19,6 +19,3 @@ export const canShowDeveloperTools =
  */
 export const isExternalApiDemoEnabled =
   env.VITE_EXTERNAL_API_DEMO_ENABLED === "true";
-
-export const externalDemoTrainingCenterId =
-  env.VITE_EXTERNAL_TRAINING_CENTER_ID || "TC-DEMO-001";

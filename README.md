@@ -69,16 +69,18 @@ The application parses the sign-in email to automatically link and set up the co
 
 ## External Information System API Demo (Training Center Phase)
 
-This repository contains a local-only, disabled-by-default demonstration of
-retrieving Training Center data from a temporary Supabase mock database.
-Supabase is not the Digital Badging Platform's permanent datastore and is not
-treated as the final T2MIS contract.
+This repository contains a disabled-by-default demonstration of retrieving
+external Training Center records through an Integration API. Supabase is a
+temporary mock external system, not the Digital Badging workflow datastore or
+the final T2MIS contract.
 
 ### Architecture
 
 ```text
 Training Center Dashboard
   -> Digital Badging Integration API
+  -> Firebase-authenticated Supabase Edge Function
+  -> private API scope projected from an approved Firestore link
   -> ExternalDataSourceAdapter
   -> Supabase mock database
 ```
@@ -99,18 +101,18 @@ technology, API format, or authentication.
 
 ### Phase 1 scope
 
-Only the Training Center dashboard is integrated. District Office, Learner, and
-public-verification dashboard integration are not changed in this phase.
-Firebase Authentication and all existing Firebase workflows remain available.
+The existing Firebase Training Center dashboard stays available. External
+records appear as a separate evidence section. An eligible external enrollment
+can create the existing Firestore badge request with an immutable evidence
+snapshot; District Office approval, issuance, wallet, and verification remain
+Firebase-only.
 
 The Integration API exposes only these read-only logical routes:
 
 ```text
-GET /api/training-centers/{id}/dashboard-summary
-GET /api/training-centers/{id}/learners
-GET /api/learners/{id}
-GET /api/training-centers/{id}/badge-requests
-GET /api/badges/{verificationId}
+GET /api/me/training-center/dashboard-summary
+GET /api/me/training-center/learners
+GET /api/learners/{learnerUli}
 ```
 
 When hosted as the Supabase Edge Function named `api`, the full URL includes
@@ -127,13 +129,39 @@ The feature is disabled unless explicitly enabled:
 ```dotenv
 VITE_EXTERNAL_API_DEMO_ENABLED=false
 VITE_EXTERNAL_API_BASE_URL=
-VITE_EXTERNAL_TRAINING_CENTER_ID=TC-DEMO-001
+VITE_SUPABASE_PUBLISHABLE_KEY=
 ```
 
 When disabled, the existing Firestore-backed Training Center dashboard runs
-unchanged and no Integration API request is made. When enabled without an API
-base URL, the dashboard shows an intentional API configuration error instead of
-silently falling back to Firebase.
+unchanged and no Integration API request is made. When enabled, the browser
+sends the Firebase ID token to the Edge Function; it derives access from an
+active private scope, not a caller-supplied Training Center ID.
+
+### Identity, links, and API scopes
+
+Firebase remains the platform identity and role system. Administrators create
+the canonical Firestore documents `integrationTrainingCenterLinks` and
+`integrationLearnerLinks`; an external learner is linked by durable ULI, never
+by email at runtime. Verified email may only be used to discover a candidate
+before an administrator confirms the ULI link.
+
+`integration.api_scopes` is a private Supabase projection used solely by the
+Edge Function to enforce access. It is populated from approved Firestore links,
+not edited independently. From a trusted administrator environment, review the
+scope projection before applying it:
+
+```bash
+npm run sync-integration-scopes
+APPLY=true npm run sync-integration-scopes
+```
+
+The apply command requires Firebase Admin credentials (`GOOGLE_APPLICATION_CREDENTIALS`
+pointing to a service-account file, or `FIREBASE_SERVICE_ACCOUNT_JSON`),
+`SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY`. Set `FIRESTORE_DATABASE_ID`
+when the integration-link collections live in a named Firestore database. It
+also grants the Firebase custom claim
+`role: "authenticated"` required by Supabase Firebase third-party Auth; users
+must then refresh their ID token.
 
 ### Mock database
 
@@ -148,22 +176,23 @@ The migration creates:
 - `learner_competency_completions`
 - `badge_definitions`
 - `badge_requirements`
-- `badge_requests`
-- `badge_request_items`
-- `issued_badges`
 - `learner_badge_eligibility` read-only view
+
+The original external `badge_requests`, `badge_request_items`, and
+`issued_badges` tables are deprecated compatibility data only. They are no
+longer exposed by the API; Firestore is canonical for those workflow records.
 
 The seed contains only fictional data:
 
 - Training Center `TC-DEMO-001`
 - One fictional qualification and registered program
 - Two required fictional competencies
-- Demo Learner Alpha: both competencies complete and eligible
-- Demo Learner Beta: one competency complete and not eligible
-- Demo Learner Gamma: eligible with an approved request and active issued badge
-- One pending request, one approved request, and one active issued badge
+- Sample Learner 001: both competencies complete and eligible
+- Sample Learner 002: one competency complete and not eligible
+- Sample Learner 003: both competencies complete and eligible
+- External badge-request and issued-badge records are not workflow sources
 
-All emails use the reserved `example.invalid` domain.
+All values are sanitized dummy data from the reference dataset.
 
 ### CTPR identifier mapping
 
@@ -219,7 +248,7 @@ repository.
 6. After reviewing the function, deploy it:
 
    ```bash
-   npx supabase@latest functions deploy api --no-verify-jwt
+   npx supabase@latest functions deploy api
    ```
 
 7. Configure the frontend with public values:
@@ -227,7 +256,7 @@ repository.
    ```dotenv
    VITE_EXTERNAL_API_DEMO_ENABLED=true
    VITE_EXTERNAL_API_BASE_URL=https://PROJECT_REF.supabase.co/functions/v1
-   VITE_EXTERNAL_TRAINING_CENTER_ID=TC-DEMO-001
+   VITE_SUPABASE_PUBLISHABLE_KEY=YOUR_SUPABASE_PUBLISHABLE_KEY
    ```
 
 8. Rebuild the frontend and open the Training Center dashboard. The visible
@@ -243,7 +272,7 @@ environment.
 | --- | --- |
 | `VITE_EXTERNAL_API_DEMO_ENABLED` | Public build setting |
 | `VITE_EXTERNAL_API_BASE_URL` | Public endpoint |
-| `VITE_EXTERNAL_TRAINING_CENTER_ID` | Public fictional identifier |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Public gateway key; not a service-role key |
 | Supabase project URL and project reference | Public identifiers |
 | Supabase publishable/legacy anon key | Public client identifier; unused by this demo frontend |
 | `EXTERNAL_DATA_SOURCE` | Server-only non-secret setting |

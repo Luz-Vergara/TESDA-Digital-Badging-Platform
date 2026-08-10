@@ -34,10 +34,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Link } from 'react-router-dom';
 import ExternalTrainingDashboard from '@/src/components/training/ExternalTrainingDashboard';
-import {
-  externalDemoTrainingCenterId,
-  isExternalApiDemoEnabled,
-} from '@/src/config/environment';
+import { isExternalApiDemoEnabled } from '@/src/config/environment';
 
 export default function TrainingDashboard() {
   const { user, userProfile, isAuthReady } = useFirebase();
@@ -46,9 +43,9 @@ export default function TrainingDashboard() {
   const [districtOffice, setDistrictOffice] = useState<any>(null);
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [externalLink, setExternalLink] = useState<any | null>(null);
 
   useEffect(() => {
-    if (isExternalApiDemoEnabled) return;
     if (!isAuthReady || !user) return;
 
     const tcId = userProfile?.organizationId || user.uid;
@@ -100,6 +97,14 @@ export default function TrainingDashboard() {
         });
     }
 
+    if (isExternalApiDemoEnabled) {
+      getDoc(doc(db, 'integrationTrainingCenterLinks', tcId))
+        .then((link) => setExternalLink(link.exists() ? link.data() : null))
+        .catch((error) => handleFirestoreError(error, OperationType.GET, `integrationTrainingCenterLinks/${tcId}`));
+    } else {
+      setExternalLink(null);
+    }
+
     // Recent Activity
     const activityQuery = query(
       collection(db, 'auditLogs'),
@@ -119,14 +124,6 @@ export default function TrainingDashboard() {
       unsubscribeActivity();
     };
   }, [user, isAuthReady, userProfile]);
-
-  if (isExternalApiDemoEnabled) {
-    return (
-      <ExternalTrainingDashboard
-        trainingCenterId={externalDemoTrainingCenterId}
-      />
-    );
-  }
 
   const stats = [
     { label: 'Total Learners', value: learners.length, icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
@@ -195,6 +192,23 @@ export default function TrainingDashboard() {
           </div>
         </CardContent>
       </Card>
+
+      {isExternalApiDemoEnabled && (
+        externalLink?.active !== false && externalLink ? (
+          <ExternalTrainingDashboard
+            firebaseTrainingCenterId={userProfile?.organizationId || user?.uid || ''}
+            firebaseTrainingCenterName={userProfile?.office || userProfile?.name || 'Training Center'}
+            firebaseUserId={user?.uid || ''}
+            districtOfficeId={userProfile?.assignedDistrictId}
+          />
+        ) : (
+          <Card className="border-amber-200 bg-amber-50/40">
+            <CardContent className="p-4 text-sm text-amber-800">
+              External records are enabled, but this Training Center does not have an approved platform integration link.
+            </CardContent>
+          </Card>
+        )
+      )}
 
       {/* Summary Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
