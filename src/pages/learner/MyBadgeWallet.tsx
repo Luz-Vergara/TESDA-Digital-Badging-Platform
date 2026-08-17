@@ -311,7 +311,7 @@ export default function MyBadgeWallet() {
             />
           </div>
           <div className="flex gap-2 overflow-x-auto pb-1 md:pb-0">
-            {['All', 'Proficient', 'Expert', 'Skilled', 'Master'].map((type) => (
+            {['All', 'Proficient', 'Skilled'].map((type) => (
               <Button
                 key={type}
                 variant={filterType === type ? 'default' : 'outline'}

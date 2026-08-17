@@ -377,7 +377,7 @@ export default function Login() {
                 <Building2 className="h-6 w-6" />
               </div>
               <CardTitle>Training Center</CardTitle>
-              <CardDescription>Issue Proficient and Expert badges for completed programs.</CardDescription>
+              <CardDescription>Issue Proficient and Skilled badges for completed programs.</CardDescription>
             </CardHeader>
           </Card>
 

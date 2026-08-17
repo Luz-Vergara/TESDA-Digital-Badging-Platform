@@ -357,23 +357,23 @@ export default function LearnerDashboard() {
 
           // 1. Specifically look for 2D Animation NC III if interested
           if (hasAnimationInterest) {
-            const animationExpert = allTemplates.find(t => 
+            const animationTemplate = allTemplates.find(t =>
               t.badgeName?.includes('2D Animation NC III') || 
-              (t.qualificationName?.includes('2D Animation') && t.badgeType === 'Expert')
+              (t.qualificationName?.includes('2D Animation') && t.badgeType === 'Skilled')
             );
-            if (animationExpert && !activeIds.includes(animationExpert.id)) {
-              recs.push(animationExpert);
+            if (animationTemplate && !activeIds.includes(animationTemplate.id)) {
+              recs.push(animationTemplate);
             }
           }
 
-          // 2. Fill with other expert badges from same qualification
-          const sameQualExpert = allTemplates.filter(t => 
+          // 2. Fill with other Skilled badges from the same qualification.
+          const sameQualSkilled = allTemplates.filter(t =>
             !activeIds.includes(t.id) && 
             t.qualificationName === qual && 
-            t.badgeType === 'Expert' &&
+            t.badgeType === 'Skilled' &&
             !recs.find(r => r.id === t.id)
           );
-          recs = [...recs, ...sameQualExpert];
+          recs = [...recs, ...sameQualSkilled];
 
           // 3. Fill with other badges from same qualification
           const sameQualOther = allTemplates.filter(t => 
@@ -383,14 +383,14 @@ export default function LearnerDashboard() {
           );
           recs = [...recs, ...sameQualOther];
 
-          // 4. Fill with any expert badges
+          // 4. Fill with any remaining Skilled badges.
           if (recs.length < 3) {
-            const otherExperts = allTemplates.filter(t => 
+            const otherSkilled = allTemplates.filter(t =>
               !activeIds.includes(t.id) && 
-              t.badgeType === 'Expert' && 
+              t.badgeType === 'Skilled' &&
               !recs.find(r => r.id === t.id)
             );
-            recs = [...recs, ...otherExperts];
+            recs = [...recs, ...otherSkilled];
           }
 
           setRecommendations(recs.slice(0, 3));
@@ -480,7 +480,7 @@ export default function LearnerDashboard() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Total Badges */}
         <Card className="border-slate-200">
           <CardContent className="p-4 flex items-center gap-3">
@@ -509,21 +509,6 @@ export default function LearnerDashboard() {
           </CardContent>
         </Card>
 
-        {/* Expert */}
-        <Card className="border-slate-200 border-l-4 border-l-green-500">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-50 text-green-600 flex items-center justify-center shrink-0">
-              <Award className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Expert</p>
-              <p className="text-xl font-bold text-slate-900">
-                {activeBadges.filter(b => b.badgeType === 'Expert').length}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Skilled */}
         <Card className="border-slate-200 border-l-4 border-l-amber-500">
           <CardContent className="p-4 flex items-center gap-3">
@@ -539,20 +524,6 @@ export default function LearnerDashboard() {
           </CardContent>
         </Card>
 
-        {/* Master */}
-        <Card className="border-slate-200 border-l-4 border-l-purple-500">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
-              <Award className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Master</p>
-              <p className="text-xl font-bold text-slate-900">
-                {activeBadges.filter(b => b.badgeType === 'Master').length}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       <div className="grid lg:grid-cols-3 gap-8">

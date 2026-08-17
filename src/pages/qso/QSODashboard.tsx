@@ -149,7 +149,7 @@ export default function QSODashboard() {
                   Badge Hierarchy
                   <ArrowRight className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
                 </h3>
-                <p className="text-xs text-slate-500 mt-1 text-pretty">Configure levels from Proficient to Master across qualifications.</p>
+                <p className="text-xs text-slate-500 mt-1 text-pretty">Configure Proficient and Skilled badge types across qualifications.</p>
               </div>
             </Link>
           </CardContent>
@@ -180,7 +180,7 @@ export default function QSODashboard() {
           </CardHeader>
           <CardContent className="space-y-4">
             {[
-              { text: 'Updated Master Hierarchy for ICT', time: '2h ago' },
+              { text: 'Updated Skilled badge standards for ICT', time: '2h ago' },
               { text: 'Revised Proficient Badge Metadata', time: '5h ago' },
               { text: 'New Alignment: Solar Panel Tech', time: '1d ago' },
               { text: 'Archived legacy Skilled template', time: '2d ago' },

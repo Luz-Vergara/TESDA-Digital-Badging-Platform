@@ -45,7 +45,6 @@ import { BadgeTemplate, BadgeIssuanceRequest } from '@/src/types';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { getBadgeColor, getStatusColor } from '@/src/lib/badge-utils';
-import { format } from 'date-fns';
 import { BadgeRenderer } from '@/src/components/badges/BadgeRenderer';
 
 const formatDate = (value: any) => {
@@ -84,7 +83,7 @@ const matchBadgeWithTemplate = (item: any, template: BadgeTemplate, offerings: a
   const normalize = (s: string) => {
     return s.toLowerCase()
       .replace(/[^a-z0-9]/g, ' ')
-      .replace(/\(proficient\)|\(expert\)|\(skilled\)|\(master\)/g, '')
+      .replace(/\(proficient\)|\(skilled\)/g, '')
       .replace(/level|animation|competency/g, '') // Remove very common words that might be missing
       .replace(/\s+/g, ' ')
       .trim();
@@ -101,11 +100,10 @@ const matchBadgeWithTemplate = (item: any, template: BadgeTemplate, offerings: a
                    template.badgeType.toLowerCase().includes(item.badgeType.toLowerCase()) ||
                    (item.badgeType === 'Individual' && template.badgeType === 'Proficient');
 
-  // Specific rule: COC/NC badges MUST match their type specifically to avoid accidental normalization matches
-  if (template.badgeType === 'Skilled' || template.badgeType === 'Master') {
+  // Certificate of Competency records must match Skilled specifically.
+  if (template.badgeType === 'Skilled') {
     typeMatch = item.badgeType === template.badgeType || 
-                (item.badgeType === 'COC' && template.badgeType === 'Skilled') ||
-                (item.badgeType === 'Qualification' && template.badgeType === 'Master');
+                (item.badgeType === 'COC' && template.badgeType === 'Skilled');
   }
 
   if (typeMatch) {
@@ -125,8 +123,6 @@ const matchBadgeWithTemplate = (item: any, template: BadgeTemplate, offerings: a
 const TIER_COLORS = {
   Proficient: 'bg-[#f0fdf4] text-green-700 border-green-200', // Light Green
   Skilled: 'bg-[#eff6ff] text-blue-700 border-blue-200',    // Blue
-  Expert: 'bg-[#fffbeb] text-amber-700 border-amber-200',   // Light Yellow/Cream
-  Master: 'bg-[#fefce8] text-yellow-700 border-yellow-400', // Yellow/Gold
 };
 
 const PROGRESS_COLORS = {
@@ -400,9 +396,7 @@ export default function BadgeHierarchy() {
               <SelectContent>
                 <SelectItem value="All">All Levels</SelectItem>
                 <SelectItem value="Proficient">Proficient</SelectItem>
-                <SelectItem value="Expert">Expert</SelectItem>
                 <SelectItem value="Skilled">Skilled</SelectItem>
-                <SelectItem value="Master">Master</SelectItem>
               </SelectContent>
             </Select>
           </CardContent>
@@ -458,8 +452,6 @@ interface RowProps {
 }
 
 function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, issuedBadges, listRequests, completions, offerings, enrollments, isLearner, learnerQualification }: RowProps) {
-  const masterBadges = badges.filter(b => b.badgeType === 'Master').sort((a, b) => a.displayOrder - b.displayOrder);
-  const expertBadges = badges.filter(b => b.badgeType === 'Expert').sort((a, b) => a.displayOrder - b.displayOrder);
   const skilledBadges = badges.filter(b => b.badgeType === 'Skilled').sort((a, b) => a.displayOrder - b.displayOrder);
   const proficientBadges = badges.filter(b => b.badgeType === 'Proficient').sort((a, b) => a.displayOrder - b.displayOrder);
 
@@ -521,7 +513,7 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, issuedB
   }, { active: 0, pending: 0, available: 0, rejected: 0, locked: 0 });
 
   const progressValue = totalBadges > 0 ? (stats.active / totalBadges) * 100 : 0;
-  const isComplete = masterBadges.length > 0 && expertBadges.length > 0 && skilledBadges.length > 0 && proficientBadges.length > 0;
+  const isComplete = skilledBadges.length > 0 && proficientBadges.length > 0;
 
   return (
     <Card className="border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-all duration-300">
@@ -601,7 +593,7 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, issuedB
         <div className="flex items-center gap-6">
           <div className="hidden lg:flex items-center gap-2">
             <div className="flex -space-x-2">
-              {['Master', 'Expert', 'Skilled', 'Proficient'].map(type => {
+              {['Skilled', 'Proficient'].map(type => {
                 const qBadges = badges.filter(b => b.badgeType === type);
                 if (qBadges.length === 0) return null;
                 
@@ -614,10 +606,7 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, issuedB
                 return (
                   <div key={type} className={cn(
                     "w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold shadow-sm relative",
-                    type === 'Master' ? TIER_COLORS.Master :
-                    type === 'Expert' ? TIER_COLORS.Expert :
-                    type === 'Skilled' ? TIER_COLORS.Skilled : 
-                    TIER_COLORS.Proficient,
+                    type === 'Skilled' ? TIER_COLORS.Skilled : TIER_COLORS.Proficient,
                     isLearner && activeCount === 0 && "grayscale opacity-40 bg-slate-200 text-slate-500"
                   )}>
                     {isLearner ? (activeCount > 0 ? <CheckCircle2 className="h-3 w-3" /> : qBadges.length) : qBadges.length}
@@ -681,49 +670,7 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, issuedB
                 <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
                 
                 <div className="relative z-10 flex flex-col items-center gap-16">
-                  {/* TOP LEVEL: Master & Expert */}
-                  <div className="flex flex-wrap justify-center gap-8 min-h-[100px] w-full">
-                    <HierarchyGroup 
-                      title="Master Badge" 
-                      level="Official NC Level" 
-                      items={masterBadges} 
-                      allBadges={badges}
-                      colorClass={TIER_COLORS.Master} 
-                      maxSlots={1} 
-                      issuedBadges={issuedBadges}
-                      listRequests={listRequests}
-                      completions={completions}
-                      offerings={offerings}
-                      isLearner={isLearner}
-                      learnerQualification={learnerQualification}
-                      enrollments={enrollments}
-                      qual={qual}
-                    />
-                    <div className="w-1" /> {/* Spacer */}
-                    <HierarchyGroup 
-                      title="Expert Badge" 
-                      level="Training Complete" 
-                      items={expertBadges} 
-                      allBadges={badges}
-                      colorClass={TIER_COLORS.Expert} 
-                      maxSlots={1} 
-                      issuedBadges={issuedBadges}
-                      listRequests={listRequests}
-                      completions={completions}
-                      offerings={offerings}
-                      isLearner={isLearner}
-                      learnerQualification={learnerQualification}
-                      enrollments={enrollments}
-                      qual={qual}
-                    />
-                  </div>
-
-                  {/* Vertical Connectors 1 */}
-                  <div className="absolute top-[160px] left-1/2 -translate-x-1/2 w-[60%] h-[40px] flex justify-between pointer-events-none">
-                    <div className="w-[1px] bg-slate-200 h-full mx-auto" />
-                  </div>
-
-                  {/* MIDDLE LEVEL: Skilled */}
+                  {/* Top level: Skilled */}
                   <div className="w-full">
                     <HierarchyGroup 
                       title="Skilled Badges" 
@@ -744,12 +691,7 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, issuedB
                     />
                   </div>
 
-                  {/* Vertical Connectors 2 */}
-                  <div className="absolute bottom-[200px] left-1/2 -translate-x-1/2 w-[80%] h-[40px] flex justify-between pointer-events-none">
-                    <div className="w-[1px] bg-slate-200 h-full mx-auto" />
-                  </div>
-
-                  {/* BOTTOM LEVEL: Proficient */}
+                  {/* Foundation level: Proficient */}
                   <div className="w-full">
                     <HierarchyGroup 
                       title="Proficient Badges" 
@@ -1040,7 +982,7 @@ function HierarchyGroup({ title, level, items, allBadges, colorClass, maxSlots, 
                       <span className="text-slate-700 font-bold text-right truncate">{selectedBadge.record.issuerName}</span>
                       <span className="text-slate-500">Date:</span>
                       <span className="text-slate-700 font-bold text-right">
-                        {selectedBadge.record.submittedAt ? format(selectedBadge.record.submittedAt.toDate(), 'PPP') : 'N/A'}
+                        {selectedBadge.record.submittedAt ? formatDate(selectedBadge.record.submittedAt.toDate?.() ?? selectedBadge.record.submittedAt) : 'N/A'}
                       </span>
                       {selectedBadge.record.status === 'Rejected' && (
                         <>
@@ -1081,4 +1023,3 @@ function HierarchyGroup({ title, level, items, allBadges, colorClass, maxSlots, 
     </div>
   );
 }
-

@@ -236,8 +236,7 @@ export default function AvailablePrograms() {
                   </Badge>
                   <Award className={cn(
                     "h-5 w-5",
-                    offering.badgeType === 'Master' ? "text-purple-500" :
-                    offering.badgeType === 'Expert' ? "text-emerald-500" : "text-blue-500"
+                    offering.badgeType === 'Skilled' ? "text-purple-500" : "text-blue-500"
                   )} />
                 </div>
                 <CardTitle className="text-lg font-bold group-hover:text-blue-600 transition-colors line-clamp-2">

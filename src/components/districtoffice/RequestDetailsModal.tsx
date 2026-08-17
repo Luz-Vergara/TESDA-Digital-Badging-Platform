@@ -85,7 +85,7 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
   };
 
   const generateBadgeId = (badgeType: string) => {
-    const prefix = badgeType === 'Master' ? 'NC-IV' : badgeType === 'Skilled' ? 'NC-II' : 'COC';
+    const prefix = badgeType === 'Skilled' ? 'NC-II' : 'COC';
     const randomDigits = Math.floor(100000 + Math.random() * 900000);
     const suffix = Date.now().toString().slice(-2);
     return `${prefix}-2026-${randomDigits}-${suffix}`;
@@ -313,7 +313,6 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
               <CardContent className="p-4">
                 <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Badge Level</p>
                 <Badge className={
-                  request.badgeType === 'Master' ? 'bg-purple-100 text-purple-700' :
                   request.badgeType === 'Skilled' ? 'bg-blue-100 text-blue-700' :
                   'bg-emerald-100 text-emerald-700'
                 }>{request.badgeType}</Badge>

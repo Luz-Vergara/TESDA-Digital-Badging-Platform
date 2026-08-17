@@ -11,7 +11,7 @@ export interface BadgeRendererData {
   validUntil: string;
   verificationId: string;
   imageUrl?: string;
-  level: string; // e.g. Proficient, Expert, etc.
+  level: string; // Display value; legacy values are rendered defensively.
   qualificationTitle: string;
   qualificationCode: string;
   templateConfig?: {

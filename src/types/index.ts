@@ -1,4 +1,16 @@
-export type BadgeType = 'Proficient' | 'Expert' | 'Skilled' | 'Master';
+/** Badge types available when creating or updating frontend records. */
+export type BadgeType = 'Proficient' | 'Skilled';
+
+/** Standards are classified independently from badge type. */
+export type StandardType = 'CS' | 'MCC' | 'TR';
+
+/**
+ * Values written by earlier versions of the application. Keep this separate
+ * from BadgeType so legacy Firestore documents can be displayed safely without
+ * making Expert or Master selectable in current UI flows.
+ */
+export type LegacyBadgeType = 'Expert' | 'Master';
+export type PersistedBadgeType = BadgeType | LegacyBadgeType;
 export type BadgeStatus = 
   | 'Active' 
   | 'Expired' 
@@ -16,7 +28,7 @@ export type BadgeStatus =
 export interface BadgeMetadata {
   id: string;
   programName: string;
-  badgeType: BadgeType;
+  badgeType: PersistedBadgeType;
   description: string;
   issuer: string;
   badgeHolder: string;
@@ -30,7 +42,7 @@ export interface BadgeMetadata {
   evidenceUrl?: string;
   status: BadgeStatus;
   termsOfUse: string;
-  hierarchyLevel: number; // 1: Proficient, 2: Expert, 3: Skilled, 4: Master
+  hierarchyLevel: number;
   badgeId?: string; // ID of the template it originated from
   pathway?: string; // Added to distinguish RPL vs Standard
   qualificationName?: string;
@@ -89,7 +101,9 @@ export interface BadgeTemplate {
   badgeName: string;
   qualificationName: string;
   qualificationCode: string;
-  badgeType: 'Proficient' | 'Expert' | 'Skilled' | 'Master';
+  badgeType: BadgeType;
+  /** Optional so templates created before Phase 1 remain readable. */
+  standardType?: StandardType;
   credentialLevel: 'Unit of Competency' | 'Full Qualification / Certificate of Training' | 'Certificate of Competency' | 'National Certificate';
   relatedCompetency: string;
   description: string;
@@ -456,5 +470,3 @@ export interface RPLApplication {
   assessmentScheduleStatus?: 'Scheduled' | 'For Assessment' | 'Completed' | string;
   assessmentRemarks?: string;
 }
-
-

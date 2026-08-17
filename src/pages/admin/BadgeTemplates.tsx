@@ -85,6 +85,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from '@/components/ui/textarea';
 import { BadgeTemplate } from '@/src/types';
+import { BADGE_TYPES, getBadgeColor, getBadgeTypeLabel, isBadgeType, STANDARD_TYPES } from '@/src/lib/badge-utils';
 
 const ACTIVE_STANDARD_PROFILES = [
   "Create 2D Digital Cut-Out Animation",
@@ -225,6 +226,7 @@ export default function BadgeTemplates() {
     qualificationName: '',
     qualificationCode: '',
     badgeType: 'Proficient' as BadgeTemplate['badgeType'],
+    standardType: 'CS' as NonNullable<BadgeTemplate['standardType']>,
     credentialLevel: 'Unit of Competency' as BadgeTemplate['credentialLevel'],
     relatedCompetency: '',
     description: '',
@@ -353,42 +355,10 @@ export default function BadgeTemplates() {
     }
   };
 
-  // Handle badge type changes to auto-set credential level and issuing logic
+  // Badge type and standard type are intentionally selected independently.
+  // Do not infer one from the other.
   const handleBadgeTypeChange = (type: BadgeTemplate['badgeType']) => {
-    let level: BadgeTemplate['credentialLevel'] = 'Unit of Competency';
-    let issuers: BadgeTemplate['issuableBy'] = ['TrainingCenter'];
-    let order = 1;
-
-    switch(type) {
-      case 'Proficient':
-        level = 'Unit of Competency';
-        issuers = ['TrainingCenter'];
-        order = 1;
-        break;
-      case 'Expert':
-        level = 'Full Qualification / Certificate of Training';
-        issuers = ['TrainingCenter'];
-        order = 2;
-        break;
-      case 'Skilled':
-        level = 'Certificate of Competency';
-        issuers = ['AssessmentCenter', 'CertificationOffice'];
-        order = 3;
-        break;
-      case 'Master':
-        level = 'National Certificate';
-        issuers = ['AssessmentCenter', 'CertificationOffice'];
-        order = 4;
-        break;
-    }
-
-    setFormData(prev => ({
-      ...prev,
-      badgeType: type,
-      credentialLevel: level,
-      issuableBy: issuers,
-      displayOrder: order
-    }));
+    setFormData(prev => ({ ...prev, badgeType: type }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -463,6 +433,7 @@ export default function BadgeTemplates() {
       qualificationName: '',
       qualificationCode: '',
       badgeType: 'Proficient',
+      standardType: 'CS',
       credentialLevel: 'Unit of Competency',
       relatedCompetency: '',
       description: '',
@@ -497,7 +468,9 @@ export default function BadgeTemplates() {
       badgeName: template.badgeName || '',
       qualificationName: template.qualificationName || '',
       qualificationCode: template.qualificationCode || '',
-      badgeType: template.badgeType,
+      // Legacy template values must not re-enter the active authoring model.
+      badgeType: isBadgeType(template.badgeType) ? template.badgeType : 'Proficient',
+      standardType: template.standardType || 'CS',
       credentialLevel: template.credentialLevel || 'Unit of Competency',
       relatedCompetency: template.relatedCompetency || '',
       description: template.description,
@@ -795,15 +768,12 @@ export default function BadgeTemplates() {
 
         <TabsContent value="catalog" className="space-y-6">
           <div className="grid md:grid-cols-4 gap-6">
-            {['Proficient', 'Expert', 'Skilled', 'Master'].map((type) => (
+            {BADGE_TYPES.map((type) => (
               <Card key={type} className="border-slate-200 shadow-sm bg-white">
                 <CardContent className="p-6">
                   <div className="flex justify-between items-start mb-2">
                     <div className={`p-2 rounded-lg ${
-                      type === 'Proficient' ? 'bg-emerald-100 text-emerald-600' :
-                      type === 'Expert' ? 'bg-blue-100 text-blue-600' :
-                      type === 'Skilled' ? 'bg-purple-100 text-purple-600' :
-                      'bg-amber-100 text-amber-600'
+                      type === 'Proficient' ? 'bg-emerald-100 text-emerald-600' : 'bg-purple-100 text-purple-600'
                     }`}>
                       <Award className="h-5 w-5" />
                     </div>
@@ -892,12 +862,9 @@ export default function BadgeTemplates() {
                           </TableCell>
                           <TableCell className="text-center">
                             <span className={`inline-flex px-2 py-0.5 rounded text-[11px] font-bold ${
-                              template.badgeType === 'Proficient' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                              template.badgeType === 'Expert' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
-                              template.badgeType === 'Skilled' ? 'bg-purple-50 text-purple-700 border border-purple-200' :
-                              'bg-amber-50 text-amber-705 border border-amber-200'
+                              getBadgeColor(template.badgeType)
                             }`}>
-                              {template.badgeType}
+                              {getBadgeTypeLabel(template.badgeType)}
                             </span>
                           </TableCell>
                           <TableCell className="text-slate-600 text-xs">
@@ -1214,7 +1181,7 @@ export default function BadgeTemplates() {
                             validUntil: '05/21/2029',
                             verificationId: 'TESDA-NC3-A89102',
                             imageUrl: designerImgUrl,
-                            level: templates.find(t => t.id === designerTemplateId)?.badgeType || 'Expert',
+                            level: templates.find(t => t.id === designerTemplateId)?.badgeType || 'Proficient',
                             qualificationTitle: testTitle,
                             qualificationCode: templates.find(t => t.id === designerTemplateId)?.qualificationCode || 'ICT-AMP-23',
                             templateConfig: designerConfig
@@ -1590,24 +1557,42 @@ export default function BadgeTemplates() {
                     <SelectValue placeholder="Select type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Proficient" className="text-xs">Proficient (Unit)</SelectItem>
-                    <SelectItem value="Expert" className="text-xs">Expert (Full Qual)</SelectItem>
-                    <SelectItem value="Skilled" className="text-xs">Skilled (CoC)</SelectItem>
-                    <SelectItem value="Master" className="text-xs">Master (NC)</SelectItem>
+                    <SelectItem value="Proficient" className="text-xs">Proficient</SelectItem>
+                    <SelectItem value="Skilled" className="text-xs">Skilled</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              {/* Credential Level (Auto) */}
-              <div className="space-y-1.5 col-span-2">
-                <Label htmlFor="credentialLevel" className="text-xs font-semibold text-slate-400">Target Credential Level (Auto-calculated)</Label>
-                <Input
-                  id="credentialLevel"
+              {/* Standard type is independent from the selected badge type. */}
+              <div className="space-y-1.5">
+                <Label htmlFor="standardType" className="text-xs font-semibold text-slate-700">Standard Type</Label>
+                <Select
+                  value={formData.standardType}
+                  onValueChange={(value: NonNullable<BadgeTemplate['standardType']>) => setFormData(prev => ({ ...prev, standardType: value }))}
+                >
+                  <SelectTrigger id="standardType" className="w-full text-xs">
+                    <SelectValue placeholder="Select standard type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STANDARD_TYPES.map((type) => <SelectItem key={type} value={type} className="text-xs">{type}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="credentialLevel" className="text-xs font-semibold text-slate-700">Target Credential Level</Label>
+                <Select
                   value={formData.credentialLevel}
-                  readOnly
-                  disabled
-                  className="text-xs bg-slate-50 text-slate-400 font-medium"
-                />
+                  onValueChange={(value: BadgeTemplate['credentialLevel']) => setFormData(prev => ({ ...prev, credentialLevel: value }))}
+                >
+                  <SelectTrigger className="w-full text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Unit of Competency" className="text-xs">Unit of Competency</SelectItem>
+                    <SelectItem value="Full Qualification / Certificate of Training" className="text-xs">Full Qualification / Certificate of Training</SelectItem>
+                    <SelectItem value="Certificate of Competency" className="text-xs">Certificate of Competency</SelectItem>
+                    <SelectItem value="National Certificate" className="text-xs">National Certificate</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Related Competency */}
