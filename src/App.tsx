@@ -11,6 +11,7 @@ import ApplyRPL from './pages/learner/ApplyRPL';
 import MyApplications from './pages/learner/MyApplications';
 import MyEnrollments from './pages/learner/MyEnrollments';
 import MyBadgeWallet from './pages/learner/MyBadgeWallet';
+import LearnerBadgeHierarchy from './pages/learner/LearnerBadgeHierarchy';
 import DistrictOfficeDashboard from './pages/districtoffice/DistrictOfficeDashboard';
 import ApprovalQueue from './pages/districtoffice/ApprovalQueue';
 import RenewalManagement from './pages/districtoffice/RenewalManagement';
@@ -63,7 +64,7 @@ export default function App() {
             <Route path="applications" element={<MyApplications />} />
             <Route path="enrollments" element={<MyEnrollments />} />
             <Route path="wallet" element={<MyBadgeWallet />} />
-            <Route path="hierarchy" element={<BadgeHierarchy />} />
+            <Route path="hierarchy" element={<LearnerBadgeHierarchy />} />
           </Route>
 
           {/* Super Admin Module */}
