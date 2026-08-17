@@ -98,6 +98,8 @@ export interface FieldPosition {
 
 export interface BadgeTemplate {
   id: string;
+  /** Optional reference to the temporary QSO demo standard selected at authoring time. */
+  standardId?: string;
   badgeName: string;
   qualificationName: string;
   qualificationCode: string;

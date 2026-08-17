@@ -46,6 +46,7 @@ import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { getBadgeColor, getStatusColor } from '@/src/lib/badge-utils';
 import { BadgeRenderer } from '@/src/components/badges/BadgeRenderer';
+import { demoStandards, getDemoStandardBadgeConfiguration, type DemoStandard } from '@/src/data/demoStandards';
 
 const formatDate = (value: any) => {
   if (!value) return "N/A";
@@ -94,16 +95,15 @@ const matchBadgeWithTemplate = (item: any, template: BadgeTemplate, offerings: a
   
   if (!itemTitleNorm || !templateTitleNorm) return false;
 
-  // Type Match constraint: tightened for COC/NC badges
+  // Skilled records require a direct type match.
   let typeMatch = !item.badgeType || !template.badgeType || 
                    item.badgeType.toLowerCase().includes(template.badgeType.toLowerCase()) ||
                    template.badgeType.toLowerCase().includes(item.badgeType.toLowerCase()) ||
                    (item.badgeType === 'Individual' && template.badgeType === 'Proficient');
 
-  // Certificate of Competency records must match Skilled specifically.
+  // Skilled records must match Skilled specifically.
   if (template.badgeType === 'Skilled') {
-    typeMatch = item.badgeType === template.badgeType || 
-                (item.badgeType === 'COC' && template.badgeType === 'Skilled');
+    typeMatch = item.badgeType === template.badgeType;
   }
 
   if (typeMatch) {
@@ -340,6 +340,10 @@ export default function BadgeHierarchy() {
     );
   }
 
+  if (!isLearner) {
+    return <QSOStandardsHierarchy templates={templates} />;
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -431,6 +435,202 @@ export default function BadgeHierarchy() {
             <Button className="bg-blue-600" onClick={() => { setSearchTerm(''); setFilterLevel('All'); }}>Clear All Filters</Button>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+const templateMatchesStandard = (template: BadgeTemplate, standard: DemoStandard) =>
+  template.standardId === standard.id ||
+  (Boolean(standard.code) && template.qualificationCode === standard.code) ||
+  template.qualificationName === standard.title;
+
+function QSOStandardsHierarchy({ templates }: { templates: BadgeTemplate[] }) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterLevel, setFilterLevel] = useState<'All' | 'Proficient' | 'Skilled'>('All');
+  const [expandedStandards, setExpandedStandards] = useState<string[]>(demoStandards.map((standard) => standard.id));
+
+  const standards = demoStandards.filter((standard) => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+    const matchesSearch = !normalizedSearch ||
+      standard.title.toLowerCase().includes(normalizedSearch) ||
+      standard.code?.toLowerCase().includes(normalizedSearch) ||
+      standard.competencies.some((competency) =>
+        competency.title.toLowerCase().includes(normalizedSearch) ||
+        competency.code?.toLowerCase().includes(normalizedSearch),
+      );
+    const matchesType = filterLevel === 'All' ||
+      standard.completionBadgeType === filterLevel ||
+      standard.competencies.some((competency) => competency.badgeType === filterLevel);
+    return matchesSearch && matchesType;
+  });
+
+  const toggleStandard = (standardId: string) => {
+    setExpandedStandards((current) =>
+      current.includes(standardId)
+        ? current.filter((id) => id !== standardId)
+        : [...current, standardId],
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Badge Hierarchy</h1>
+          <p className="font-medium text-slate-500">Competency and complete-standard badge pathways for the QSO demo standards.</p>
+        </div>
+        <Badge variant="outline" className="w-fit gap-1.5 border-indigo-200 bg-indigo-50 px-3 py-1 text-indigo-700">
+          <ShieldCheck className="h-3.5 w-3.5" />
+          Demo standards
+        </Badge>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card className="border-slate-200 shadow-sm md:col-span-3">
+          <CardContent className="p-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Input
+                placeholder="Search standards or competencies..."
+                className="border-none bg-transparent pl-10 shadow-none focus-visible:ring-0"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+              />
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-slate-200 shadow-sm">
+          <CardContent className="p-1.5">
+            <Select value={filterLevel} onValueChange={(value: 'All' | 'Proficient' | 'Skilled') => setFilterLevel(value)}>
+              <SelectTrigger className="h-10 border-none shadow-none focus:ring-0">
+                <Filter className="mr-2 h-4 w-4 text-slate-400" />
+                <SelectValue placeholder="All badge types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="All">All badge types</SelectItem>
+                <SelectItem value="Proficient">Proficient</SelectItem>
+                <SelectItem value="Skilled">Skilled</SelectItem>
+              </SelectContent>
+            </Select>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="space-y-4">
+        {standards.map((standard) => {
+          const mappedTemplates = templates.filter((template) => templateMatchesStandard(template, standard));
+          const proficientCompetencies = standard.competencies.filter((competency) => competency.badgeType === 'Proficient');
+          const isExpanded = expandedStandards.includes(standard.id);
+
+          return (
+            <Card key={standard.id} className="overflow-hidden border-slate-200 shadow-sm">
+              <button
+                className="flex w-full items-center justify-between gap-4 p-5 text-left transition-colors hover:bg-slate-50"
+                onClick={() => toggleStandard(standard.id)}
+              >
+                <div className="flex min-w-0 items-center gap-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-100">
+                    <BookOpen className="h-6 w-6" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="mb-1 flex flex-wrap items-center gap-2">
+                      <Badge variant="outline" className="border-indigo-200 bg-indigo-50 text-indigo-700">{standard.type}</Badge>
+                      {standard.code && <span className="text-xs font-semibold text-slate-500">{standard.code}</span>}
+                    </div>
+                    <h2 className="text-lg font-bold text-slate-900">{standard.title}</h2>
+                    <p className="mt-1 text-xs text-slate-500">{getDemoStandardBadgeConfiguration(standard)}</p>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <Badge className={mappedTemplates.length > 0 ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100' : 'bg-slate-100 text-slate-600 hover:bg-slate-100'}>
+                    {mappedTemplates.length} mapped
+                  </Badge>
+                  {isExpanded ? <ChevronDown className="h-5 w-5 text-slate-500" /> : <ChevronRight className="h-5 w-5 text-slate-500" />}
+                </div>
+              </button>
+
+              <AnimatePresence initial={false}>
+                {isExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="border-t border-slate-100 bg-slate-50/60 p-5 sm:p-8"
+                  >
+                    <div className="grid gap-6 lg:grid-cols-[1fr_auto_1fr] lg:items-center">
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                        {proficientCompetencies.map((competency) => (
+                          <div key={competency.code || competency.title} className="rounded-2xl border border-green-200 bg-green-50 p-4">
+                            <Badge className="mb-3 bg-green-100 text-green-700 hover:bg-green-100">Proficient</Badge>
+                            {competency.code && <p className="mb-1 text-[10px] font-bold tracking-wide text-green-700">{competency.code}</p>}
+                            <p className="text-sm font-semibold leading-snug text-slate-800">{competency.title}</p>
+                          </div>
+                        ))}
+                        {standard.competencies.filter((competency) => !competency.badgeType).map((competency) => (
+                          <div key={competency.code || competency.title} className="rounded-2xl border border-slate-200 bg-white p-4 sm:col-span-2 xl:col-span-3">
+                            <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">Known competency</p>
+                            <p className="text-sm font-semibold leading-snug text-slate-800">{competency.title}</p>
+                          </div>
+                        ))}
+                        {standard.competencies.length === 0 && (
+                          <div className="rounded-2xl border border-green-200 bg-green-50 p-4 sm:col-span-2 xl:col-span-3">
+                            <Badge className="mb-3 bg-green-100 text-green-700 hover:bg-green-100">Proficient</Badge>
+                            <p className="text-sm font-semibold text-slate-800">Complete MCC achievement</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {standard.completionBadgeType === 'Skilled' && (
+                        <div className="flex flex-col items-center gap-1 text-center text-blue-600">
+                          <ArrowUpRight className="h-7 w-7 rotate-45" />
+                          <span className="text-[10px] font-bold uppercase tracking-wide">Complete standard</span>
+                        </div>
+                      )}
+
+                      <div className={cn(
+                        'rounded-3xl border-2 p-5 shadow-sm',
+                        standard.completionBadgeType === 'Skilled'
+                          ? TIER_COLORS.Skilled
+                          : TIER_COLORS.Proficient,
+                      )}>
+                        <Badge className={cn(
+                          'mb-3',
+                          standard.completionBadgeType === 'Skilled'
+                            ? 'bg-blue-100 text-blue-700 hover:bg-blue-100'
+                            : 'bg-green-100 text-green-700 hover:bg-green-100',
+                        )}>
+                          {standard.completionBadgeType}
+                        </Badge>
+                        <p className="text-base font-bold text-slate-900">Complete {standard.type} standard</p>
+                        <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                          {standard.completionBadgeType === 'Skilled'
+                            ? 'Awarded after the standard’s required completion is demonstrated.'
+                            : 'This complete MCC achievement is represented by one Proficient badge.'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 border-t border-slate-200 pt-4">
+                      <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Mapped badge templates</p>
+                      {mappedTemplates.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {mappedTemplates.map((template) => (
+                            <Badge key={template.id} variant="outline" className={getBadgeColor(template.badgeType)}>
+                              {template.badgeType} · {template.badgeName}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-slate-500">No badge templates are mapped to this demo standard yet.</p>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </Card>
+          );
+        })}
       </div>
     </div>
   );
@@ -646,8 +846,8 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, issuedB
                       <p className="uppercase text-[9px] tracking-widest text-slate-400">Progression Map</p>
                       <p className="leading-relaxed">
                         {isLearner 
-                          ? "Track your journey from unit mastery to full national certification for this qualification."
-                          : "This hierarchy defines the competency progression from unit mastery to full national certification."}
+                          ? "Track your journey from competency mastery to complete-standard achievement."
+                          : "This hierarchy defines the progression from competency mastery to complete-standard achievement."}
                       </p>
                     </div>
                   </div>
@@ -674,11 +874,10 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, issuedB
                   <div className="w-full">
                     <HierarchyGroup 
                       title="Skilled Badges" 
-                      level="Certificate of Competency (COC)" 
+                      level="Complete-standard achievement"
                       items={skilledBadges} 
                       allBadges={badges}
                       colorClass={TIER_COLORS.Skilled} 
-                      maxSlots={4}
                       compact
                       issuedBadges={issuedBadges}
                       listRequests={listRequests}
@@ -699,7 +898,6 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, issuedB
                       items={proficientBadges} 
                       allBadges={badges}
                       colorClass={TIER_COLORS.Proficient} 
-                      maxSlots={6}
                       compact
                       issuedBadges={issuedBadges}
                       listRequests={listRequests}
@@ -730,7 +928,6 @@ interface GroupProps {
   items: BadgeTemplate[];
   allBadges: BadgeTemplate[];
   colorClass: string;
-  maxSlots: number;
   compact?: boolean;
   issuedBadges: any[];
   listRequests: any[];
@@ -742,16 +939,13 @@ interface GroupProps {
   qual: string;
 }
 
-function HierarchyGroup({ title, level, items, allBadges, colorClass, maxSlots, compact, issuedBadges, listRequests, completions, offerings, isLearner, learnerQualification, enrollments, qual }: GroupProps) {
+function HierarchyGroup({ title, level, items, allBadges, colorClass, compact, issuedBadges, listRequests, completions, offerings, isLearner, learnerQualification, enrollments, qual }: GroupProps) {
   const navigate = useNavigate();
   const [selectedBadge, setSelectedBadge] = useState<{
     template: BadgeTemplate;
     record?: BadgeIssuanceRequest;
     status: 'Locked' | 'Pending' | 'Rejected' | 'Active' | 'Eligible';
   } | null>(null);
-
-  // Create fixed slots to show the structure even if empty
-  const slots = Array.from({ length: maxSlots });
 
   return (
     <div className="flex flex-col items-center gap-6 w-full">
@@ -764,21 +958,7 @@ function HierarchyGroup({ title, level, items, allBadges, colorClass, maxSlots, 
         "grid gap-4 w-full",
         compact ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4" : "grid-cols-1 justify-items-center"
       )}>
-        {slots.map((_, idx) => {
-          const badge = items[idx];
-          if (!badge) {
-            return (
-              <div key={idx} className="relative">
-                <div className="p-4 rounded-2xl border-2 border-dashed border-slate-100 bg-slate-50/30 flex items-center justify-center h-full min-h-[90px]">
-                   <div className="text-center opacity-20">
-                     <Award className="h-5 w-5 mx-auto mb-1 text-slate-300" />
-                     <p className="text-[8px] font-bold uppercase">Reserved</p>
-                   </div>
-                </div>
-              </div>
-            );
-          }
-
+        {items.map((badge) => {
             // Determing status for learner
             let status: 'Locked' | 'Pending' | 'Rejected' | 'Active' | 'Eligible' = 'Locked';
             let activeRecord: any = null;

@@ -86,6 +86,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { BadgeTemplate } from '@/src/types';
 import { BADGE_TYPES, getBadgeColor, getBadgeTypeLabel, isBadgeType, STANDARD_TYPES } from '@/src/lib/badge-utils';
+import { demoStandards, getDemoStandard } from '@/src/data/demoStandards';
 
 const ACTIVE_STANDARD_PROFILES = [
   "Create 2D Digital Cut-Out Animation",
@@ -225,6 +226,7 @@ export default function BadgeTemplates() {
     badgeName: '',
     qualificationName: '',
     qualificationCode: '',
+    standardId: '',
     badgeType: 'Proficient' as BadgeTemplate['badgeType'],
     standardType: 'CS' as NonNullable<BadgeTemplate['standardType']>,
     credentialLevel: 'Unit of Competency' as BadgeTemplate['credentialLevel'],
@@ -361,6 +363,27 @@ export default function BadgeTemplates() {
     setFormData(prev => ({ ...prev, badgeType: type }));
   };
 
+  const handleDemoStandardChange = (standardId: string) => {
+    if (standardId === 'none') {
+      setFormData(prev => ({ ...prev, standardId: '' }));
+      return;
+    }
+
+    const standard = getDemoStandard(standardId);
+    if (!standard) return;
+
+    setFormData(prev => ({
+      ...prev,
+      standardId: standard.id,
+      standardType: standard.type,
+      qualificationName: standard.title,
+      qualificationCode: standard.code || '',
+      relatedCompetency: standard.competencies
+        .map((competency) => [competency.code, competency.title].filter(Boolean).join(' — '))
+        .join('; '),
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) {
@@ -432,6 +455,7 @@ export default function BadgeTemplates() {
       badgeName: '',
       qualificationName: '',
       qualificationCode: '',
+      standardId: '',
       badgeType: 'Proficient',
       standardType: 'CS',
       credentialLevel: 'Unit of Competency',
@@ -468,6 +492,9 @@ export default function BadgeTemplates() {
       badgeName: template.badgeName || '',
       qualificationName: template.qualificationName || '',
       qualificationCode: template.qualificationCode || '',
+      standardId: template.standardId || demoStandards.find((standard) =>
+        standard.code === template.qualificationCode || standard.title === template.qualificationName,
+      )?.id || '',
       // Legacy template values must not re-enter the active authoring model.
       badgeType: isBadgeType(template.badgeType) ? template.badgeType : 'Proficient',
       standardType: template.standardType || 'CS',
@@ -1483,6 +1510,29 @@ export default function BadgeTemplates() {
 
           <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
             <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5 col-span-2">
+                <Label htmlFor="demoStandard" className="text-xs font-semibold text-slate-700">Demo Standard</Label>
+                <Select
+                  value={formData.standardId || 'none'}
+                  onValueChange={handleDemoStandardChange}
+                >
+                  <SelectTrigger id="demoStandard" className="w-full text-xs">
+                    <SelectValue placeholder="Select a temporary demo standard" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none" className="text-xs">No demo standard</SelectItem>
+                    {demoStandards.map((standard) => (
+                      <SelectItem key={standard.id} value={standard.id} className="text-xs">
+                        {standard.type} · {standard.title}{standard.code ? ` (${standard.code})` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-slate-400">
+                  Selecting a standard fills its reference details only; Badge Type remains an independent choice.
+                </p>
+              </div>
+
               {/* Badge Name */}
               <div className="space-y-1.5 col-span-2">
                 <Label htmlFor="badgeName" className="text-xs font-semibold text-slate-700">Badge/Standard Name</Label>
@@ -1511,13 +1561,12 @@ export default function BadgeTemplates() {
 
               {/* Qualification Code */}
               <div className="space-y-1.5">
-                <Label htmlFor="qualificationCode" className="text-xs font-semibold text-slate-700">Qualification Code</Label>
+                <Label htmlFor="qualificationCode" className="text-xs font-semibold text-slate-700">Qualification Code (if provided)</Label>
                 <Input
                   id="qualificationCode"
                   placeholder="e.g. ANIM-NC3-2D"
                   value={formData.qualificationCode}
                   onChange={(e) => setFormData(prev => ({ ...prev, qualificationCode: e.target.value }))}
-                  required
                   className="text-xs"
                 />
               </div>
@@ -1557,8 +1606,9 @@ export default function BadgeTemplates() {
                     <SelectValue placeholder="Select type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Proficient" className="text-xs">Proficient</SelectItem>
-                    <SelectItem value="Skilled" className="text-xs">Skilled</SelectItem>
+                    {BADGE_TYPES.map((type) => (
+                      <SelectItem key={type} value={type} className="text-xs">{type}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
