@@ -295,6 +295,10 @@ export interface BadgeRequest {
   learnerId?: string;
   learnerName?: string;
   learnerEmail?: string;
+  badgeTemplateName?: string;
+  programTitle?: string;
+  qualificationName?: string;
+  qualificationCode?: string;
   badgeId?: string;
   badgeName?: string;
   programName?: string;
@@ -311,15 +315,23 @@ export interface BadgeRequest {
     externalEligibilityKey?: string;
     externalEligibility?: {
       externalTrainingCenterId: string;
+      trainingCenterName?: string;
+      learnerName: string;
+      learnerEmail?: string;
       learnerUli: string;
       externalEnrollmentId: string;
       sourceRecordId: string;
       ctprNumber: string;
+      programTitle?: string;
+      qualificationCode?: string;
       requiredCompetencyCount: number;
       completedCompetencyCount: number;
       missingCompetencyCodes: string[];
       evaluatedAt: string;
       retrievedAt: string;
+      mappedBadgeTemplateId: string;
+      mappedBadgeTemplateName: string;
+      mappedBadgeType: BadgeType;
     };
   }
 

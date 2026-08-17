@@ -42,7 +42,7 @@ export default function DistrictOfficeDashboard() {
     trainingCenters: 0,
     approved: 0,
     rejected: 0,
-    expiring: 0
+    issuedBadges: 0
   });
   const [recentRequests, setRecentRequests] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -75,9 +75,16 @@ export default function DistrictOfficeDashboard() {
         return;
       }
 
-      // Requests stats
-      const pathIssued = 'issuedBadges';
+      // Request counts are sourced from badgeRequests.
+      const pathRequests = 'badgeRequests';
       const qRequests = query(
+        collection(db, pathRequests),
+        where('districtOfficeId', 'in', districtIdentifiers)
+      );
+
+      // Issued badge counts are sourced independently from issuedBadges.
+      const pathIssued = 'issuedBadges';
+      const qIssued = query(
         collection(db, pathIssued),
         where('districtOfficeId', 'in', districtIdentifiers)
       );
@@ -89,21 +96,31 @@ export default function DistrictOfficeDashboard() {
         where('assignedDistrictId', 'in', districtIdentifiers)
       );
 
-      // Recent requests for table
-      const qRecent = query(
-        collection(db, pathIssued),
-        where('districtOfficeId', 'in', districtIdentifiers)
-      );
-
     const unsubRequests = onSnapshot(qRequests, (snapshot) => {
-      const docs = snapshot.docs.map(doc => doc.data());
+      const docs: any[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setStats(prev => ({
         ...prev,
-        pending: docs.filter(d => d.status === 'Pending Approval' || d.status === 'Pending District Approval').length,
-        approved: docs.filter(d => d.status === 'Approved' || d.status === 'Published').length,
+        pending: docs.filter(d =>
+          d.status === 'Pending Review' ||
+          d.status === 'Pending Approval' ||
+          d.status === 'Pending District Approval',
+        ).length,
+        approved: docs.filter(d => d.status === 'Approved').length,
         rejected: docs.filter(d => d.status === 'Rejected').length,
-        expiring: docs.filter(d => d.status === 'Expiring').length // Assuming such status exists or would be calculated
       }));
+      setRecentRequests(
+        [...docs]
+          .sort((a: any, b: any) => ((b.submittedAt?.seconds || 0) - (a.submittedAt?.seconds || 0)))
+          .slice(0, 5),
+      );
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, pathRequests);
+      setLoading(false);
+    });
+
+    const unsubIssued = onSnapshot(qIssued, (snapshot) => {
+      setStats(prev => ({ ...prev, issuedBadges: snapshot.size }));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, pathIssued);
     });
@@ -118,17 +135,6 @@ export default function DistrictOfficeDashboard() {
       handleFirestoreError(error, OperationType.LIST, pathOrgs);
     });
 
-    const unsubRecent = onSnapshot(qRecent, (snapshot) => {
-      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-        .sort((a: any, b: any) => ((b.submittedAt?.seconds || 0) - (a.submittedAt?.seconds || 0)))
-        .slice(0, 5);
-      setRecentRequests(docs);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, pathIssued);
-      setLoading(false);
-    });
-
     // Mock notifications for now, but linked to actions
     setNotifications([
       { id: 1, title: 'New badge request submitted', center: 'Manila Training Center', time: '10m ago', type: 'info' },
@@ -138,8 +144,8 @@ export default function DistrictOfficeDashboard() {
 
     return () => {
         unsubRequests();
+        unsubIssued();
         unsubCenters();
-        unsubRecent();
       };
     };
 
@@ -159,6 +165,7 @@ export default function DistrictOfficeDashboard() {
     { label: 'Training Centers', value: stats.trainingCenters, icon: Building2, color: 'text-blue-600', bg: 'bg-blue-50', link: '/districtoffice/training-centers' },
     { label: 'Approved Requests', value: stats.approved, icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50', link: '/districtoffice/status' },
     { label: 'Rejected Requests', value: stats.rejected, icon: XCircle, color: 'text-rose-600', bg: 'bg-rose-50', link: '/districtoffice/status' },
+    { label: 'Issued Badges', value: stats.issuedBadges, icon: Award, color: 'text-indigo-600', bg: 'bg-indigo-50', link: '/districtoffice/status' },
   ];
 
   return (
@@ -212,7 +219,7 @@ export default function DistrictOfficeDashboard() {
       </Card>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
         {statCards.map((stat) => (
           <Link key={stat.label} to={stat.link}>
             <Card className="hover:shadow-md transition-all h-full border-slate-200 group">
@@ -294,7 +301,7 @@ export default function DistrictOfficeDashboard() {
                   {recentRequests.length > 0 ? recentRequests.map(req => (
                     <TableRow key={req.id} className="hover:bg-slate-50 transition-colors">
                       <TableCell>
-                        <p className="font-bold text-slate-900">{req.learnerName}</p>
+                        <p className="font-bold text-slate-900">{req.externalEligibility?.learnerName || req.learnerName || '—'}</p>
                         <p className="text-[10px] font-mono text-slate-400">{req.id.substring(0, 8)}</p>
                       </TableCell>
                       <TableCell>
@@ -302,7 +309,7 @@ export default function DistrictOfficeDashboard() {
                       </TableCell>
                       <TableCell className="text-center">
                         <div className="flex flex-col items-center">
-                          <p className="text-sm font-medium">{req.issuerName || req.trainingCenterName || req.assessmentCenterName}</p>
+                          <p className="text-sm font-medium">{req.externalEligibility?.trainingCenterName || req.trainingCenterName || req.issuerName || req.assessmentCenterName || '—'}</p>
                           <Badge variant="secondary" className="text-[8px] h-4 mt-1">{req.issuerType || req.sourceType || 'Center'}</Badge>
                         </div>
                       </TableCell>
@@ -312,7 +319,7 @@ export default function DistrictOfficeDashboard() {
                       <TableCell>
                         <Badge className={
                           req.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' :
-                          req.status === 'Pending Approval' ? 'bg-amber-100 text-amber-700' :
+                          req.status === 'Pending Approval' || req.status === 'Pending Review' ? 'bg-amber-100 text-amber-700' :
                           'bg-slate-100 text-slate-700'
                         } variant="outline">
                           {req.status}

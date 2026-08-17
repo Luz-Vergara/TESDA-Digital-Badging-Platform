@@ -29,6 +29,21 @@ import { Badge } from '@/components/ui/badge';
 import { BadgeRequest, ProgramOffering } from '@/src/types';
 import RequestDetailsModal from '@/src/components/districtoffice/RequestDetailsModal';
 
+const isExternalRequest = (request: BadgeRequest) => Boolean(request.externalEligibility);
+
+const getRequestProgramTitle = (request: BadgeRequest, offering?: ProgramOffering) =>
+  request.externalEligibility?.programTitle ||
+  request.programTitle ||
+  request.qualificationName ||
+  offering?.programTitle ||
+  '—';
+
+const getRequestTrainingCenter = (request: BadgeRequest, offering?: ProgramOffering) =>
+  request.externalEligibility?.trainingCenterName ||
+  request.trainingCenterName ||
+  offering?.trainingCenterName ||
+  '—';
+
 export default function ApprovalQueue() {
   const { userProfile, isAuthReady, user } = useFirebase();
   const [requests, setRequests] = useState<BadgeRequest[]>([]);
@@ -60,7 +75,12 @@ export default function ApprovalQueue() {
 
       // Fetch offering titles for display
       if (requestData.length > 0) {
-        const offeringIds = [...new Set(requestData.map(r => r.programOfferingId))];
+        const offeringIds = [...new Set(
+          requestData
+            .filter((request) => !isExternalRequest(request))
+            .map((request) => request.programOfferingId)
+            .filter(Boolean),
+        )];
         const offeringDocs = await Promise.all(offeringIds.map(id => getDoc(doc(db, 'programOfferings', id))));
         const offeringData = offeringDocs.filter(d => d.exists()).map(d => ({ id: d.id, ...d.data() })) as ProgramOffering[];
         setOfferings(offeringData);
@@ -76,7 +96,7 @@ export default function ApprovalQueue() {
 
   const filteredRequests = requests.filter(req => {
     const offering = offerings.find(o => o.id === req.programOfferingId);
-    const searchString = `${offering?.programTitle} ${req.requestType} ${req.badgeType}`.toLowerCase();
+    const searchString = `${getRequestProgramTitle(req, offering)} ${getRequestTrainingCenter(req, offering)} ${req.requestType} ${req.badgeType}`.toLowerCase();
     return searchString.includes(searchQuery.toLowerCase());
   });
 
@@ -134,12 +154,12 @@ export default function ApprovalQueue() {
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-col">
-                        <span className="text-sm font-bold text-slate-900">{offering?.programTitle || 'Program Title'}</span>
+                        <span className="text-sm font-bold text-slate-900">{getRequestProgramTitle(req, offering)}</span>
                         <span className="text-[10px] text-blue-600 font-bold uppercase">{req.badgeType}</span>
                       </div>
                     </TableCell>
                     <TableCell className="text-sm font-medium">
-                      {offering?.trainingCenterName || 'Source Center'}
+                      {getRequestTrainingCenter(req, offering)}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1.5 font-bold text-slate-600">
