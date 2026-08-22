@@ -14,7 +14,10 @@ type ApiScope = {
   external_learner_uli: string | null;
 };
 
-const allowedOrigins = (Deno.env.get("ALLOWED_ORIGIN") ?? "").split(",").map((origin) => origin.trim()).filter(Boolean);
+const configuredAllowedOrigins = (Deno.env.get("ALLOWED_ORIGIN") ?? "").split(",").map((origin) => origin.trim()).filter(Boolean);
+// Keep the server-configured production/staging allow-list intact while
+// permitting the local frontend used for prototype testing.
+const allowedOrigins = [...new Set([...configuredAllowedOrigins, "http://localhost:3001"])];
 
 function corsHeaders(request: Request): HeadersInit {
   const origin = request.headers.get("origin");
