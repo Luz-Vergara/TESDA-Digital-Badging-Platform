@@ -24,7 +24,7 @@ import {
   AlertCircle,
   Users
 } from 'lucide-react';
-import { BadgeRequest, ProgramOffering, Learner, BadgeTemplate, NewIssuedBadge } from '@/src/types';
+import { BadgeRequest, ProgramOffering, Learner, BadgeTemplate, NewIssuedBadge, PublicCredential } from '@/src/types';
 import { doc, updateDoc, serverTimestamp, addDoc, collection, getDoc, getDocs, query, where, writeBatch } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
@@ -88,7 +88,10 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
   if (!request) return null;
 
   const generateVerificationId = () => {
-    return `V26-${Math.random().toString(36).substring(2, 12).toUpperCase()}`;
+    const randomBytes = new Uint8Array(16);
+    window.crypto.getRandomValues(randomBytes);
+    const randomId = Array.from(randomBytes, (byte) => byte.toString(16).padStart(2, '0')).join('').toUpperCase();
+    return `V${new Date().getFullYear().toString().slice(-2)}-${randomId}`;
   };
 
   const handleApprove = async () => {
@@ -102,6 +105,15 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
       const districtId = request.districtOfficeId || userProfile?.organizationId || userProfile?.assignedDistrictId || 'demo-district-office';
       const externalEvidence = request.externalEligibility;
       const isExternalRequest = Boolean(externalEvidence);
+      const badgeDesignId = template?.badgeDesignId || '';
+      let badgeArtworkUrl = template?.imageUrl || '';
+
+      if (badgeDesignId) {
+        const designSnapshot = await getDoc(doc(db, 'badgeDesigns', badgeDesignId));
+        if (designSnapshot.exists()) {
+          badgeArtworkUrl = String(designSnapshot.data().artworkUrl || badgeArtworkUrl);
+        }
+      }
 
       // Determine template prefix per specifications (Rule B)
       let prefix = template?.badgeIdPrefix || '';
@@ -137,7 +149,8 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
           badgeId,
           verificationId,
           badgeTemplateId: externalEvidence?.mappedBadgeTemplateId || request.badgeTemplateId || template?.id || '',
-          badgeDesignId: template?.badgeDesignId || '',
+          badgeDesignId,
+          badgeArtworkUrl,
           badgeTemplateName: externalEvidence?.mappedBadgeTemplateName || request.badgeTemplateName || request.templateDetails?.badgeName || template?.badgeName || (offering && offering.badgeTemplateName) || (offering && offering.programTitle) || '',
           badgeRequestId: request.id,
           requestNumber: request.requestNumber || '',
@@ -186,6 +199,30 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
         };
 
         batch.set(issuedBadgeRef, badgeData);
+
+        const standardCode = badgeData.qualificationCode || '';
+        const standardTitle = badgeData.qualificationName || badgeData.programTitle || badgeData.badgeTemplateName;
+        const competencyCode = badgeData.competencyCode || '';
+        const competencyTitle = badgeData.competencyTitle || '';
+        const publicCredential: PublicCredential = {
+          verificationId,
+          badgeId,
+          badgeName: badgeData.badgeTemplateName || badgeData.programTitle,
+          badgeType: badgeData.badgeType,
+          ...(badgeDesignId ? { badgeDesignId } : {}),
+          ...(badgeArtworkUrl ? { badgeArtworkUrl } : {}),
+          standardType: badgeData.standardType || template?.standardType || 'TR',
+          standardCode,
+          standardTitle,
+          ...(badgeData.recognitionScope === 'Competency' && competencyCode ? { competencyCode } : {}),
+          ...(badgeData.recognitionScope === 'Competency' && competencyTitle ? { competencyTitle } : {}),
+          holderDisplayName: badgeData.learnerName,
+          trainingProviderDisplayName: badgeData.trainingCenterName || 'Training Center',
+          issueDate: serverTimestamp(),
+          expiryDate,
+          credentialStatus: 'Active',
+        };
+        batch.set(doc(db, 'publicCredentials', verificationId), publicCredential);
 
         // Update learner badge status
         const learnerRef = doc(db, 'learners', learner.id);

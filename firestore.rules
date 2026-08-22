@@ -89,6 +89,10 @@ service cloud.firestore {
       return isAdmin() || hasRole('icto_admin') || (isDemoUser() && request.auth.token.email == 'icto@demo.com');
     }
 
+    function isCO() {
+      return isAdmin() || hasRole('co_admin');
+    }
+
     function isDistrictOffice() {
       return isAdmin() || hasRole('DistrictOffice') || (isDemoUser() && expectedDemoRole() == 'DistrictOffice');
     }
@@ -97,13 +101,32 @@ service cloud.firestore {
       return isAdmin() || (
         isDistrictOffice() && (
           currentDistrictId() == districtId ||
-          currentOrganizationId() == districtId
+          currentOrganizationId() == districtId ||
+          currentUserData().get('office', '') == districtId
         )
       );
     }
 
     function isTrainingCenter() {
       return isAdmin() || hasRole('TrainingCenter') || (isDemoUser() && expectedDemoRole() == 'TrainingCenter');
+    }
+
+    function isLearnerParticipant(data) {
+      return isSignedIn() && data.get('learnerIds', []).hasAny([request.auth.uid]);
+    }
+
+    function canReadIssuedBadge(data) {
+      return isSignedIn() && (
+        isAdmin() || isQSO() || isICTO() || isCO() || hasRole('AssessmentCenter') ||
+        isApprovalAuthorityFor(data) ||
+        isTrainingCenterFor(data.get('trainingCenterId', '')) ||
+        (isTrainingCenter() && data.get('issuerId', '') == request.auth.uid) ||
+        data.get('learnerId', '') == request.auth.uid ||
+        (
+          request.auth.token.email is string &&
+          data.get('learnerEmail', '') == request.auth.token.email
+        )
+      );
     }
 
     // Badge workflow authority is based on the platform organization links,
@@ -117,12 +140,7 @@ service cloud.firestore {
 
     function isApprovalAuthorityFor(data) {
       let districtOfficeId = data.get('districtOfficeId', '');
-      return isAdmin() || isQSO() || (
-        hasRole('DistrictOffice') && (
-          getUserData().get('organizationId', '') == districtOfficeId ||
-          getUserData().get('assignedDistrictId', '') == districtOfficeId
-        )
-      );
+      return isAdmin() || isQSO() || isDistrictMatch(districtOfficeId);
     }
 
     function isExternalBadgeRequest(data) {
@@ -204,6 +222,39 @@ service cloud.firestore {
     function isValidIssuedBadge(data) {
       return data.keys().hasAll(['learnerId', 'learnerName', 'badgeId', 'status', 'issuerId']) &&
              data.status in ['Active', 'Expired', 'Revoked', 'Pending Approval', 'Approved', 'Rejected'];
+    }
+
+    function isValidPublicCredential(verificationId, data) {
+      return data.keys().hasAll([
+          'verificationId', 'badgeId', 'badgeName', 'badgeType',
+          'standardType', 'standardCode', 'standardTitle',
+          'holderDisplayName', 'trainingProviderDisplayName',
+          'issueDate', 'expiryDate', 'credentialStatus'
+        ]) &&
+        data.keys().hasOnly([
+          'verificationId', 'badgeId', 'badgeName', 'badgeType',
+          'badgeDesignId', 'badgeArtworkUrl', 'standardType',
+          'standardCode', 'standardTitle', 'competencyCode',
+          'competencyTitle', 'holderDisplayName',
+          'trainingProviderDisplayName', 'issueDate', 'expiryDate',
+          'credentialStatus'
+        ]) &&
+        data.verificationId == verificationId &&
+        isValidId(verificationId) &&
+        data.badgeId is string && data.badgeId.size() > 0 && data.badgeId.size() <= 128 &&
+        data.badgeName is string && data.badgeName.size() > 0 && data.badgeName.size() <= 256 &&
+        data.badgeType in ['Proficient', 'Skilled'] &&
+        data.get('badgeDesignId', '') is string && data.get('badgeDesignId', '').size() <= 128 &&
+        data.get('badgeArtworkUrl', '') is string && data.get('badgeArtworkUrl', '').size() <= 900000 &&
+        data.standardType in ['CS', 'MCC', 'TR'] &&
+        data.standardCode is string && data.standardCode.size() <= 128 &&
+        data.standardTitle is string && data.standardTitle.size() > 0 && data.standardTitle.size() <= 256 &&
+        data.get('competencyCode', '') is string && data.get('competencyCode', '').size() <= 128 &&
+        data.get('competencyTitle', '') is string && data.get('competencyTitle', '').size() <= 256 &&
+        data.holderDisplayName is string && data.holderDisplayName.size() > 0 && data.holderDisplayName.size() <= 256 &&
+        data.trainingProviderDisplayName is string && data.trainingProviderDisplayName.size() > 0 && data.trainingProviderDisplayName.size() <= 256 &&
+        data.issueDate is timestamp && data.expiryDate is timestamp &&
+        data.credentialStatus in ['Active', 'Expired', 'Revoked', 'Suspended'];
     }
 
     function isValidLearner(data) {
@@ -298,12 +349,27 @@ service cloud.firestore {
       allow write: if isQSO() || isAdmin() || (isDemoUser() && incoming().get('isDemo', false) == true);
     }
 
+    match /badgeDesigns/{designId} {
+      allow read: if isSignedIn();
+      allow write: if isQSO() || isAdmin();
+    }
+
     match /issuedBadges/{issuedBadgeId} {
-      allow read: if true; // Public verification allowed
+      allow get, list: if canReadIssuedBadge(resource.data);
       allow create: if isSignedIn() &&
         isApprovalAuthorityFor(incoming()) &&
         hasApprovedSourceRequest(incoming());
-      allow update: if isSignedIn() && isApprovalAuthorityFor(existing());
+      allow update: if isSignedIn() && (isApprovalAuthorityFor(existing()) || isCO());
+      allow delete: if isAdmin();
+    }
+
+    match /publicCredentials/{verificationId} {
+      allow get: if isValidId(verificationId) && isValidPublicCredential(verificationId, resource.data);
+      allow list: if false;
+      allow create: if isDistrictOffice() && isValidPublicCredential(verificationId, incoming());
+      allow update: if (isDistrictOffice() || isCO()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['credentialStatus', 'expiryDate']) &&
+        isValidPublicCredential(verificationId, incoming());
       allow delete: if isAdmin();
     }
 
@@ -354,8 +420,12 @@ service cloud.firestore {
     }
 
     match /badgeRequests/{requestId} {
-      allow get: if true; // Public individual request lookup for external QR/URL verification
-      allow list: if isSignedIn();
+      allow get, list: if isSignedIn() && (
+        isAdmin() || isQSO() || isICTO() || isCO() || hasRole('AssessmentCenter') ||
+        isApprovalAuthorityFor(resource.data) ||
+        isTrainingCenterFor(resource.data.get('trainingCenterId', '')) ||
+        isLearnerParticipant(resource.data)
+      );
       allow create: if isSignedIn() &&
         isTrainingCenterFor(incoming().get('trainingCenterId', '')) &&
         hasValidExternalRequestIdentity(requestId, incoming());

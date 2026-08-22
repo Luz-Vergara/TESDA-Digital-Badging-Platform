@@ -105,6 +105,26 @@ export interface BadgeDesign {
   status: 'Active' | 'Draft' | 'Archived';
 }
 
+/** Deliberately minimal public projection keyed by verificationId. */
+export interface PublicCredential {
+  verificationId: string;
+  badgeId: string;
+  badgeName: string;
+  badgeType: BadgeType;
+  badgeDesignId?: string;
+  badgeArtworkUrl?: string;
+  standardType: StandardType;
+  standardCode: string;
+  standardTitle: string;
+  competencyCode?: string;
+  competencyTitle?: string;
+  holderDisplayName: string;
+  trainingProviderDisplayName: string;
+  issueDate: any;
+  expiryDate: any;
+  credentialStatus: 'Active' | 'Expired' | 'Revoked' | 'Suspended';
+}
+
 export type RecognitionScope = 'Competency' | 'CompleteStandard';
 
 export interface BadgeTemplate {
