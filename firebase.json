@@ -1,0 +1,8 @@
+{
+  "firestore": [
+    {
+      "database": "ai-studio-tesdadigitalbadg-4b97afce-f9bb-40cc-aa75-0498d3d33c40",
+      "rules": "firestore.rules"
+    }
+  ]
+}
