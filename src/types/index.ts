@@ -96,6 +96,17 @@ export interface FieldPosition {
   enabled?: boolean;
 }
 
+/** Reusable visual artwork. It deliberately contains no learner or standard data. */
+export interface BadgeDesign {
+  id: string;
+  name: string;
+  badgeType: BadgeType;
+  artworkUrl?: string;
+  status: 'Active' | 'Draft' | 'Archived';
+}
+
+export type RecognitionScope = 'Competency' | 'CompleteStandard';
+
 export interface BadgeTemplate {
   id: string;
   /** Optional reference to the temporary QSO demo standard selected at authoring time. */
@@ -106,6 +117,12 @@ export interface BadgeTemplate {
   badgeType: BadgeType;
   /** Optional so templates created before Phase 1 remain readable. */
   standardType?: StandardType;
+  /** What the mapping recognizes within the selected standard. */
+  recognitionScope?: RecognitionScope;
+  competencyCode?: string;
+  competencyTitle?: string;
+  /** Reference to reusable visual artwork; imageUrl remains a legacy fallback. */
+  badgeDesignId?: string;
   credentialLevel: 'Unit of Competency' | 'Full Qualification / Certificate of Training' | 'Certificate of Competency' | 'National Certificate';
   relatedCompetency: string;
   description: string;
@@ -130,6 +147,11 @@ export interface BadgeTemplate {
     level?: FieldPosition;
     qualificationTitle?: FieldPosition;
     qualificationCode?: FieldPosition;
+    trainingProvider?: FieldPosition;
+    competencyTitle?: FieldPosition;
+    competencyCode?: FieldPosition;
+    badgeId?: FieldPosition;
+    verificationId?: FieldPosition;
     qr?: {
       x: number;
       y: number;
@@ -342,6 +364,7 @@ export interface NewIssuedBadge {
   learnerName: string;
   learnerEmail: string;
   badgeTemplateId: string;
+  badgeDesignId?: string;
   badgeRequestId: string;
   requestNumber?: string;
   trainingCenterId: string;
@@ -352,6 +375,11 @@ export interface NewIssuedBadge {
   programTitle: string;
   qualificationName: string;
   qualificationCode?: string; // Added
+  standardId?: string;
+  standardType?: StandardType;
+  recognitionScope?: RecognitionScope;
+  competencyTitle?: string;
+  competencyCode?: string;
   credentialLevel?: string; // Added
   criteria?: string; // Added
   alignment?: string; // Added

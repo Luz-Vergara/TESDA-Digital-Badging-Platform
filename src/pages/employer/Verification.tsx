@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import { AlertCircle, Award, Building2, Calendar, CheckCircle2, Clock3, Search, ShieldCheck, User, XCircle } from 'lucide-react';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/src/lib/firebase';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -49,7 +49,20 @@ const lookupIssuedBadge = async (identifier: string) => {
   const snapshots = await Promise.all(searches);
   const document = snapshots.flatMap((snapshot) => snapshot.docs)[0];
 
-  return document ? { id: document.id, ...document.data() } : null;
+  if (!document) return null;
+
+  const credential: any = { id: document.id, ...document.data() };
+  const designId = credential.badgeDesignId ?? credential.metadata?.badgeDesignId;
+  if (designId) {
+    try {
+      const design = await getDoc(doc(db, 'badgeDesigns', designId));
+      if (design.exists()) credential.badgeArtworkUrl = design.data().artworkUrl || '';
+    } catch (error) {
+      console.warn('Credential artwork could not be loaded:', error);
+    }
+  }
+
+  return credential;
 };
 
 export default function Verification() {
@@ -131,6 +144,13 @@ export default function Verification() {
               </div>
             </CardHeader>
             <CardContent className="space-y-6 p-6">
+              {result.badgeArtworkUrl ? (
+                <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                  <img src={result.badgeArtworkUrl} alt={`${result.badgeName || standardTitle || 'Credential'} artwork`} className="h-44 w-full object-cover" referrerPolicy="no-referrer" />
+                </div>
+              ) : (
+                <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3 text-center text-xs text-slate-500">Badge artwork not configured</p>
+              )}
               <div className="flex flex-wrap gap-2">
                 <Badge variant="secondary">{result.badgeType === 'Skilled' ? 'Skilled' : 'Proficient'}</Badge>
                 {standardType && <Badge variant="outline">{standardType}</Badge>}

@@ -41,12 +41,13 @@ import {
   SelectTrigger, 
   SelectValue 
 } from '@/components/ui/select';
-import { BadgeTemplate, BadgeIssuanceRequest } from '@/src/types';
+import { BadgeDesign, BadgeTemplate, BadgeIssuanceRequest } from '@/src/types';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { getBadgeColor, getStatusColor } from '@/src/lib/badge-utils';
 import { BadgeRenderer } from '@/src/components/badges/BadgeRenderer';
 import { demoStandards, getDemoStandardBadgeConfiguration, type DemoStandard } from '@/src/data/demoStandards';
+import { DEFAULT_BADGE_DESIGNS, resolveBadgeDesign } from '@/src/lib/badge-designs';
 
 const formatDate = (value: any) => {
   if (!value) return "N/A";
@@ -143,6 +144,7 @@ const REJECTED_STATUSES = ['Rejected', 'Returned by CO', 'Returned by District O
 export default function BadgeHierarchy() {
   const { user, userProfile, isAuthReady } = useFirebase();
   const [templates, setTemplates] = useState<BadgeTemplate[]>([]);
+  const [badgeDesigns, setBadgeDesigns] = useState<BadgeDesign[]>(DEFAULT_BADGE_DESIGNS);
   const [issuedBadges, setIssuedBadges] = useState<any[]>([]);
   const [listRequests, setListRequests] = useState<any[]>([]);
   const [completions, setCompletions] = useState<any[]>([]);
@@ -183,6 +185,10 @@ export default function BadgeHierarchy() {
       handleFirestoreError(error, OperationType.GET, 'badgeTemplates');
       setLoading(false);
     });
+    const unsubDesigns = onSnapshot(collection(db, 'badgeDesigns'), (snapshot) => {
+      const remote = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as BadgeDesign);
+      setBadgeDesigns([...DEFAULT_BADGE_DESIGNS, ...remote.filter((item) => !DEFAULT_BADGE_DESIGNS.some((base) => base.id === item.id))]);
+    }, (error) => handleFirestoreError(error, OperationType.GET, 'badgeDesigns'));
 
     let unsubIssued: () => void = () => {};
     let unsubRequests: () => void = () => {};
@@ -293,6 +299,7 @@ export default function BadgeHierarchy() {
 
     return () => {
       unsubTemplates();
+      unsubDesigns();
       unsubIssued();
       unsubRequests();
       unsubCompletions();
@@ -414,6 +421,7 @@ export default function BadgeHierarchy() {
               key={qual} 
               qual={qual} 
               badges={groupedTemplates[qual]} 
+              badgeDesigns={badgeDesigns}
               isExpanded={expandedQualifications.includes(qual)}
               onToggle={() => toggleQualification(qual)}
               issuedBadges={issuedBadges}
@@ -640,6 +648,7 @@ interface RowProps {
   key?: string;
   qual: string;
   badges: BadgeTemplate[];
+  badgeDesigns: BadgeDesign[];
   isExpanded: boolean;
   onToggle: () => void;
   issuedBadges: any[];
@@ -651,7 +660,7 @@ interface RowProps {
   learnerQualification?: string;
 }
 
-function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, issuedBadges, listRequests, completions, offerings, enrollments, isLearner, learnerQualification }: RowProps) {
+function QualificationHierarchyRow({ qual, badges, badgeDesigns, isExpanded, onToggle, issuedBadges, listRequests, completions, offerings, enrollments, isLearner, learnerQualification }: RowProps) {
   const skilledBadges = badges.filter(b => b.badgeType === 'Skilled').sort((a, b) => a.displayOrder - b.displayOrder);
   const proficientBadges = badges.filter(b => b.badgeType === 'Proficient').sort((a, b) => a.displayOrder - b.displayOrder);
 
@@ -877,6 +886,7 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, issuedB
                       level="Complete-standard achievement"
                       items={skilledBadges} 
                       allBadges={badges}
+                      badgeDesigns={badgeDesigns}
                       colorClass={TIER_COLORS.Skilled} 
                       compact
                       issuedBadges={issuedBadges}
@@ -897,6 +907,7 @@ function QualificationHierarchyRow({ qual, badges, isExpanded, onToggle, issuedB
                       level="Unit of Competency Mastery" 
                       items={proficientBadges} 
                       allBadges={badges}
+                      badgeDesigns={badgeDesigns}
                       colorClass={TIER_COLORS.Proficient} 
                       compact
                       issuedBadges={issuedBadges}
@@ -927,6 +938,7 @@ interface GroupProps {
   level: string;
   items: BadgeTemplate[];
   allBadges: BadgeTemplate[];
+  badgeDesigns: BadgeDesign[];
   colorClass: string;
   compact?: boolean;
   issuedBadges: any[];
@@ -939,7 +951,7 @@ interface GroupProps {
   qual: string;
 }
 
-function HierarchyGroup({ title, level, items, allBadges, colorClass, compact, issuedBadges, listRequests, completions, offerings, isLearner, learnerQualification, enrollments, qual }: GroupProps) {
+function HierarchyGroup({ title, level, items, allBadges, badgeDesigns, colorClass, compact, issuedBadges, listRequests, completions, offerings, isLearner, learnerQualification, enrollments, qual }: GroupProps) {
   const navigate = useNavigate();
   const [selectedBadge, setSelectedBadge] = useState<{
     template: BadgeTemplate;
@@ -1052,10 +1064,12 @@ function HierarchyGroup({ title, level, items, allBadges, colorClass, compact, i
                           id: badge.id,
                           name: badge.badgeName,
                           learnerName: activeRecord?.learnerName || "Learner Name",
+                          trainingProvider: activeRecord?.trainingCenterName || 'Training Center',
                           issueDate: activeRecord ? formatDate(activeRecord.issueDate) : "Not yet issued",
                           validUntil: activeRecord ? formatDate(activeRecord.validUntil) : "",
                           verificationId: activeRecord?.verificationId || "LOCKED",
-                          imageUrl: badge.imageUrl || "",
+                          badgeId: activeRecord?.badgeId || badge.id,
+                          imageUrl: resolveBadgeDesign(badge, badgeDesigns).artworkUrl,
                           level: badge.badgeType,
                           qualificationTitle:
                             activeRecord?.programName ||
@@ -1063,9 +1077,12 @@ function HierarchyGroup({ title, level, items, allBadges, colorClass, compact, i
                             badge.badgeName ||
                             badge.qualificationName,
                           qualificationCode: badge.qualificationCode,
+                          competencyTitle: activeRecord?.competencyTitle || badge.competencyTitle || badge.relatedCompetency || '',
+                          competencyCode: activeRecord?.competencyCode || badge.competencyCode || '',
                           templateConfig: badge.templateConfig
                         }}
                       />
+                      {!resolveBadgeDesign(badge, badgeDesigns).isConfigured && <p className="mt-1 text-center text-[8px] font-medium text-slate-500">Badge artwork not configured</p>}
                     </div>
                     {status !== 'Active' && (
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">

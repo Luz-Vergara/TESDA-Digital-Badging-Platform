@@ -36,6 +36,7 @@ import {
   updateDoc, 
   deleteDoc,
   doc, 
+  setDoc,
   serverTimestamp,
   getDocs,
   where,
@@ -84,9 +85,26 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from '@/components/ui/textarea';
-import { BadgeTemplate } from '@/src/types';
+import { BadgeDesign, BadgeTemplate, RecognitionScope } from '@/src/types';
 import { BADGE_TYPES, getBadgeColor, getBadgeTypeLabel, isBadgeType, STANDARD_TYPES } from '@/src/lib/badge-utils';
 import { demoStandards, getDemoStandard } from '@/src/data/demoStandards';
+import { DEFAULT_BADGE_DESIGNS, resolveBadgeDesign } from '@/src/lib/badge-designs';
+
+const createDefaultTemplateConfig = () => ({
+  fitMode: 'cover' as const,
+  name: { x: 50, y: 45, fontSize: '1.4rem', color: '#111827', enabled: true },
+  trainingProvider: { x: 50, y: 51, fontSize: '0.7rem', color: '#475569', enabled: true },
+  qualificationTitle: { x: 50, y: 58, fontSize: '0.95rem', color: '#111827', enabled: true },
+  qualificationCode: { x: 50, y: 63, fontSize: '0.8rem', color: '#374151', enabled: true },
+  competencyTitle: { x: 50, y: 68, fontSize: '0.8rem', color: '#334155', enabled: true },
+  competencyCode: { x: 50, y: 72, fontSize: '0.7rem', color: '#64748b', enabled: true },
+  level: { x: 50, y: 76, fontSize: '0.9rem', color: '#1d4ed8', enabled: true },
+  date: { x: 27, y: 88, fontSize: '0.7rem', color: '#111827', enabled: true },
+  validUntil: { x: 73, y: 88, fontSize: '0.7rem', color: '#111827', enabled: true },
+  badgeId: { x: 50, y: 81, fontSize: '0.65rem', color: '#374151', enabled: true },
+  verificationId: { x: 50, y: 84, fontSize: '0.6rem', color: '#64748b', enabled: true },
+  qr: { x: 84, y: 76, size: 58, enabled: true },
+});
 
 const ACTIVE_STANDARD_PROFILES = [
   "Create 2D Digital Cut-Out Animation",
@@ -121,6 +139,7 @@ const PROFILE_CODE_MAPPING: { [key: string]: string } = {
 export default function BadgeTemplates() {
   const { user, isAuthReady } = useFirebase();
   const [templates, setTemplates] = useState<BadgeTemplate[]>([]);
+  const [badgeDesigns, setBadgeDesigns] = useState<BadgeDesign[]>(DEFAULT_BADGE_DESIGNS);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -138,17 +157,7 @@ export default function BadgeTemplates() {
   const [designerTemplateId, setDesignerTemplateId] = useState<string>('');
   const [designerImgUrl, setDesignerImgUrl] = useState<string>('');
   const [testTitle, setTestTitle] = useState<string>('Determine Traditional Key Poses');
-  const [designerConfig, setDesignerConfig] = useState<any>({
-    fitMode: 'cover',
-    name: { x: 50, y: 45, fontSize: "1.4rem", color: "#111827", enabled: true },
-    qualificationTitle: { x: 50, y: 58, fontSize: "0.95rem", color: "#111827", enabled: true },
-    qualificationCode: { x: 50, y: 63, fontSize: "0.8rem", color: "#374151", enabled: true },
-    level: { x: 50, y: 70, fontSize: "0.9rem", color: "#1d4ed8", enabled: true },
-    date: { x: 30, y: 88, fontSize: "0.7rem", color: "#111827", enabled: true },
-    validUntil: { x: 70, y: 88, fontSize: "0.7rem", color: "#111827", enabled: true },
-    id: { x: 50, y: 82, fontSize: "0.65rem", color: "#374151", enabled: true },
-    qr: { x: 50, y: 75, size: 70, enabled: true }
-  });
+  const [designerConfig, setDesignerConfig] = useState<any>(createDefaultTemplateConfig());
   const [activeField, setActiveField] = useState<string>('name');
   const [designerSuccess, setDesignerSuccess] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -229,6 +238,10 @@ export default function BadgeTemplates() {
     standardId: '',
     badgeType: 'Proficient' as BadgeTemplate['badgeType'],
     standardType: 'CS' as NonNullable<BadgeTemplate['standardType']>,
+    recognitionScope: 'Competency' as RecognitionScope,
+    competencyCode: '',
+    competencyTitle: '',
+    badgeDesignId: 'default-proficient-design',
     credentialLevel: 'Unit of Competency' as BadgeTemplate['credentialLevel'],
     relatedCompetency: '',
     description: '',
@@ -244,16 +257,7 @@ export default function BadgeTemplates() {
     imageUrl: '',
     badgeIdPrefix: '',
     issuingSeries: 'TESDA',
-    templateConfig: JSON.stringify({
-      name: { x: 50, y: 45, fontSize: "1.45rem", color: "#111827", enabled: true },
-      qualificationTitle: { x: 50, y: 58, fontSize: "0.95rem", color: "#111827", enabled: true },
-      qualificationCode: { x: 50, y: 63, fontSize: "0.8rem", color: "#374151", enabled: true },
-      level: { x: 50, y: 70, fontSize: "0.9rem", color: "#1d4ed8", enabled: true },
-      date: { x: 28, y: 88, fontSize: "0.7rem", color: "#111827", enabled: true },
-      validUntil: { x: 60, y: 88, fontSize: "0.7rem", color: "#111827", enabled: true },
-      id: { x: 50, y: 82, fontSize: "0.65rem", color: "#374151", enabled: true },
-      qr: { x: 50, y: 75, size: 70, enabled: true }
-    }, null, 2)
+    templateConfig: JSON.stringify(createDefaultTemplateConfig(), null, 2)
   });
 
   // Subscribe to real-time sync of badge template details
@@ -271,7 +275,12 @@ export default function BadgeTemplates() {
       handleFirestoreError(error, OperationType.GET, 'badgeTemplates');
     });
 
-    return () => unsubTemplates();
+    const unsubDesigns = onSnapshot(collection(db, 'badgeDesigns'), (snapshot) => {
+      const remoteDesigns = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as BadgeDesign);
+      setBadgeDesigns([...DEFAULT_BADGE_DESIGNS, ...remoteDesigns.filter((item) => !DEFAULT_BADGE_DESIGNS.some((base) => base.id === item.id))]);
+    }, (error) => handleFirestoreError(error, OperationType.GET, 'badgeDesigns'));
+
+    return () => { unsubTemplates(); unsubDesigns(); };
   }, [isAuthReady]);
 
   // Load standard template in layout designer when chosen in selector
@@ -279,26 +288,16 @@ export default function BadgeTemplates() {
     if (!designerTemplateId) return;
     const t = templates.find(doc => doc.id === designerTemplateId);
     if (t) {
-      setDesignerImgUrl(t.imageUrl || '');
+      setDesignerImgUrl(resolveBadgeDesign(t, badgeDesigns).artworkUrl);
       setTestTitle(t.badgeName || t.qualificationName || 'Determine Traditional Key Poses');
       if (t.templateConfig && typeof t.templateConfig === 'object') {
         setDesignerConfig(t.templateConfig);
       } else {
         // Use nice defaults
-        setDesignerConfig({
-          fitMode: 'cover',
-          name: { x: 50, y: 45, fontSize: "1.4rem", color: "#111827", enabled: true },
-          qualificationTitle: { x: 50, y: 58, fontSize: "0.95rem", color: "#111827", enabled: true },
-          qualificationCode: { x: 50, y: 63, fontSize: "0.8rem", color: "#374151", enabled: true },
-          level: { x: 50, y: 70, fontSize: "0.9rem", color: "#1d4ed8", enabled: true },
-          date: { x: 30, y: 88, fontSize: "0.7rem", color: "#111827", enabled: true },
-          validUntil: { x: 70, y: 88, fontSize: "0.7rem", color: "#111827", enabled: true },
-          id: { x: 50, y: 82, fontSize: "0.65rem", color: "#374151", enabled: true },
-          qr: { x: 50, y: 75, size: 70, enabled: true }
-        });
+        setDesignerConfig(createDefaultTemplateConfig());
       }
     }
-  }, [designerTemplateId, templates]);
+  }, [designerTemplateId, templates, badgeDesigns]);
 
   // Set initial selected template standard
   useEffect(() => {
@@ -335,8 +334,15 @@ export default function BadgeTemplates() {
     const matched = templates.find(t => t.id === designerTemplateId);
     
     try {
+      const design = badgeDesigns.find((item) => item.id === matched?.badgeDesignId);
+      if (matched?.badgeDesignId && design) {
+        await setDoc(doc(db, 'badgeDesigns', design.id), {
+          ...design,
+          artworkUrl: designerImgUrl.trim(),
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+      }
       await updateDoc(doc(db, 'badgeTemplates', designerTemplateId), {
-        imageUrl: designerImgUrl.trim(),
         templateConfig: designerConfig,
         updatedAt: serverTimestamp()
       });
@@ -348,7 +354,7 @@ export default function BadgeTemplates() {
         details: `Coordinated layout parameters for ${matched?.qualificationName || 'Qualification'}`
       });
       
-      setDesignerSuccess(`Successfully saved layout coordinate standards for "${matched?.badgeName || 'Badge'}"! All generated badges will use this standard.`);
+      setDesignerSuccess(`Saved credential layout for "${matched?.badgeName || 'Badge'}". Artwork remains reusable through its mapped design.`);
       setTimeout(() => setDesignerSuccess(null), 5000);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, 'badgeTemplates');
@@ -360,7 +366,7 @@ export default function BadgeTemplates() {
   // Badge type and standard type are intentionally selected independently.
   // Do not infer one from the other.
   const handleBadgeTypeChange = (type: BadgeTemplate['badgeType']) => {
-    setFormData(prev => ({ ...prev, badgeType: type }));
+    setFormData(prev => ({ ...prev, badgeType: type, badgeDesignId: type === 'Skilled' ? 'default-skilled-design' : 'default-proficient-design' }));
   };
 
   const handleDemoStandardChange = (standardId: string) => {
@@ -381,6 +387,8 @@ export default function BadgeTemplates() {
       relatedCompetency: standard.competencies
         .map((competency) => [competency.code, competency.title].filter(Boolean).join(' — '))
         .join('; '),
+      competencyCode: standard.competencies[0]?.code || '',
+      competencyTitle: standard.competencies[0]?.title || '',
     }));
   };
 
@@ -390,8 +398,8 @@ export default function BadgeTemplates() {
       alert("Auth session not ready. Please refresh or log in again.");
       return;
     }
-    if (!formData.qualificationName || !formData.badgeType || !formData.credentialLevel || !formData.status) {
-       alert("Please fill in all required fields.");
+    if (!formData.standardId || !formData.qualificationName || !formData.badgeType || !formData.credentialLevel || !formData.status || !formData.badgeDesignId) {
+       alert("Please complete the badge definition and select reusable badge artwork.");
        return;
     }
 
@@ -407,9 +415,9 @@ export default function BadgeTemplates() {
 
     setIsSubmitting(true);
     try {
+      const { imageUrl: _legacyImageUrl, ...mappingData } = formData;
       const templateData = {
-        ...formData,
-        imageUrl: formData.imageUrl.trim(),
+        ...mappingData,
         templateConfig: parsedConfig,
         tags: formData.tags.split(',').map(t => t.trim()).filter(t => t !== ''),
         updatedAt: serverTimestamp()
@@ -458,6 +466,10 @@ export default function BadgeTemplates() {
       standardId: '',
       badgeType: 'Proficient',
       standardType: 'CS',
+      recognitionScope: 'Competency',
+      competencyCode: '',
+      competencyTitle: '',
+      badgeDesignId: 'default-proficient-design',
       credentialLevel: 'Unit of Competency',
       relatedCompetency: '',
       description: '',
@@ -473,16 +485,7 @@ export default function BadgeTemplates() {
       imageUrl: '',
       badgeIdPrefix: '',
       issuingSeries: 'TESDA',
-      templateConfig: JSON.stringify({
-        name: { x: 50, y: 45, fontSize: "1.45rem", color: "#111827", enabled: true },
-        qualificationTitle: { x: 50, y: 58, fontSize: "0.95rem", color: "#111827", enabled: true },
-        qualificationCode: { x: 50, y: 63, fontSize: "0.8rem", color: "#374151", enabled: true },
-        level: { x: 50, y: 70, fontSize: "0.9rem", color: "#1d4ed8", enabled: true },
-        date: { x: 28, y: 88, fontSize: "0.7rem", color: "#111827", enabled: true },
-        validUntil: { x: 60, y: 88, fontSize: "0.7rem", color: "#111827", enabled: true },
-        id: { x: 50, y: 82, fontSize: "0.65rem", color: "#374151", enabled: true },
-        qr: { x: 50, y: 75, size: 70, enabled: true }
-      }, null, 2)
+      templateConfig: JSON.stringify(createDefaultTemplateConfig(), null, 2)
     });
   };
 
@@ -498,6 +501,10 @@ export default function BadgeTemplates() {
       // Legacy template values must not re-enter the active authoring model.
       badgeType: isBadgeType(template.badgeType) ? template.badgeType : 'Proficient',
       standardType: template.standardType || 'CS',
+      recognitionScope: template.recognitionScope || (template.relatedCompetency ? 'Competency' : 'CompleteStandard'),
+      competencyCode: template.competencyCode || '',
+      competencyTitle: template.competencyTitle || template.relatedCompetency || '',
+      badgeDesignId: template.badgeDesignId || (template.badgeType === 'Skilled' ? 'default-skilled-design' : 'default-proficient-design'),
       credentialLevel: template.credentialLevel || 'Unit of Competency',
       relatedCompetency: template.relatedCompetency || '',
       description: template.description,
@@ -513,16 +520,7 @@ export default function BadgeTemplates() {
       imageUrl: template.imageUrl || '',
       badgeIdPrefix: template.badgeIdPrefix || '',
       issuingSeries: template.issuingSeries || 'TESDA',
-      templateConfig: template.templateConfig ? JSON.stringify(template.templateConfig, null, 2) : JSON.stringify({
-        name: { x: 50, y: 45, fontSize: "1.45rem", color: "#111827", enabled: true },
-        qualificationTitle: { x: 50, y: 58, fontSize: "0.95rem", color: "#111827", enabled: true },
-        qualificationCode: { x: 50, y: 63, fontSize: "0.8rem", color: "#374151", enabled: true },
-        level: { x: 50, y: 70, fontSize: "0.9rem", color: "#1d4ed8", enabled: true },
-        date: { x: 28, y: 88, fontSize: "0.7rem", color: "#111827", enabled: true },
-        validUntil: { x: 60, y: 88, fontSize: "0.7rem", color: "#111827", enabled: true },
-        id: { x: 50, y: 82, fontSize: "0.65rem", color: "#374151", enabled: true },
-        qr: { x: 50, y: 75, size: 70, enabled: true }
-      }, null, 2)
+      templateConfig: template.templateConfig ? JSON.stringify(template.templateConfig, null, 2) : JSON.stringify(createDefaultTemplateConfig(), null, 2)
     });
     setIsModalOpen(true);
   };
@@ -1204,13 +1202,17 @@ export default function BadgeTemplates() {
                             id: 'designer-temp-preview',
                             name: 'Designer Standard Preview',
                             learnerName: 'DEMO RECIPIENT FULL NAME',
+                            trainingProvider: 'DEMO TRAINING CENTER',
                             issueDate: '05/21/2026',
                             validUntil: '05/21/2029',
                             verificationId: 'TESDA-NC3-A89102',
+                            badgeId: 'BADGE-2026-000123',
                             imageUrl: designerImgUrl,
                             level: templates.find(t => t.id === designerTemplateId)?.badgeType || 'Proficient',
                             qualificationTitle: testTitle,
                             qualificationCode: templates.find(t => t.id === designerTemplateId)?.qualificationCode || 'ICT-AMP-23',
+                            competencyTitle: 'DEMO COMPETENCY TITLE',
+                            competencyCode: 'DEMO-COMP-001',
                             templateConfig: designerConfig
                           }}
                         />
@@ -1252,7 +1254,7 @@ export default function BadgeTemplates() {
                                 >
                                   {key !== 'qr' && (
                                     <span className={`text-[9px] font-bold select-none truncate ${isSelected ? 'text-white bg-emerald-600 px-1 py-0.5 rounded shadow-sm text-center font-extrabold' : 'text-slate-300 bg-slate-800/80 px-1.5 py-0.5 rounded text-center'}`}>
-                                      {key === 'name' ? 'Learner Name' : key === 'qualificationTitle' ? 'Title' : key === 'qualificationCode' ? 'Code' : key === 'validUntil' ? 'Expiry Date' : key}
+                                      {key === 'name' ? 'Learner Name' : key === 'trainingProvider' ? 'Training Center' : key === 'qualificationTitle' ? 'Standard Title' : key === 'qualificationCode' ? 'Standard Code' : key === 'competencyTitle' ? 'Competency Title' : key === 'competencyCode' ? 'Competency Code' : key === 'badgeId' ? 'Badge ID' : key === 'verificationId' ? 'Verification ID' : key === 'validUntil' ? 'Expiry Date' : key}
                                     </span>
                                   )}
                                 </div>
@@ -1284,12 +1286,16 @@ export default function BadgeTemplates() {
                         <div className="grid grid-cols-2 gap-1.5 bg-slate-800/60 p-1.5 rounded-lg border border-slate-750/80">
                           {[
                             { id: 'name', label: 'Learner Name' },
+                            { id: 'trainingProvider', label: 'Training Center' },
                             { id: 'qualificationTitle', label: 'Qualific. Title' },
                             { id: 'qualificationCode', label: 'Qualific. Code' },
+                            { id: 'competencyTitle', label: 'Competency Title' },
+                            { id: 'competencyCode', label: 'Competency Code' },
                             { id: 'level', label: 'Badge Level' },
                             { id: 'date', label: 'Issue Date' },
                             { id: 'validUntil', label: 'Expiry Date' },
-                            { id: 'id', label: 'Credential ID' },
+                            { id: 'badgeId', label: 'Badge ID' },
+                            { id: 'verificationId', label: 'Verification ID' },
                             { id: 'qr', label: 'QR Secure Code' }
                           ].map(field => (
                             <button
@@ -1533,6 +1539,25 @@ export default function BadgeTemplates() {
                 </p>
               </div>
 
+              <div className="col-span-2 rounded-lg border border-blue-100 bg-blue-50/50 p-3">
+                <h3 className="text-sm font-bold text-blue-950">A. Badge Definition Mapping</h3>
+                <p className="mt-1 text-[11px] text-blue-800">Map this credential to a standard independently from its reusable visual artwork.</p>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-700">Recognition Scope</Label>
+                    <Select value={formData.recognitionScope} onValueChange={(value: RecognitionScope) => setFormData(prev => ({ ...prev, recognitionScope: value }))}>
+                      <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent><SelectItem value="Competency" className="text-xs">Competency</SelectItem><SelectItem value="CompleteStandard" className="text-xs">Complete Standard</SelectItem></SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-700">Mapped Competency Code</Label>
+                    <Input value={formData.competencyCode} onChange={(e) => setFormData(prev => ({ ...prev, competencyCode: e.target.value }))} placeholder="e.g. UC-001" className="text-xs" />
+                  </div>
+                  {formData.recognitionScope === 'Competency' && <div className="space-y-1.5 col-span-2"><Label className="text-xs font-semibold text-slate-700">Mapped Competency Title</Label><Input value={formData.competencyTitle} onChange={(e) => setFormData(prev => ({ ...prev, competencyTitle: e.target.value, relatedCompetency: e.target.value }))} placeholder="Mapped competency title" className="text-xs" /></div>}
+                </div>
+              </div>
+
               {/* Badge Name */}
               <div className="space-y-1.5 col-span-2">
                 <Label htmlFor="badgeName" className="text-xs font-semibold text-slate-700">Badge/Standard Name</Label>
@@ -1755,66 +1780,20 @@ export default function BadgeTemplates() {
                 />
               </div>
 
-              {/* Template Image Background Link */}
-              <div className="space-y-1.5 col-span-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
-                <Label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                  <Image className="h-4 w-4 text-slate-500" />
-                  Visual Background Template (.JPG, .PNG)
-                </Label>
-                
-                <div className="grid grid-cols-2 gap-3 mt-2">
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-medium text-slate-400 block mb-0.5">Upload Background Image</span>
-                    <Input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => {
-                        if (e.target.files && e.target.files[0]) {
-                          const file = e.target.files[0];
-                          const reader = new FileReader();
-                          reader.onload = (event) => {
-                            setFormData(prev => ({
-                              ...prev,
-                              imageUrl: event.target?.result as string
-                            }));
-                          };
-                          reader.readAsDataURL(file);
-                        }
-                      }}
-                      className="text-xs h-9 cursor-pointer"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-medium text-slate-400 block mb-0.5">Or Paste Direct Image URL Reference</span>
-                    <Input
-                      type="text"
-                      placeholder="https://imgur.com/your-badge.png"
-                      value={formData.imageUrl}
-                      onChange={(e) => setFormData(prev => ({ ...prev, imageUrl: e.target.value }))}
-                      className="text-xs h-9 bg-white"
-                    />
-                  </div>
+              <div className="col-span-2 mt-2 rounded-lg border border-emerald-100 bg-emerald-50/40 p-3">
+                <h3 className="text-sm font-bold text-emerald-950">B. Badge Artwork</h3>
+                <p className="mt-1 text-[11px] text-emerald-800">Artwork is reusable. Multiple mappings can select the same Proficient design.</p>
+                <div className="mt-3 grid grid-cols-[1fr_auto] items-end gap-3">
+                  <div className="space-y-1.5"><Label className="text-xs font-semibold text-slate-700">Reusable Badge Design</Label><Select value={formData.badgeDesignId} onValueChange={(value) => setFormData(prev => ({ ...prev, badgeDesignId: value }))}><SelectTrigger className="text-xs"><SelectValue placeholder="Select reusable artwork" /></SelectTrigger><SelectContent>{badgeDesigns.filter((design) => design.status === 'Active').map((design) => <SelectItem key={design.id} value={design.id} className="text-xs">{design.name} — {design.badgeType}</SelectItem>)}</SelectContent></Select></div>
+                  {resolveBadgeDesign({ ...formData, id: editingTemplate?.id || 'preview' } as BadgeTemplate, badgeDesigns).artworkUrl ? <img src={resolveBadgeDesign({ ...formData, id: editingTemplate?.id || 'preview' } as BadgeTemplate, badgeDesigns).artworkUrl} alt="Selected reusable artwork" className="h-12 w-12 rounded border object-cover" /> : <div className="flex h-12 w-12 items-center justify-center rounded border border-dashed border-slate-300 bg-white text-center text-[9px] leading-3 text-slate-500">Artwork<br />not configured</div>}
                 </div>
+                <Button type="button" variant="outline" size="sm" className="mt-3 text-xs" onClick={() => { setActiveTab('designer'); setIsModalOpen(false); }}><Upload className="mr-1.5 h-3.5 w-3.5" />Upload / preview selected artwork in Visual Badge Designer</Button>
+              </div>
 
-                {formData.imageUrl && (
-                  <div className="mt-3 flex items-center gap-2 border border-slate-200 rounded p-1.5 bg-slate-100/50">
-                    <img
-                      src={formData.imageUrl}
-                      alt="Thumbnail"
-                      className="h-8 w-8 rounded object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                    <span className="text-[9px] text-slate-500 truncate max-w-[400px]">Background configuration set successfully!</span>
-                    <Button 
-                      type="button" 
-                      variant="ghost" 
-                      onClick={() => setFormData(prev => ({ ...prev, imageUrl: '' }))}
-                      className="text-[10px] text-rose-500 hover:text-rose-600 h-6 px-1.5 ml-auto font-bold"
-                    >
-                      Clear Image
-                    </Button>
-                  </div>
-                )}
+              <div className="col-span-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <Label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5"><Image className="h-4 w-4 text-slate-500" />C. Credential Layout</Label>
+                <p className="mt-2 text-[11px] text-slate-600">Use the Visual Badge Designer to position, style, size, and toggle dynamic fields. It never stores learner-specific values.</p>
+                <Button type="button" variant="outline" size="sm" className="mt-3 text-xs" onClick={() => { setActiveTab('designer'); setIsModalOpen(false); }}><Sliders className="mr-1.5 h-3.5 w-3.5" />Open Visual Badge Designer</Button>
               </div>
             </div>
 

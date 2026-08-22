@@ -8,6 +8,7 @@ import { getBadgeColor, getStatusColor } from '@/src/lib/badge-utils';
 import { BadgeRenderer } from '@/src/components/badges/BadgeRenderer';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
 import { useNavigate } from 'react-router-dom';
+import { resolveBadgeDesign } from '@/src/lib/badge-designs';
 
 const formatDate = (value: any) => {
   if (!value) return "N/A";
@@ -57,7 +58,9 @@ export default function BadgeCard({ badge, template, onViewDetails }: BadgeCardP
               issueDate: formatDate((badge as any).issueDate || badge.issuanceDate || (badge as any).dateIssued || (badge as any).submittedAt),
               validUntil: formatDate((badge as any).validUntil || badge.validity || (badge as any).expiryDate),
               verificationId: badge.verificationId || (badge as any).certificationId || badge.badgeId || badge.id || "PENDING",
-              imageUrl: template?.imageUrl || "",
+              badgeId: badge.badgeId || badge.id,
+              trainingProvider: (badge as any).trainingCenterName || '',
+              imageUrl: resolveBadgeDesign(template).artworkUrl,
               level: template?.badgeType || badge.badgeType || "Proficient",
               qualificationTitle:
                 template?.badgeName ||
@@ -73,6 +76,8 @@ export default function BadgeCard({ badge, template, onViewDetails }: BadgeCardP
                 badge.qualificationCode ||
                 (badge as any).qualificationCode ||
                 "NC-II",
+              competencyTitle: (badge as any).competencyTitle || template?.competencyTitle || template?.relatedCompetency || '',
+              competencyCode: (badge as any).competencyCode || template?.competencyCode || '',
               templateConfig: template?.templateConfig
             }}
           />
