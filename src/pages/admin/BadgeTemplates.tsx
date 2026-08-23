@@ -286,7 +286,7 @@ export default function BadgeTemplates() {
     requiresApproval: true,
     displayOrder: 1,
     hierarchyVisible: true,
-    status: 'Approved' as BadgeTemplate['status'],
+    status: 'Active' as BadgeTemplate['status'],
     imageUrl: '',
     badgeIdPrefix: '',
     issuingSeries: 'TESDA',
@@ -444,8 +444,11 @@ export default function BadgeTemplates() {
     setIsSubmitting(true);
     try {
       const { imageUrl: _legacyImageUrl, ...mappingData } = formData;
+      const normalizedMappingData = formData.recognitionScope === 'CompleteStandard'
+        ? { ...mappingData, competencyCode: '', competencyTitle: '', relatedCompetency: '' }
+        : mappingData;
       const templateData = {
-        ...mappingData,
+        ...normalizedMappingData,
         templateConfig: parsedConfig,
         tags: formData.tags.split(',').map(t => t.trim()).filter(t => t !== ''),
         updatedAt: serverTimestamp()
@@ -509,7 +512,7 @@ export default function BadgeTemplates() {
       requiresApproval: true,
       displayOrder: 1,
       hierarchyVisible: true,
-      status: 'Approved',
+      status: 'Active',
       imageUrl: '',
       badgeIdPrefix: '',
       issuingSeries: 'TESDA',
@@ -518,6 +521,8 @@ export default function BadgeTemplates() {
   };
 
   const handleEdit = (template: BadgeTemplate) => {
+    const recognitionScope = template.recognitionScope || (template.relatedCompetency ? 'Competency' : 'CompleteStandard');
+    const isCompleteStandard = recognitionScope === 'CompleteStandard';
     setEditingTemplate(template);
     setFormData({
       badgeName: template.badgeName || '',
@@ -529,12 +534,12 @@ export default function BadgeTemplates() {
       // Legacy template values must not re-enter the active authoring model.
       badgeType: isBadgeType(template.badgeType) ? template.badgeType : 'Proficient',
       standardType: template.standardType || 'CS',
-      recognitionScope: template.recognitionScope || (template.relatedCompetency ? 'Competency' : 'CompleteStandard'),
-      competencyCode: template.competencyCode || '',
-      competencyTitle: template.competencyTitle || template.relatedCompetency || '',
+      recognitionScope,
+      competencyCode: isCompleteStandard ? '' : template.competencyCode || '',
+      competencyTitle: isCompleteStandard ? '' : template.competencyTitle || template.relatedCompetency || '',
       badgeDesignId: template.badgeDesignId || (template.badgeType === 'Skilled' ? 'default-skilled-design' : 'default-proficient-design'),
       credentialLevel: template.credentialLevel || 'Unit of Competency',
-      relatedCompetency: template.relatedCompetency || '',
+      relatedCompetency: isCompleteStandard ? '' : template.relatedCompetency || '',
       description: template.description,
       criteria: template.criteria,
       validityMonths: template.validityMonths,
@@ -726,7 +731,7 @@ export default function BadgeTemplates() {
       // 10. Update learners to set a remaining active program template as fallback
       const remainingTemplates = allTemplates.docs
         .map(d => ({ id: d.id, ...d.data() } as any))
-        .filter(t => t.id !== templateId && t.status === 'Approved');
+        .filter(t => t.id !== templateId && (t.status === 'Active' || t.status === 'Approved'));
       
       const fallbackQual = remainingTemplates.length > 0 
         ? (remainingTemplates[0].qualificationName || remainingTemplates[0].badgeName)
@@ -940,9 +945,9 @@ export default function BadgeTemplates() {
                           </TableCell>
                           <TableCell>
                             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold ${
-                              template.status === 'Approved' ? 'bg-emerald-500/10 text-emerald-700' : 'bg-slate-100 text-slate-650'
+                              (template.status === 'Active' || template.status === 'Approved') ? 'bg-emerald-500/10 text-emerald-700' : 'bg-slate-100 text-slate-650'
                             }`}>
-                              <span className={`h-1.5 w-1.5 rounded-full ${template.status === 'Approved' ? 'bg-emerald-600' : 'bg-slate-400'}`} />
+                              <span className={`h-1.5 w-1.5 rounded-full ${template.status === 'Active' || template.status === 'Approved' ? 'bg-emerald-600' : 'bg-slate-400'}`} />
                               {template.status}
                             </span>
                           </TableCell>
@@ -1658,16 +1663,21 @@ export default function BadgeTemplates() {
                 <div className="mt-3 grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold text-slate-700">Recognition Scope</Label>
-                    <Select value={formData.recognitionScope} onValueChange={(value: RecognitionScope) => setFormData(prev => ({ ...prev, recognitionScope: value }))}>
+                    <Select value={formData.recognitionScope} onValueChange={(value: RecognitionScope) => setFormData(prev => value === 'CompleteStandard'
+                      ? { ...prev, recognitionScope: value, competencyCode: '', competencyTitle: '', relatedCompetency: '' }
+                      : { ...prev, recognitionScope: value }
+                    )}>
                       <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
                       <SelectContent><SelectItem value="Competency" className="text-xs">Competency</SelectItem><SelectItem value="CompleteStandard" className="text-xs">Complete Standard</SelectItem></SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">Mapped Competency Code</Label>
-                    <Input value={formData.competencyCode} onChange={(e) => setFormData(prev => ({ ...prev, competencyCode: e.target.value }))} placeholder="e.g. UC-001" className="text-xs" />
-                  </div>
-                  {formData.recognitionScope === 'Competency' && <div className="space-y-1.5 col-span-2"><Label className="text-xs font-semibold text-slate-700">Mapped Competency Title</Label><Input value={formData.competencyTitle} onChange={(e) => setFormData(prev => ({ ...prev, competencyTitle: e.target.value, relatedCompetency: e.target.value }))} placeholder="Mapped competency title" className="text-xs" /></div>}
+                  {formData.recognitionScope === 'Competency' && <>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-slate-700">Mapped Competency Code</Label>
+                      <Input value={formData.competencyCode} onChange={(e) => setFormData(prev => ({ ...prev, competencyCode: e.target.value }))} placeholder="e.g. UC-001" className="text-xs" />
+                    </div>
+                    <div className="space-y-1.5 col-span-2"><Label className="text-xs font-semibold text-slate-700">Mapped Competency Title</Label><Input value={formData.competencyTitle} onChange={(e) => setFormData(prev => ({ ...prev, competencyTitle: e.target.value, relatedCompetency: e.target.value }))} placeholder="Mapped competency title" className="text-xs" /></div>
+                  </>}
                 </div>
               </div>
 
@@ -1837,7 +1847,8 @@ export default function BadgeTemplates() {
                     <SelectValue placeholder="Standard status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Approved" className="text-xs">Approved / Active</SelectItem>
+                    {formData.status === 'Approved' && <SelectItem value="Approved" className="text-xs">Legacy Approved — update to Active</SelectItem>}
+                    <SelectItem value="Active" className="text-xs">Active</SelectItem>
                     <SelectItem value="Draft" className="text-xs">Draft</SelectItem>
                     <SelectItem value="Archived" className="text-xs">Archived</SelectItem>
                   </SelectContent>
