@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { BadgeRenderer } from '@/src/components/badges/BadgeRenderer';
 import type { BadgeDesign, BadgeTemplate, BadgeType, StandardType } from '@/src/types';
-import { DEFAULT_BADGE_DESIGNS, resolveBadgeDesign } from '@/src/lib/badge-designs';
+import { DEFAULT_BADGE_DESIGNS, mergeBadgeDesigns, resolveBadgeDesign } from '@/src/lib/badge-designs';
 
 type WalletFilter = 'All' | BadgeType;
 
@@ -109,7 +109,7 @@ export default function MyBadgeWallet() {
     });
     const unsubscribeDesigns = onSnapshot(collection(db, 'badgeDesigns'), (snapshot) => {
       const remote = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as BadgeDesign);
-      setBadgeDesigns([...DEFAULT_BADGE_DESIGNS, ...remote.filter((item) => !DEFAULT_BADGE_DESIGNS.some((base) => base.id === item.id))]);
+      setBadgeDesigns(mergeBadgeDesigns(remote));
     });
     return () => { unsubscribeTemplates(); unsubscribeDesigns(); };
   }, [isAuthReady]);

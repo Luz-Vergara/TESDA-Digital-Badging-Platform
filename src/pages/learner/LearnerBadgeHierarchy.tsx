@@ -7,7 +7,7 @@ import { demoStandards } from '@/src/data/demoStandards';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { BadgeRenderer } from '@/src/components/badges/BadgeRenderer';
-import { DEFAULT_BADGE_DESIGNS, resolveBadgeDesign } from '@/src/lib/badge-designs';
+import { DEFAULT_BADGE_DESIGNS, mergeBadgeDesigns, resolveBadgeDesign } from '@/src/lib/badge-designs';
 import type { BadgeDesign, BadgeTemplate, BadgeType } from '@/src/types';
 
 type LearnerBadgeStatus = 'Locked' | 'Eligible' | 'Pending' | 'Issued';
@@ -201,10 +201,7 @@ export default function LearnerBadgeHierarchy() {
       collection(db, 'badgeDesigns'),
       (snapshot) => {
         const remoteDesigns = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as BadgeDesign);
-        setBadgeDesigns([
-          ...DEFAULT_BADGE_DESIGNS,
-          ...remoteDesigns.filter((design) => !DEFAULT_BADGE_DESIGNS.some((base) => base.id === design.id)),
-        ]);
+        setBadgeDesigns(mergeBadgeDesigns(remoteDesigns));
       },
       () => setBadgeDesigns(DEFAULT_BADGE_DESIGNS),
     );

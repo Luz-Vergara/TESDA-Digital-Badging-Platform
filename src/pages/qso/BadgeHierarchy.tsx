@@ -47,7 +47,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { getBadgeColor, getStatusColor } from '@/src/lib/badge-utils';
 import { BadgeRenderer } from '@/src/components/badges/BadgeRenderer';
 import { demoStandards, getDemoStandardBadgeConfiguration, type DemoStandard } from '@/src/data/demoStandards';
-import { DEFAULT_BADGE_DESIGNS, resolveBadgeDesign } from '@/src/lib/badge-designs';
+import { DEFAULT_BADGE_DESIGNS, mergeBadgeDesigns, resolveBadgeDesign } from '@/src/lib/badge-designs';
 
 const formatDate = (value: any) => {
   if (!value) return "N/A";
@@ -187,7 +187,7 @@ export default function BadgeHierarchy() {
     });
     const unsubDesigns = onSnapshot(collection(db, 'badgeDesigns'), (snapshot) => {
       const remote = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as BadgeDesign);
-      setBadgeDesigns([...DEFAULT_BADGE_DESIGNS, ...remote.filter((item) => !DEFAULT_BADGE_DESIGNS.some((base) => base.id === item.id))]);
+      setBadgeDesigns(mergeBadgeDesigns(remote));
     }, (error) => handleFirestoreError(error, OperationType.GET, 'badgeDesigns'));
 
     let unsubIssued: () => void = () => {};

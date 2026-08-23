@@ -88,7 +88,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { BadgeDesign, BadgeTemplate, RecognitionScope } from '@/src/types';
 import { BADGE_TYPES, getBadgeColor, getBadgeTypeLabel, isBadgeType, STANDARD_TYPES } from '@/src/lib/badge-utils';
 import { demoStandards, getDemoStandard } from '@/src/data/demoStandards';
-import { DEFAULT_BADGE_DESIGNS, resolveBadgeDesign } from '@/src/lib/badge-designs';
+import { DEFAULT_BADGE_DESIGNS, mergeBadgeDesigns, resolveBadgeDesign } from '@/src/lib/badge-designs';
 
 const createDefaultTemplateConfig = () => ({
   fitMode: 'cover' as const,
@@ -147,7 +147,7 @@ export default function BadgeTemplates() {
   const [templateToDelete, setTemplateToDelete] = useState<BadgeTemplate | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  const [activeTab, setActiveTab] = useState<'catalog' | 'designer'>('catalog');
+  const [activeTab, setActiveTab] = useState<'catalog' | 'designs' | 'designer'>('catalog');
   const [showJsonConfig, setShowJsonConfig] = useState<boolean>(false);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -161,18 +161,23 @@ export default function BadgeTemplates() {
   const [activeField, setActiveField] = useState<string>('name');
   const [designerSuccess, setDesignerSuccess] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [savingDesignId, setSavingDesignId] = useState<string | null>(null);
+  const [designFeedback, setDesignFeedback] = useState<string | null>(null);
 
-  // Dynamic Image File Compression & Reader
-  const processFile = (file: File) => {
-    if (!file) return;
+  // Shared image processing keeps reusable-design uploads consistent with the
+  // existing layout-background workflow.
+  const processImageFile = (file: File): Promise<string> => new Promise((resolve, reject) => {
     if (!file.type.startsWith('image/')) {
       alert('Highly specified file selection requested: Please upload a standard image format (PNG, JPG, or JPEG)!');
+      reject(new Error('Unsupported image format'));
       return;
     }
 
     const reader = new FileReader();
+    reader.onerror = () => reject(new Error('The image file could not be read.'));
     reader.onload = (event) => {
       const img = new window.Image();
+      img.onerror = () => reject(new Error('The selected file is not a valid image.'));
       img.onload = () => {
         // Enforce high compatibility limit by compressing background preview template bounds to max 1024px dynamic fit
         const maxDimension = 1024;
@@ -196,15 +201,20 @@ export default function BadgeTemplates() {
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height);
-          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.85);
-          setDesignerImgUrl(compressedBase64);
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
         } else {
-          setDesignerImgUrl(event.target?.result as string);
+          resolve(event.target?.result as string);
         }
       };
       img.src = event.target?.result as string;
     };
     reader.readAsDataURL(file);
+  });
+
+  const processFile = (file: File) => {
+    void processImageFile(file)
+      .then(setDesignerImgUrl)
+      .catch(() => undefined);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -228,6 +238,29 @@ export default function BadgeTemplates() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       processFile(e.target.files[0]);
+    }
+  };
+
+  const handleDesignArtworkUpload = async (design: BadgeDesign, file?: File) => {
+    if (!file || !user) return;
+
+    setSavingDesignId(design.id);
+    setDesignFeedback(null);
+    try {
+      const artworkUrl = await processImageFile(file);
+      await setDoc(doc(db, 'badgeDesigns', design.id), {
+        id: design.id,
+        name: design.name,
+        badgeType: design.badgeType,
+        status: design.status,
+        artworkUrl,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+      setDesignFeedback(`Saved artwork for ${design.name}.`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'badgeDesigns');
+    } finally {
+      setSavingDesignId(null);
     }
   };
   
@@ -277,7 +310,7 @@ export default function BadgeTemplates() {
 
     const unsubDesigns = onSnapshot(collection(db, 'badgeDesigns'), (snapshot) => {
       const remoteDesigns = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as BadgeDesign);
-      setBadgeDesigns([...DEFAULT_BADGE_DESIGNS, ...remoteDesigns.filter((item) => !DEFAULT_BADGE_DESIGNS.some((base) => base.id === item.id))]);
+      setBadgeDesigns(mergeBadgeDesigns(remoteDesigns));
     }, (error) => handleFirestoreError(error, OperationType.GET, 'badgeDesigns'));
 
     return () => { unsubTemplates(); unsubDesigns(); };
@@ -288,7 +321,9 @@ export default function BadgeTemplates() {
     if (!designerTemplateId) return;
     const t = templates.find(doc => doc.id === designerTemplateId);
     if (t) {
-      setDesignerImgUrl(resolveBadgeDesign(t, badgeDesigns).artworkUrl);
+      // A template background remains a layout concern. Reusable badge artwork
+      // is configured independently in the Reusable Badge Designs view.
+      setDesignerImgUrl(t.imageUrl || '');
       setTestTitle(t.badgeName || t.qualificationName || 'Determine Traditional Key Poses');
       if (t.templateConfig && typeof t.templateConfig === 'object') {
         setDesignerConfig(t.templateConfig);
@@ -297,7 +332,7 @@ export default function BadgeTemplates() {
         setDesignerConfig(createDefaultTemplateConfig());
       }
     }
-  }, [designerTemplateId, templates, badgeDesigns]);
+  }, [designerTemplateId, templates]);
 
   // Set initial selected template standard
   useEffect(() => {
@@ -334,16 +369,9 @@ export default function BadgeTemplates() {
     const matched = templates.find(t => t.id === designerTemplateId);
     
     try {
-      const design = badgeDesigns.find((item) => item.id === matched?.badgeDesignId);
-      if (matched?.badgeDesignId && design) {
-        await setDoc(doc(db, 'badgeDesigns', design.id), {
-          ...design,
-          artworkUrl: designerImgUrl.trim(),
-          updatedAt: serverTimestamp(),
-        }, { merge: true });
-      }
       await updateDoc(doc(db, 'badgeTemplates', designerTemplateId), {
         templateConfig: designerConfig,
+        imageUrl: designerImgUrl.trim(),
         updatedAt: serverTimestamp()
       });
       
@@ -354,7 +382,7 @@ export default function BadgeTemplates() {
         details: `Coordinated layout parameters for ${matched?.qualificationName || 'Qualification'}`
       });
       
-      setDesignerSuccess(`Saved credential layout for "${matched?.badgeName || 'Badge'}". Artwork remains reusable through its mapped design.`);
+      setDesignerSuccess(`Saved credential layout for "${matched?.badgeName || 'Badge'}". Reusable badge artwork is managed separately.`);
       setTimeout(() => setDesignerSuccess(null), 5000);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, 'badgeTemplates');
@@ -781,9 +809,13 @@ export default function BadgeTemplates() {
       </div>
 
       <Tabs value={activeTab} onValueChange={(val: any) => setActiveTab(val)} className="w-full space-y-6">
-        <TabsList className="grid w-full max-w-md grid-cols-2 p-1 bg-slate-100/80 rounded-lg">
+        <TabsList className="grid w-full max-w-2xl grid-cols-3 p-1 bg-slate-100/80 rounded-lg">
           <TabsTrigger value="catalog" className="font-semibold text-slate-700 data-[state=active]:bg-white data-[state=active]:shadow-sm">
             Templates Library
+          </TabsTrigger>
+          <TabsTrigger value="designs" className="font-semibold text-slate-700 data-[state=active]:bg-white data-[state=active]:shadow-sm flex items-center justify-center gap-1.5">
+            <Image className="h-4 w-4 text-blue-600" />
+            Reusable Badge Designs
           </TabsTrigger>
           <TabsTrigger value="designer" className="font-semibold text-slate-700 data-[state=active]:bg-white data-[state=active]:shadow-sm flex items-center justify-center gap-1.5">
             <Sliders className="h-4 w-4 text-emerald-600" />
@@ -975,6 +1007,87 @@ export default function BadgeTemplates() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="designs" className="space-y-6">
+          <Card className="border-slate-200 shadow-sm bg-white">
+            <CardHeader className="border-b bg-slate-50/50">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Image className="h-5 w-5 text-blue-600" />
+                Reusable Badge Designs
+              </CardTitle>
+              <CardDescription>
+                Configure reusable badge artwork independently. Badge definitions and mappings reference these stable designs.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-6">
+              {designFeedback && (
+                <div className="mb-5 flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                  <Check className="h-4 w-4" />
+                  {designFeedback}
+                </div>
+              )}
+              <div className="grid gap-5 md:grid-cols-2">
+                {badgeDesigns.map((design) => {
+                  const isSaving = savingDesignId === design.id;
+                  const artworkInputId = `badge-design-artwork-${design.id}`;
+                  return (
+                    <Card key={design.id} className="overflow-hidden border-slate-200 shadow-none">
+                      <CardContent className="p-5">
+                        <div className="flex items-start gap-4">
+                          <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                            {design.artworkUrl ? (
+                              <img
+                                src={design.artworkUrl}
+                                alt={`${design.name} artwork`}
+                                className="h-full w-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <div className="px-2 text-center text-xs leading-4 text-slate-500">Artwork not configured</div>
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <h3 className="font-semibold text-slate-900">{design.name}</h3>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <Badge className={getBadgeColor(design.badgeType)}>{getBadgeTypeLabel(design.badgeType)}</Badge>
+                              <Badge variant="outline" className="border-slate-300 text-slate-600">{design.status}</Badge>
+                            </div>
+                            <p className="mt-3 text-xs text-slate-500">
+                              {design.artworkUrl ? 'Artwork configured and available to active badge mappings.' : 'Artwork not configured.'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-5 flex items-center gap-3">
+                          <input
+                            id={artworkInputId}
+                            type="file"
+                            accept="image/png,image/jpeg"
+                            className="hidden"
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              void handleDesignArtworkUpload(design, file).finally(() => { event.target.value = ''; });
+                            }}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={!user || isSaving}
+                            onClick={() => document.getElementById(artworkInputId)?.click()}
+                          >
+                            <Upload className="mr-1.5 h-3.5 w-3.5" />
+                            {isSaving ? 'Saving artwork...' : design.artworkUrl ? 'Replace Artwork' : 'Upload Artwork'}
+                          </Button>
+                          <span className="text-[11px] text-slate-400">PNG, JPG, or JPEG · max 3 MB</span>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="designer" className="space-y-6">
           <div className="grid lg:grid-cols-12 gap-8 items-start">
             {/* Left Column: Visual Parameters Layout Controls */}
@@ -1028,7 +1141,7 @@ export default function BadgeTemplates() {
                 <div className="space-y-2">
                   <Label className="text-xs font-bold uppercase text-slate-600 flex items-center gap-1">
                     <Image className="h-3 w-3 text-emerald-500" />
-                    Template Background Image URL
+                    Credential Layout Background Image URL
                   </Label>
                   <div className="flex gap-2">
                     <Input 
@@ -1044,7 +1157,7 @@ export default function BadgeTemplates() {
                     )}
                   </div>
                   <p className="text-[10px] text-slate-400">
-                    Upload direct link template baseline to lay placeholder fields precisely above elements.
+                    Optional legacy template background used to position credential fields. Manage reusable badge artwork in the Reusable Badge Designs tab.
                   </p>
                 </div>
 
@@ -1052,7 +1165,7 @@ export default function BadgeTemplates() {
                 <div className="space-y-2 border-t pt-4">
                   <Label className="text-xs font-bold uppercase text-slate-600 flex items-center gap-1.5">
                     <Upload className="h-3.5 w-3.5 text-emerald-500" />
-                    Upload Template Background
+                    Upload Credential Layout Background
                   </Label>
                   <div 
                     className={`mt-1 flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-4 transition-all duration-150 cursor-pointer ${
@@ -1510,7 +1623,7 @@ export default function BadgeTemplates() {
               {editingTemplate ? 'Edit Standard Template' : 'Create New Standard Template'}
             </DialogTitle>
             <DialogDescription className="text-xs text-slate-500">
-              Define the metadata, badge type, standard mappings, and background reference image.
+              Define the metadata, badge type, standard mappings, and reusable badge design reference.
             </DialogDescription>
           </DialogHeader>
 
@@ -1787,7 +1900,7 @@ export default function BadgeTemplates() {
                   <div className="space-y-1.5"><Label className="text-xs font-semibold text-slate-700">Reusable Badge Design</Label><Select value={formData.badgeDesignId} onValueChange={(value) => setFormData(prev => ({ ...prev, badgeDesignId: value }))}><SelectTrigger className="text-xs"><SelectValue placeholder="Select reusable artwork" /></SelectTrigger><SelectContent>{badgeDesigns.filter((design) => design.status === 'Active').map((design) => <SelectItem key={design.id} value={design.id} className="text-xs">{design.name} — {design.badgeType}</SelectItem>)}</SelectContent></Select></div>
                   {resolveBadgeDesign({ ...formData, id: editingTemplate?.id || 'preview' } as BadgeTemplate, badgeDesigns).artworkUrl ? <img src={resolveBadgeDesign({ ...formData, id: editingTemplate?.id || 'preview' } as BadgeTemplate, badgeDesigns).artworkUrl} alt="Selected reusable artwork" className="h-12 w-12 rounded border object-cover" /> : <div className="flex h-12 w-12 items-center justify-center rounded border border-dashed border-slate-300 bg-white text-center text-[9px] leading-3 text-slate-500">Artwork<br />not configured</div>}
                 </div>
-                <Button type="button" variant="outline" size="sm" className="mt-3 text-xs" onClick={() => { setActiveTab('designer'); setIsModalOpen(false); }}><Upload className="mr-1.5 h-3.5 w-3.5" />Upload / preview selected artwork in Visual Badge Designer</Button>
+                <Button type="button" variant="outline" size="sm" className="mt-3 text-xs" onClick={() => { setActiveTab('designs'); setIsModalOpen(false); }}><Upload className="mr-1.5 h-3.5 w-3.5" />Manage reusable badge artwork</Button>
               </div>
 
               <div className="col-span-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
