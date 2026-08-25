@@ -199,6 +199,45 @@ service cloud.firestore {
       );
     }
 
+    // Counter reads cannot depend on resource.data because the first
+    // transaction read targets a document that does not exist yet.
+    function canReadBadgeCounter() {
+      let userData = currentUserData();
+      let role = userData.get('role', '');
+      let email = request.auth.token.get('email', '');
+      return isSignedIn() && (
+        role in ['Admin', 'qso_admin', 'DistrictOffice'] ||
+        email in [
+          'lmvergara@tesda.gov.ph',
+          'domsrock123@gmail.com',
+          'admin@tesda.gov.ph',
+          'qso.csdd@tesda.gov.ph',
+          'luzvergara0512@gmail.com',
+          'admin@demo.com',
+          'qso@demo.com',
+          'district@demo.com'
+        ]
+      );
+    }
+
+    function isValidBadgeCounter(data) {
+      return data.keys().hasAll([
+          'year', 'districtOfficeId', 'badgeTemplateId',
+          'prefix', 'lastNumber', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'year', 'districtOfficeId', 'badgeTemplateId',
+          'prefix', 'lastNumber', 'updatedAt'
+        ]) &&
+        data.year is int &&
+        data.districtOfficeId is string &&
+        data.badgeTemplateId is string &&
+        data.prefix is string &&
+        data.lastNumber is int &&
+        data.updatedAt is timestamp &&
+        data.updatedAt == request.time;
+    }
+
     function isExternalBadgeRequest(data) {
       return data.keys().hasAny(['externalEligibilityKey', 'externalEligibility']);
     }
@@ -408,6 +447,24 @@ service cloud.firestore {
     match /badgeDesigns/{designId} {
       allow read: if isSignedIn();
       allow write: if isQSO() || isAdmin();
+    }
+
+    match /badgeCounters/{counterId} {
+      allow get: if canReadBadgeCounter();
+      allow list: if false;
+      allow create: if isApprovalAuthorityFor(incoming()) &&
+        isValidBadgeCounter(incoming()) &&
+        incoming().lastNumber == 1;
+      allow update: if isApprovalAuthorityFor(existing()) &&
+        isValidBadgeCounter(incoming()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['lastNumber', 'updatedAt']) &&
+        incoming().year == existing().year &&
+        incoming().districtOfficeId == existing().districtOfficeId &&
+        incoming().badgeTemplateId == existing().badgeTemplateId &&
+        incoming().prefix == existing().prefix &&
+        existing().lastNumber is int &&
+        incoming().lastNumber == existing().lastNumber + 1;
+      allow delete: if isAdmin();
     }
 
     match /issuedBadges/{issuedBadgeId} {

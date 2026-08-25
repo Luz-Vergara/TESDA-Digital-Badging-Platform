@@ -129,7 +129,6 @@ export const generateOfficialBadgeId = async (
     return `TESDA-${year}-${cleanDistrict}-${prefix}-${paddedSequence}`;
   } catch (err) {
     console.error("Failed to generate official Badge ID via transaction:", err);
-    const rand = Math.floor(100000 + Math.random() * 900000);
-    return `TESDA-${year}-${cleanDistrict}-${prefix}-${rand}`;
+    throw err;
   }
 };
