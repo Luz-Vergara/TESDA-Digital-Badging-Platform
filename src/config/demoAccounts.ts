@@ -3,6 +3,7 @@ export interface DemoAccount {
   label: string;
   email: string;
   organizationName?: string;
+  externalLearnerUli?: string;
 }
 
 export interface DemoAccountGroup {
@@ -71,27 +72,28 @@ export const demoAccountGroups: DemoAccountGroup[] = [
     accounts: [
       {
         id: "demo-learner-1",
-        label: "Demo Learner 1 (Juan Dela Cruz)",
-        email: "learner@demo.com"
+        label: "Demo Learner 1",
+        email: "learner@demo.com",
+        externalLearnerUli: "DEMO-ULI-0001"
       },
       {
         id: "demo-learner-2",
-        label: "Demo Learner 2 (Maria Santos)",
+        label: "Demo Learner 2",
         email: "learner2@demo.com"
       },
       {
         id: "demo-learner-3",
-        label: "Demo Learner 3 (Kiko Benitez)",
+        label: "Demo Learner 3",
         email: "learner3@demo.com"
       },
       {
         id: "demo-learner-4",
-        label: "Demo Learner 4 (Andres Bonifacio)",
+        label: "Demo Learner 4",
         email: "learner4@demo.com"
       },
       {
         id: "demo-learner-5",
-        label: "Demo Learner 5 (Emilio Aguinaldo)",
+        label: "Demo Learner 5",
         email: "learner5@demo.com"
       }
     ]

@@ -410,8 +410,12 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
               {learners.map(learner => (
                 <div key={learner.id} className="p-3 flex items-center justify-between hover:bg-slate-50/50 transition-colors">
                   <div className="flex flex-col">
-                    <span className="text-sm font-medium">{learner.firstName} {learner.lastName}</span>
-                    <span className="text-[10px] text-slate-500">{learner.email}</span>
+                    <span className="text-sm font-medium">
+                      {request.externalEligibility?.learnerName || `${learner.firstName} ${learner.lastName}`}
+                    </span>
+                    <span className="text-[10px] text-slate-500">
+                      {request.externalEligibility?.learnerEmail || learner.email}
+                    </span>
                   </div>
                   <Badge variant="outline" className="text-[10px] font-mono uppercase">ID: {learner.id.slice(-6).toUpperCase()}</Badge>
                 </div>

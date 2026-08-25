@@ -18,7 +18,7 @@ import { Link, useNavigate } from 'react-router-dom';
 
 export default function LearnerDashboard() {
   const navigate = useNavigate();
-  const { user, userProfile, isAuthReady } = useFirebase();
+  const { user, userProfile, linkedExternalLearner, isAuthReady } = useFirebase();
   const [badgesEmail, setBadgesEmail] = useState<any[]>([]);
   const [badgesId, setBadgesId] = useState<any[]>([]);
   const [badgesRequests, setBadgesRequests] = useState<any[]>([]);
@@ -417,8 +417,11 @@ export default function LearnerDashboard() {
   }
 
   const getLearnerDisplayName = () => {
+    if (linkedExternalLearner?.displayName) {
+      return linkedExternalLearner.displayName;
+    }
     if (learnerData?.firstName) {
-      return learnerData.firstName;
+      return [learnerData.firstName, learnerData.lastName].filter(Boolean).join(' ');
     }
     const rawName = userProfile?.name || '';
     if (!rawName) return 'Learner';
@@ -457,6 +460,9 @@ export default function LearnerDashboard() {
             )}
           </h1>
           <p className="text-slate-500">You have {activeBadges.length} active badges. Keep it up!</p>
+          {linkedExternalLearner?.learnerUli && (
+            <p className="mt-1 font-mono text-xs text-slate-500">ULI: {linkedExternalLearner.learnerUli}</p>
+          )}
         </div>
         <div className="flex gap-3">
           <Button 

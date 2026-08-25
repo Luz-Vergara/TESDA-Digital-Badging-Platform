@@ -2,11 +2,20 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
 import { demoAccountGroups } from '../config/demoAccounts';
+import { externalApi } from '../services/externalApi';
 import { auth, db } from './firebase';
+
+export interface LinkedExternalLearnerIdentity {
+  displayName: string;
+  learnerUli: string;
+  email: string | null;
+}
 
 interface FirebaseContextType {
   user: User | null;
   userProfile: any | null;
+  linkedExternalLearner: LinkedExternalLearnerIdentity | null;
+  linkedExternalLearnerLoading: boolean;
   loading: boolean;
   isAuthReady: boolean;
   logout: () => Promise<void>;
@@ -17,6 +26,8 @@ interface FirebaseContextType {
 const FirebaseContext = createContext<FirebaseContextType>({
   user: null,
   userProfile: null,
+  linkedExternalLearner: null,
+  linkedExternalLearnerLoading: false,
   loading: true,
   isAuthReady: false,
   logout: async () => {},
@@ -47,6 +58,8 @@ export function getDemoRoleByEmail(email: string): string {
 export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<any | null>(null);
+  const [linkedExternalLearner, setLinkedExternalLearner] = useState<LinkedExternalLearnerIdentity | null>(null);
+  const [linkedExternalLearnerLoading, setLinkedExternalLearnerLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [offlineError, setOfflineError] = useState<string | null>(null);
@@ -136,11 +149,10 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
                 const emailLower = currentUser.email?.toLowerCase() || '';
                 let defaultName = `Demo ${role.replace(/([A-Z])/g, ' $1').trim()}`;
-                if (emailLower === 'learner@demo.com') defaultName = 'Juan Dela Cruz';
-                if (emailLower === 'learner2@demo.com') defaultName = 'Maria Santos';
-                if (emailLower === 'learner3@demo.com') defaultName = 'Demo Learner 3 (Kiko Binetez)';
-                if (emailLower === 'learner4@demo.com') defaultName = 'Andres Bonifacio';
-                if (emailLower === 'learner5@demo.com') defaultName = 'Emilio Aguinaldo';
+                const demoAccount = demoAccountGroups
+                  .flatMap(group => group.accounts)
+                  .find(account => account.email.toLowerCase() === emailLower);
+                if (demoAccount) defaultName = demoAccount.label;
 
                 profile = {
                   uid: currentUser.uid,
@@ -272,6 +284,57 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return () => unsubscribe();
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function resolveLinkedExternalLearner() {
+      setLinkedExternalLearner(null);
+
+      if (!isAuthReady || !user || userProfile?.role !== 'Learner' || !userProfile?.isDemo) {
+        setLinkedExternalLearnerLoading(false);
+        return;
+      }
+
+      const demoAccount = demoAccountGroups
+        .flatMap(group => group.accounts)
+        .find(account => account.email.toLowerCase() === user.email?.toLowerCase());
+      const learnerUli = demoAccount?.externalLearnerUli;
+
+      if (!learnerUli) {
+        setLinkedExternalLearnerLoading(false);
+        return;
+      }
+
+      setLinkedExternalLearnerLoading(true);
+      try {
+        const linkSnapshot = await getDoc(doc(db, 'integrationLearnerLinks', learnerUli));
+        const link = linkSnapshot.data();
+        if (!linkSnapshot.exists() || link?.active !== true || link?.firebaseLearnerId !== user.uid) {
+          throw new Error('The configured external learner link is missing, inactive, or belongs to another Firebase identity.');
+        }
+
+        const response = await externalApi.getLearnerDetails(linkSnapshot.id);
+        if (!cancelled) {
+          setLinkedExternalLearner({
+            displayName: response.data.displayName,
+            learnerUli: response.data.learnerUli,
+            email: response.data.email,
+          });
+        }
+      } catch (error) {
+        console.error('[FirebaseProvider] Linked external learner identity unavailable:', error);
+        if (!cancelled) setLinkedExternalLearner(null);
+      } finally {
+        if (!cancelled) setLinkedExternalLearnerLoading(false);
+      }
+    }
+
+    void resolveLinkedExternalLearner();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthReady, user, userProfile?.isDemo, userProfile?.role]);
+
   const logout = async () => {
     try {
       localStorage.setItem('is_demo_user', 'false');
@@ -282,7 +345,7 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   return (
-    <FirebaseContext.Provider value={{ user, userProfile, loading, isAuthReady, logout, offlineError, profileError }}>
+    <FirebaseContext.Provider value={{ user, userProfile, linkedExternalLearner, linkedExternalLearnerLoading, loading, isAuthReady, logout, offlineError, profileError }}>
       {children}
     </FirebaseContext.Provider>
   );
