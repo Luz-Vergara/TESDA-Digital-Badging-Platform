@@ -115,6 +115,41 @@ service cloud.firestore {
       return isSignedIn() && data.get('learnerIds', []).hasAny([request.auth.uid]);
     }
 
+    // Keep badge-request reads flat so the authenticated user document is
+    // evaluated once while preserving every existing reader category.
+    function canReadBadgeRequest(data) {
+      let userData = currentUserData();
+      let role = userData.get('role', '');
+      let organizationId = userData.get('organizationId', '');
+      let assignedDistrictId = userData.get('assignedDistrictId', '');
+      let office = userData.get('office', '');
+      let email = request.auth.token.get('email', '');
+      let requestDistrictId = data.get('districtOfficeId', '');
+      let requestTrainingCenterId = data.get('trainingCenterId', '');
+      return isSignedIn() && (
+        role in ['Admin', 'qso_admin', 'icto_admin', 'co_admin', 'AssessmentCenter'] ||
+        email in [
+          'lmvergara@tesda.gov.ph',
+          'domsrock123@gmail.com',
+          'admin@tesda.gov.ph',
+          'qso.csdd@tesda.gov.ph',
+          'luzvergara0512@gmail.com',
+          'admin@demo.com',
+          'qso@demo.com',
+          'icto@demo.com'
+        ] ||
+        (
+          (role == 'DistrictOffice' || email == 'district@demo.com') &&
+          requestDistrictId in [assignedDistrictId, organizationId, office]
+        ) ||
+        (
+          role == 'TrainingCenter' &&
+          organizationId == requestTrainingCenterId
+        ) ||
+        data.get('learnerIds', []).hasAny([request.auth.uid])
+      );
+    }
+
     function canReadIssuedBadge(data) {
       return isSignedIn() && (
         isAdmin() || isQSO() || isICTO() || isCO() || hasRole('AssessmentCenter') ||
@@ -139,8 +174,29 @@ service cloud.firestore {
     }
 
     function isApprovalAuthorityFor(data) {
-      let districtOfficeId = data.get('districtOfficeId', '');
-      return isAdmin() || isQSO() || isDistrictMatch(districtOfficeId);
+      let userData = currentUserData();
+      let role = userData.get('role', '');
+      let organizationId = userData.get('organizationId', '');
+      let assignedDistrictId = userData.get('assignedDistrictId', '');
+      let office = userData.get('office', '');
+      let email = request.auth.token.get('email', '');
+      let requestDistrictId = data.get('districtOfficeId', '');
+      return isSignedIn() && (
+        role in ['Admin', 'qso_admin'] ||
+        email in [
+          'lmvergara@tesda.gov.ph',
+          'domsrock123@gmail.com',
+          'admin@tesda.gov.ph',
+          'qso.csdd@tesda.gov.ph',
+          'luzvergara0512@gmail.com',
+          'admin@demo.com',
+          'qso@demo.com'
+        ] ||
+        (
+          (role == 'DistrictOffice' || email == 'district@demo.com') &&
+          requestDistrictId in [assignedDistrictId, organizationId, office]
+        )
+      );
     }
 
     function isExternalBadgeRequest(data) {
@@ -420,12 +476,7 @@ service cloud.firestore {
     }
 
     match /badgeRequests/{requestId} {
-      allow get, list: if isSignedIn() && (
-        isAdmin() || isQSO() || isICTO() || isCO() || hasRole('AssessmentCenter') ||
-        isApprovalAuthorityFor(resource.data) ||
-        isTrainingCenterFor(resource.data.get('trainingCenterId', '')) ||
-        isLearnerParticipant(resource.data)
-      );
+      allow get, list: if canReadBadgeRequest(resource.data);
       allow create: if isSignedIn() &&
         isTrainingCenterFor(incoming().get('trainingCenterId', '')) &&
         hasValidExternalRequestIdentity(requestId, incoming());
