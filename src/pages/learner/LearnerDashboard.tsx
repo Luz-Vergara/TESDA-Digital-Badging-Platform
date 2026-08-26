@@ -19,7 +19,6 @@ import { Link, useNavigate } from 'react-router-dom';
 export default function LearnerDashboard() {
   const navigate = useNavigate();
   const { user, userProfile, linkedExternalLearner, isAuthReady } = useFirebase();
-  const [badgesEmail, setBadgesEmail] = useState<any[]>([]);
   const [badgesId, setBadgesId] = useState<any[]>([]);
   const [badgesRequests, setBadgesRequests] = useState<any[]>([]);
   const [templates, setTemplates] = useState<BadgeTemplate[]>([]);
@@ -34,15 +33,9 @@ export default function LearnerDashboard() {
   const [showComingSoon, setShowComingSoon] = useState(false);
   const [myRplSubmissions, setMyRplSubmissions] = useState<any[]>([]);
 
-  // Combine badges from both email, ID queries, and approved requests
+  // Combine UID-owned issued badges and approved requests.
   const activeBadges = useMemo(() => {
-    const combined = [...badgesEmail];
-    
-    badgesId.forEach(item => {
-      if (!combined.find(c => c.id === item.id)) {
-        combined.push(item);
-      }
-    });
+    const combined = [...badgesId];
 
     // Add approved requests to the list only if there is no individual issued badge
     badgesRequests.forEach(req => {
@@ -177,7 +170,7 @@ export default function LearnerDashboard() {
       const dateB = b.issueDate?.seconds || b.submittedAt?.seconds || 0;
       return dateB - dateA;
     });
-  }, [badgesEmail, badgesId, badgesRequests, templates, user]);
+  }, [badgesId, badgesRequests, templates, user]);
 
   useEffect(() => {
     if (!isAuthReady || !user?.email) {
@@ -200,10 +193,6 @@ export default function LearnerDashboard() {
       );
     };
 
-    const qEmail = query(
-      collection(db, path),
-      where('learnerEmail', '==', user.email)
-    );
     const qId = query(
       collection(db, path),
       where('learnerId', '==', user.uid)
@@ -215,22 +204,15 @@ export default function LearnerDashboard() {
       where('status', 'in', ['Approved', 'Badge ID Generated'])
     );
 
-    const unsubEmail = onSnapshot(qEmail, (snapshot) => {
-      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setBadgesEmail(filterValid(docs));
-      setLoading(false);
-    }, (error) => {
-      console.error("Dashboard Email Error:", error);
-      setLoading(false);
-      handleFirestoreError(error, OperationType.GET, path);
-    });
-
     const unsubId = onSnapshot(qId, (snapshot) => {
       const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setBadgesId(filterValid(docs));
       setLoading(false);
     }, (error) => {
       console.error("Dashboard ID Error:", error);
+      setBadgesId([]);
+      setLoading(false);
+      handleFirestoreError(error, OperationType.GET, path);
     });
 
     const unsubRequests = onSnapshot(qRequests, (snapshot) => {
@@ -247,7 +229,6 @@ export default function LearnerDashboard() {
     });
 
     return () => {
-      unsubEmail();
       unsubId();
       unsubRequests();
       unsubTemplates();

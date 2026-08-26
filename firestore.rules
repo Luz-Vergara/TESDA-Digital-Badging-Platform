@@ -151,16 +151,37 @@ service cloud.firestore {
     }
 
     function canReadIssuedBadge(data) {
+      let userData = currentUserData();
+      let role = userData.get('role', '');
+      let organizationId = userData.get('organizationId', '');
+      let assignedDistrictId = userData.get('assignedDistrictId', '');
+      let office = userData.get('office', '');
+      let email = request.auth.token.get('email', '');
+      let badgeDistrictId = data.get('districtOfficeId', '');
+      let badgeTrainingCenterId = data.get('trainingCenterId', '');
       return isSignedIn() && (
-        isAdmin() || isQSO() || isICTO() || isCO() || hasRole('AssessmentCenter') ||
-        isApprovalAuthorityFor(data) ||
-        isTrainingCenterFor(data.get('trainingCenterId', '')) ||
-        (isTrainingCenter() && data.get('issuerId', '') == request.auth.uid) ||
-        data.get('learnerId', '') == request.auth.uid ||
+        role in ['Admin', 'qso_admin', 'icto_admin', 'co_admin', 'AssessmentCenter'] ||
+        email in [
+          'lmvergara@tesda.gov.ph',
+          'domsrock123@gmail.com',
+          'admin@tesda.gov.ph',
+          'qso.csdd@tesda.gov.ph',
+          'luzvergara0512@gmail.com',
+          'admin@demo.com',
+          'qso@demo.com',
+          'icto@demo.com'
+        ] ||
         (
-          request.auth.token.email is string &&
-          data.get('learnerEmail', '') == request.auth.token.email
-        )
+          (role == 'DistrictOffice' || email == 'district@demo.com') &&
+          badgeDistrictId in [assignedDistrictId, organizationId, office]
+        ) ||
+        (role == 'TrainingCenter' && organizationId == badgeTrainingCenterId) ||
+        (
+          (role == 'TrainingCenter' || email in ['training@demo.com', 'training1@demo.com', 'training2@demo.com']) &&
+          data.get('issuerId', '') == request.auth.uid
+        ) ||
+        data.get('learnerId', '') == request.auth.uid ||
+        (email != '' && data.get('learnerEmail', '') == email)
       );
     }
 

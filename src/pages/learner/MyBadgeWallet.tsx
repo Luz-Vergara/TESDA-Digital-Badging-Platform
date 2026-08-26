@@ -42,8 +42,7 @@ const statusClass = (status: string) => {
 
 export default function MyBadgeWallet() {
   const { user, isAuthReady } = useFirebase();
-  const [uidBadges, setUidBadges] = useState<any[]>([]);
-  const [emailBadges, setEmailBadges] = useState<any[]>([]);
+  const [issuedBadges, setIssuedBadges] = useState<any[]>([]);
   const [templates, setTemplates] = useState<BadgeTemplate[]>([]);
   const [badgeDesigns, setBadgeDesigns] = useState<BadgeDesign[]>(DEFAULT_BADGE_DESIGNS);
   const [loading, setLoading] = useState(true);
@@ -53,53 +52,27 @@ export default function MyBadgeWallet() {
   useEffect(() => {
     if (!isAuthReady) return;
     if (!user) {
-      setUidBadges([]);
-      setEmailBadges([]);
+      setIssuedBadges([]);
       setLoading(false);
       return;
     }
 
     setLoading(true);
-    let uidReady = false;
-    let emailReady = !user.email;
-    const finishLoading = () => {
-      if (uidReady && emailReady) setLoading(false);
-    };
 
     const unsubscribeByUid = onSnapshot(
       query(collection(db, 'issuedBadges'), where('learnerId', '==', user.uid)),
       (snapshot) => {
-        setUidBadges(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
-        uidReady = true;
-        finishLoading();
+        setIssuedBadges(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+        setLoading(false);
       },
-      () => {
-        setUidBadges([]);
-        uidReady = true;
-        finishLoading();
+      (error) => {
+        console.error('Wallet issued badges error:', error);
+        setIssuedBadges([]);
+        setLoading(false);
       },
     );
 
-    const unsubscribeByEmail = user.email
-      ? onSnapshot(
-          query(collection(db, 'issuedBadges'), where('learnerEmail', '==', user.email)),
-          (snapshot) => {
-            setEmailBadges(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
-            emailReady = true;
-            finishLoading();
-          },
-          () => {
-            setEmailBadges([]);
-            emailReady = true;
-            finishLoading();
-          },
-        )
-      : () => undefined;
-
-    return () => {
-      unsubscribeByUid();
-      unsubscribeByEmail();
-    };
+    return unsubscribeByUid;
   }, [isAuthReady, user]);
 
   useEffect(() => {
@@ -115,10 +88,7 @@ export default function MyBadgeWallet() {
   }, [isAuthReady]);
 
   const badges = useMemo(() => {
-    const uniqueBadges = new Map<string, any>();
-    [...uidBadges, ...emailBadges].forEach((badge) => uniqueBadges.set(badge.id, badge));
-
-    return [...uniqueBadges.values()]
+    return issuedBadges
       .filter((badge) => filterType === 'All' || badge.badgeType === filterType)
       .filter((badge) => {
         const queryText = searchQuery.trim().toLowerCase();
@@ -138,7 +108,7 @@ export default function MyBadgeWallet() {
         const bDate = b.issueDate?.toDate?.() ?? new Date(b.issueDate ?? 0);
         return bDate.getTime() - aDate.getTime();
       });
-  }, [emailBadges, filterType, searchQuery, uidBadges]);
+  }, [filterType, issuedBadges, searchQuery]);
 
   if (!isAuthReady || loading) {
     return <div className="p-8 text-sm text-slate-500">Loading your issued credentials…</div>;
