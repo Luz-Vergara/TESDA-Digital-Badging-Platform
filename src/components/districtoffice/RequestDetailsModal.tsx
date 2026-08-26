@@ -106,6 +106,9 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
       const externalEvidence = request.externalEligibility;
       const isExternalRequest = Boolean(externalEvidence);
       const badgeDesignId = template?.badgeDesignId || '';
+      const recognitionScope = template?.recognitionScope || (request as any).recognitionScope || '';
+      const configuredCompetencyTitle = template?.competencyTitle || template?.relatedCompetency || '';
+      const configuredCompetencyCode = template?.competencyCode || '';
       let badgeArtworkUrl = template?.imageUrl || '';
 
       if (badgeDesignId) {
@@ -176,9 +179,9 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
           qualificationCode: externalEvidence?.qualificationCode || request.qualificationCode || request.templateDetails?.qualificationCode || template?.qualificationCode || (offering && offering.qualificationCode) || '',
           standardId: template?.standardId || (request as any).standardId || '',
           standardType: template?.standardType || (request as any).standardType || '',
-          recognitionScope: template?.recognitionScope || (request as any).recognitionScope || '',
-          competencyTitle: template?.competencyTitle || template?.relatedCompetency || '',
-          competencyCode: template?.competencyCode || '',
+          recognitionScope,
+          ...(recognitionScope === 'Competency' && configuredCompetencyTitle ? { competencyTitle: configuredCompetencyTitle } : {}),
+          ...(recognitionScope === 'Competency' && configuredCompetencyCode ? { competencyCode: configuredCompetencyCode } : {}),
           credentialLevel: request.templateDetails?.credentialLevel || template?.credentialLevel || 'Unit of Competency',
           criteria: request.templateDetails?.criteria || template?.criteria || '',
           alignment: request.templateDetails?.alignment || template?.alignment || '',
