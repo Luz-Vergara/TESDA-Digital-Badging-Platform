@@ -84,7 +84,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from '@/components/ui/textarea';
 import { BadgeDesign, BadgeTemplate, RecognitionScope } from '@/src/types';
-import { BADGE_TYPES, getBadgeColor, getBadgeTypeLabel, isBadgeType, STANDARD_TYPES } from '@/src/lib/badge-utils';
+import { BADGE_TYPES, getBadgeColor, getBadgeTypeLabel, isBadgeType } from '@/src/lib/badge-utils';
 import { demoStandards, getDemoStandard } from '@/src/data/demoStandards';
 import { DEFAULT_BADGE_DESIGNS, mergeBadgeDesigns, resolveBadgeDesign } from '@/src/lib/badge-designs';
 
@@ -112,36 +112,6 @@ const recognitionScopeFor = (template?: BadgeTemplate): RecognitionScope => {
   return template?.competencyCode || template?.competencyTitle || template?.relatedCompetency
     ? 'Competency'
     : 'CompleteStandard';
-};
-
-const ACTIVE_STANDARD_PROFILES = [
-  "Create 2D Digital Cut-Out Animation",
-  "Develop 2D Animation",
-  "Produce 3D Animation",
-  "Advanced Multimedia Production",
-  "Web Development NC III",
-  "Visual Graphic Design NC III",
-  "Software Development NC IV",
-  "Cybersecurity Analyst",
-  "Game Development",
-  "Data Science Associate",
-  "IT Support Specialist",
-  "Technical Drafting NC II"
-];
-
-const PROFILE_CODE_MAPPING: { [key: string]: string } = {
-  "Create 2D Digital Cut-Out Animation": "ANIM-NC3-2D",
-  "Develop 2D Animation": "ANIM-NC2-2D",
-  "Produce 3D Animation": "ANIM-NC3-3D",
-  "Advanced Multimedia Production": "ICT-AMP-23",
-  "Web Development NC III": "ICT-WD-3",
-  "Visual Graphic Design NC III": "ICT-VGD-3",
-  "Software Development NC IV": "ICT-SD-4",
-  "Cybersecurity Analyst": "ICT-CSA-4",
-  "Game Development": "ICT-GD-3",
-  "Data Science Associate": "ICT-DSA-3",
-  "IT Support Specialist": "ICT-ITSS-2",
-  "Technical Drafting NC II": "IND-TD-2"
 };
 
 export default function BadgeTemplates() {
@@ -246,7 +216,7 @@ export default function BadgeTemplates() {
     qualificationCode: '',
     standardId: '',
     badgeType: 'Proficient' as BadgeTemplate['badgeType'],
-    standardType: 'CS' as NonNullable<BadgeTemplate['standardType']>,
+    standardType: '' as NonNullable<BadgeTemplate['standardType']>,
     recognitionScope: 'Competency' as RecognitionScope,
     competencyCode: '',
     competencyTitle: '',
@@ -392,11 +362,6 @@ export default function BadgeTemplates() {
   };
 
   const handleDemoStandardChange = (standardId: string) => {
-    if (standardId === 'none') {
-      setFormData(prev => ({ ...prev, standardId: '' }));
-      return;
-    }
-
     const standard = getDemoStandard(standardId);
     if (!standard) return;
 
@@ -406,11 +371,23 @@ export default function BadgeTemplates() {
       standardType: standard.type,
       qualificationName: standard.title,
       qualificationCode: standard.code || '',
-      relatedCompetency: standard.competencies
-        .map((competency) => [competency.code, competency.title].filter(Boolean).join(' — '))
-        .join('; '),
-      competencyCode: standard.competencies[0]?.code || '',
-      competencyTitle: standard.competencies[0]?.title || '',
+      recognitionScope: standard.competencies.length === 0 ? 'CompleteStandard' : prev.recognitionScope,
+      competencyCode: '',
+      competencyTitle: '',
+      relatedCompetency: '',
+    }));
+  };
+
+  const handleCompetencyChange = (competencyIndex: string) => {
+    const standard = getDemoStandard(formData.standardId);
+    const competency = standard?.competencies[Number(competencyIndex)];
+    if (!competency) return;
+
+    setFormData(prev => ({
+      ...prev,
+      competencyCode: competency.code || '',
+      competencyTitle: competency.title,
+      relatedCompetency: competency.title,
     }));
   };
 
@@ -455,7 +432,7 @@ export default function BadgeTemplates() {
           action: `Updated Badge Template: ${formData.badgeName}`,
           userName: 'QSO Admin',
           timestamp: serverTimestamp(),
-          details: `Qualification: ${formData.qualificationName} | Type: ${formData.badgeType}`
+          details: `Standard: ${formData.qualificationName} | Type: ${formData.badgeType}`
         });
       } else {
         const newTemplate = {
@@ -468,7 +445,7 @@ export default function BadgeTemplates() {
           action: `Created Badge Template: ${formData.badgeName}`,
           userName: 'QSO Admin',
           timestamp: serverTimestamp(),
-          details: `Qualification: ${formData.qualificationName} | Type: ${formData.badgeType}`
+          details: `Standard: ${formData.qualificationName} | Type: ${formData.badgeType}`
         });
       }
 
@@ -490,7 +467,7 @@ export default function BadgeTemplates() {
       qualificationCode: '',
       standardId: '',
       badgeType: 'Proficient',
-      standardType: 'CS',
+      standardType: '',
       recognitionScope: 'Competency',
       competencyCode: '',
       competencyTitle: '',
@@ -517,17 +494,19 @@ export default function BadgeTemplates() {
   const handleEdit = (template: BadgeTemplate) => {
     const recognitionScope = template.recognitionScope || (template.relatedCompetency ? 'Competency' : 'CompleteStandard');
     const isCompleteStandard = recognitionScope === 'CompleteStandard';
+    const standardId = template.standardId || demoStandards.find((standard) =>
+      standard.code === template.qualificationCode || standard.title === template.qualificationName,
+    )?.id || '';
+    const canonicalStandard = getDemoStandard(standardId);
     setEditingTemplate(template);
     setFormData({
       badgeName: template.badgeName || '',
-      qualificationName: template.qualificationName || '',
-      qualificationCode: template.qualificationCode || '',
-      standardId: template.standardId || demoStandards.find((standard) =>
-        standard.code === template.qualificationCode || standard.title === template.qualificationName,
-      )?.id || '',
+      qualificationName: canonicalStandard?.title || template.qualificationName || '',
+      qualificationCode: canonicalStandard?.code || '',
+      standardId,
       // Legacy template values must not re-enter the active authoring model.
       badgeType: isBadgeType(template.badgeType) ? template.badgeType : 'Proficient',
-      standardType: template.standardType || 'CS',
+      standardType: canonicalStandard?.type || template.standardType || 'CS',
       recognitionScope,
       competencyCode: isCompleteStandard ? '' : template.competencyCode || '',
       competencyTitle: isCompleteStandard ? '' : template.competencyTitle || template.relatedCompetency || '',
@@ -782,6 +761,10 @@ export default function BadgeTemplates() {
     
     return matchesSearch && matchesQual;
   });
+  const selectedFormStandard = getDemoStandard(formData.standardId);
+  const selectedCompetencyIndex = selectedFormStandard?.competencies.findIndex((competency) =>
+    competency.title === formData.competencyTitle && (competency.code || '') === formData.competencyCode,
+  ) ?? -1;
 
   return (
     <div className="space-y-8">
@@ -847,16 +830,16 @@ export default function BadgeTemplates() {
             <CardHeader className="border-b bg-slate-50/50">
               <CardTitle className="text-lg flex items-center gap-2">
                 <FileText className="h-5 w-5 text-blue-600" />
-                Badge Template Library
+                Badge Definition Library
               </CardTitle>
-              <CardDescription>System-wide standards for all digital credentials.</CardDescription>
+              <CardDescription>System-wide badge definitions for digital credentials.</CardDescription>
             </CardHeader>
             <CardContent className="p-6">
               <div className="flex flex-col md:flex-row gap-4 mb-6">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                   <Input 
-                    placeholder="Search by badge name or qualification..." 
+                    placeholder="Search by badge definition or standard..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-10"
@@ -866,10 +849,10 @@ export default function BadgeTemplates() {
                 <div className="w-full md:w-64">
                   <Select value={qualificationFilter} onValueChange={setQualificationFilter}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Filter by qualification" />
+                      <SelectValue placeholder="Filter by standard" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Qualifications</SelectItem>
+                      <SelectItem value="all">All Standards</SelectItem>
                       {Array.from(new Set(templates.map(t => t.qualificationName).filter(Boolean))).map(qName => (
                         <SelectItem key={qName} value={qName!}>{qName}</SelectItem>
                       ))}
@@ -883,9 +866,9 @@ export default function BadgeTemplates() {
                   <TableHeader className="bg-slate-50">
                     <TableRow>
                       <TableHead className="font-bold text-slate-700">Preview</TableHead>
-                      <TableHead className="font-bold text-slate-700">Badge/Standard Name</TableHead>
+                      <TableHead className="font-bold text-slate-700">Badge Definition</TableHead>
                       <TableHead className="font-bold text-slate-700 font-mono text-center">Type</TableHead>
-                      <TableHead className="font-bold text-slate-700">Qualification Group</TableHead>
+                      <TableHead className="font-bold text-slate-700">Standard</TableHead>
                       <TableHead className="font-bold text-slate-700">Validity</TableHead>
                       <TableHead className="font-bold text-slate-700">Issuing Authority</TableHead>
                       <TableHead className="font-bold text-slate-700">Status</TableHead>
@@ -955,7 +938,7 @@ export default function BadgeTemplates() {
                                 }
                               />
                               <DropdownMenuContent align="end" className="w-[180px] bg-white border rounded shadow-md">
-                                <DropdownMenuLabel className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Template Actions</DropdownMenuLabel>
+                                <DropdownMenuLabel className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Badge Definition Actions</DropdownMenuLabel>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuGroup>
                                   <DropdownMenuItem 
@@ -963,7 +946,7 @@ export default function BadgeTemplates() {
                                     className="cursor-pointer hover:bg-slate-50"
                                   >
                                     <Edit2 className="mr-2 h-4 w-4 text-slate-600" />
-                                    <span>Edit Template</span>
+                                    <span>Edit Badge Definition</span>
                                   </DropdownMenuItem>
                                   <DropdownMenuItem 
                                     onClick={() => {
@@ -1102,7 +1085,7 @@ export default function BadgeTemplates() {
               </div>
 
               <div className="space-y-4">
-                {/* Template Profile Selection */}
+                {/* Badge Definition Selection */}
                 <div className="space-y-2">
                   <Label className="text-xs font-bold uppercase text-slate-600">Badge Definition</Label>
                   <Select value={designerTemplateId} onValueChange={setDesignerTemplateId}>
@@ -1247,11 +1230,11 @@ export default function BadgeTemplates() {
                 <div className="absolute top-4 left-4 right-4 flex justify-between items-center text-xs text-slate-400 font-mono">
                   <div className="flex items-center gap-1.5 font-bold">
                     <Sparkles className="h-3.5 w-3.5 text-emerald-400 animate-pulse" />
-                    <span className="tracking-wide">INTERACTIVE PLACEHOLDER PLACEMENT CANVAS</span>
+                    <span className="tracking-wide">INTERACTIVE BADGE FIELD PLACEMENT CANVAS</span>
                   </div>
                   {designerTemplateId && (
                     <div className="bg-emerald-950/80 px-2.5 py-1 rounded text-emerald-400 font-extrabold border border-emerald-800 uppercase tracking-widest text-[9px]">
-                      Live Synchronized Profile
+                      Live Badge Definition
                     </div>
                   )}
                 </div>
@@ -1514,9 +1497,9 @@ export default function BadgeTemplates() {
                 ) : (
                   <div className="text-center py-20 text-slate-500">
                     <Award className="h-12 w-12 text-slate-750 mx-auto mb-4" />
-                    <h4 className="font-bold text-slate-300">No Standards Installed</h4>
+                    <h4 className="font-bold text-slate-300">No Badge Definitions Available</h4>
                     <p className="text-xs text-slate-500 max-w-sm mt-1">
-                      Please publish at least one badge standard template on the library catalog first to arrange visual coordinates layouts.
+                      Create a badge definition before arranging visual layout coordinates.
                     </p>
                   </div>
                 )}
@@ -1526,7 +1509,7 @@ export default function BadgeTemplates() {
               <div className="w-full mt-4 bg-slate-50 border border-slate-200 p-4 rounded-xl flex justify-between items-center text-xs text-slate-650">
                 <div>
                   <span className="font-bold text-slate-800">Quick Alignment Templates:</span>
-                  <p className="text-[11px] text-slate-500">Snaps preset coordinates instantly to align your active layout profiles.</p>
+                  <p className="text-[11px] text-slate-500">Snaps preset coordinates instantly to align the active badge layout.</p>
                 </div>
                 <div className="flex gap-2">
                   <Button 
@@ -1579,7 +1562,7 @@ export default function BadgeTemplates() {
         <DialogContent className="sm:max-w-[600px] bg-white rounded-lg shadow-xl">
           <DialogHeader>
             <DialogTitle className="text-slate-900 font-bold text-lg">
-              {editingTemplate ? 'Edit Standard Template' : 'Create New Standard Template'}
+              {editingTemplate ? 'Edit Badge Definition' : 'Create Badge Definition'}
             </DialogTitle>
             <DialogDescription className="text-xs text-slate-500">
               Define the metadata, badge type, standard mappings, and reusable badge design reference.
@@ -1589,16 +1572,15 @@ export default function BadgeTemplates() {
           <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5 col-span-2">
-                <Label htmlFor="demoStandard" className="text-xs font-semibold text-slate-700">Demo Standard</Label>
+                <Label htmlFor="demoStandard" className="text-xs font-semibold text-slate-700">Standard</Label>
                 <Select
-                  value={formData.standardId || 'none'}
+                  value={formData.standardId}
                   onValueChange={handleDemoStandardChange}
                 >
                   <SelectTrigger id="demoStandard" className="w-full text-xs">
-                    <SelectValue placeholder="Select a temporary demo standard" />
+                    <SelectValue placeholder="Select a standard" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none" className="text-xs">No demo standard</SelectItem>
                     {demoStandards.map((standard) => (
                       <SelectItem key={standard.id} value={standard.id} className="text-xs">
                         {standard.type} · {standard.title}{standard.code ? ` (${standard.code})` : ''}
@@ -1607,7 +1589,7 @@ export default function BadgeTemplates() {
                   </SelectContent>
                 </Select>
                 <p className="text-[10px] text-slate-400">
-                  Selecting a standard fills its reference details only; Badge Type remains an independent choice.
+                  Prototype standards are sourced from the current canonical demo catalog. Badge Type remains an independent choice.
                 </p>
               </div>
 
@@ -1625,22 +1607,34 @@ export default function BadgeTemplates() {
                       <SelectContent><SelectItem value="Competency" className="text-xs">Competency</SelectItem><SelectItem value="CompleteStandard" className="text-xs">Complete Standard</SelectItem></SelectContent>
                     </Select>
                   </div>
-                  {formData.recognitionScope === 'Competency' && <>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-semibold text-slate-700">Mapped Competency Code</Label>
-                      <Input value={formData.competencyCode} onChange={(e) => setFormData(prev => ({ ...prev, competencyCode: e.target.value }))} placeholder="e.g. UC-001" className="text-xs" />
-                    </div>
-                    <div className="space-y-1.5 col-span-2"><Label className="text-xs font-semibold text-slate-700">Mapped Competency Title</Label><Input value={formData.competencyTitle} onChange={(e) => setFormData(prev => ({ ...prev, competencyTitle: e.target.value, relatedCompetency: e.target.value }))} placeholder="Mapped competency title" className="text-xs" /></div>
-                  </>}
+                  {formData.recognitionScope === 'Competency' && <div className="space-y-1.5 col-span-2">
+                    <Label className="text-xs font-semibold text-slate-700">Competency</Label>
+                    <Select
+                      value={selectedCompetencyIndex >= 0 ? String(selectedCompetencyIndex) : undefined}
+                      onValueChange={handleCompetencyChange}
+                      disabled={!selectedFormStandard || selectedFormStandard.competencies.length === 0}
+                    >
+                      <SelectTrigger className="text-xs"><SelectValue placeholder={selectedFormStandard ? 'Select a competency' : 'Select a standard first'} /></SelectTrigger>
+                      <SelectContent>
+                        {selectedFormStandard?.competencies.map((competency, index) => (
+                          <SelectItem key={`${competency.code || competency.title}-${index}`} value={String(index)} className="text-xs">
+                            {competency.title}{competency.code ? ` (${competency.code})` : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {selectedFormStandard && selectedFormStandard.competencies.length === 0 && <p className="text-[10px] text-amber-700">This standard has no configured competency mappings. Use Complete Standard.</p>}
+                    {formData.competencyTitle && <p className="text-[10px] text-slate-500">Competency code: {formData.competencyCode || 'Not provided by the standard'}</p>}
+                  </div>}
                 </div>
               </div>
 
               {/* Badge Name */}
               <div className="space-y-1.5 col-span-2">
-                <Label htmlFor="badgeName" className="text-xs font-semibold text-slate-700">Badge/Standard Name</Label>
+                <Label htmlFor="badgeName" className="text-xs font-semibold text-slate-700">Badge Definition</Label>
                 <Input
                   id="badgeName"
-                  placeholder="e.g. 2D Digital Animation Specialist"
+                  placeholder="e.g. Warehousing Services NC II — Receive stocks/goods"
                   value={formData.badgeName}
                   onChange={(e) => setFormData(prev => ({ ...prev, badgeName: e.target.value }))}
                   required
@@ -1648,27 +1642,25 @@ export default function BadgeTemplates() {
                 />
               </div>
 
-              {/* Qualification Name Display / Override */}
               <div className="space-y-1.5 col-span-2">
-                <Label htmlFor="qualificationName" className="text-xs font-semibold text-slate-700">Qualification Title Display</Label>
+                <Label htmlFor="qualificationName" className="text-xs font-semibold text-slate-700">Standard Title</Label>
                 <Input
                   id="qualificationName"
-                  placeholder="Displays as the qualification title text on the canvas"
                   value={formData.qualificationName}
-                  onChange={(e) => setFormData(prev => ({ ...prev, qualificationName: e.target.value }))}
                   required
+                  readOnly
+                  placeholder="Select a standard"
                   className="text-xs"
                 />
               </div>
 
-              {/* Qualification Code */}
               <div className="space-y-1.5">
-                <Label htmlFor="qualificationCode" className="text-xs font-semibold text-slate-700">Qualification Code (if provided)</Label>
+                <Label htmlFor="qualificationCode" className="text-xs font-semibold text-slate-700">Standard Code</Label>
                 <Input
                   id="qualificationCode"
-                  placeholder="e.g. ANIM-NC3-2D"
                   value={formData.qualificationCode}
-                  onChange={(e) => setFormData(prev => ({ ...prev, qualificationCode: e.target.value }))}
+                  readOnly
+                  placeholder="Not provided"
                   className="text-xs"
                 />
               </div>
@@ -1678,7 +1670,7 @@ export default function BadgeTemplates() {
                 <Label htmlFor="badgeIdPrefix" className="text-xs font-semibold text-slate-700">Badge ID Prefix (Optional)</Label>
                 <Input
                   id="badgeIdPrefix"
-                  placeholder="e.g. CSSNCII-PROF (leave empty for auto)"
+                  placeholder="Optional"
                   value={formData.badgeIdPrefix}
                   onChange={(e) => setFormData(prev => ({ ...prev, badgeIdPrefix: e.target.value }))}
                   className="text-xs"
@@ -1715,20 +1707,9 @@ export default function BadgeTemplates() {
                 </Select>
               </div>
 
-              {/* Standard type is independent from the selected badge type. */}
               <div className="space-y-1.5">
                 <Label htmlFor="standardType" className="text-xs font-semibold text-slate-700">Standard Type</Label>
-                <Select
-                  value={formData.standardType}
-                  onValueChange={(value: NonNullable<BadgeTemplate['standardType']>) => setFormData(prev => ({ ...prev, standardType: value }))}
-                >
-                  <SelectTrigger id="standardType" className="w-full text-xs">
-                    <SelectValue placeholder="Select standard type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {STANDARD_TYPES.map((type) => <SelectItem key={type} value={type} className="text-xs">{type}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <Input id="standardType" value={formData.standardType} readOnly placeholder="Select a standard" className="text-xs" />
               </div>
 
               <div className="space-y-1.5">
@@ -1745,18 +1726,6 @@ export default function BadgeTemplates() {
                     <SelectItem value="National Certificate" className="text-xs">National Certificate</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-
-              {/* Related Competency */}
-              <div className="space-y-1.5">
-                <Label htmlFor="relatedCompetency" className="text-xs font-semibold text-slate-700">Related Units of Competency</Label>
-                <Input
-                  id="relatedCompetency"
-                  placeholder="e.g. UC1, UC2, UC3"
-                  value={formData.relatedCompetency}
-                  onChange={(e) => setFormData(prev => ({ ...prev, relatedCompetency: e.target.value }))}
-                  className="text-xs"
-                />
               </div>
 
               {/* Validity Months */}
@@ -1814,7 +1783,7 @@ export default function BadgeTemplates() {
                 <Label htmlFor="description" className="text-xs font-semibold text-slate-700">Description</Label>
                 <Textarea
                   id="description"
-                  placeholder="Summarized goals and objectives of the standard profile template..."
+                  placeholder="Summarize the goals and objectives for this badge definition..."
                   value={formData.description}
                   onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
                   rows={2}
@@ -1851,7 +1820,7 @@ export default function BadgeTemplates() {
                 <Label htmlFor="tags" className="text-xs font-semibold text-slate-700">Search Tags (comma-separated)</Label>
                 <Input
                   id="tags"
-                  placeholder="multimedia, animation, creative, nc3"
+                  placeholder="warehousing, logistics, nc2"
                   value={formData.tags}
                   onChange={(e) => setFormData(prev => ({ ...prev, tags: e.target.value }))}
                   className="text-xs"
@@ -1901,9 +1870,9 @@ export default function BadgeTemplates() {
       <Dialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
         <DialogContent className="sm:max-w-[400px] bg-white rounded-lg shadow-xl">
           <DialogHeader>
-            <DialogTitle className="text-slate-900 font-bold text-lg">Delete Certificate Standard Template</DialogTitle>
+            <DialogTitle className="text-slate-900 font-bold text-lg">Delete Badge Definition</DialogTitle>
             <DialogDescription className="text-xs text-slate-500 mt-2">
-              Are you sure you want to delete the certificate standard template for <span className="font-extrabold text-slate-905">"{templateToDelete?.badgeName || templateToDelete?.programName}"</span>? This will permanently erase the configuration and cannot be undone.
+              Are you sure you want to delete the badge definition for <span className="font-extrabold text-slate-905">"{templateToDelete?.badgeName || templateToDelete?.programName}"</span>? This will permanently erase the configuration and cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-0 pt-4 border-t flex justify-end">
