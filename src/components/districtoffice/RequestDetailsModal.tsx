@@ -188,7 +188,7 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
           qrPayload,
           isDemo: (request as any).isDemo || false,
           metadata: {
-            batchId: request.programBatchId,
+            ...(request.programBatchId ? { batchId: request.programBatchId } : {}),
             programTitle: externalEvidence?.programTitle || request.programTitle || (offering && offering.programTitle) || '',
             qualificationCode: externalEvidence?.qualificationCode || request.qualificationCode || (offering && offering.qualificationCode) || '',
             requestType: request.requestType,
