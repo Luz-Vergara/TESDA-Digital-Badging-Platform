@@ -234,8 +234,8 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
         // Add to the summary array (Rule F and Goal 9)
         issuedBadgeSummary.push({
           learnerId: learner.id,
-          learnerName: `${learner.firstName} ${learner.lastName}`,
-          learnerEmail: learner.email || '',
+          learnerName: externalEvidence?.learnerName || `${learner.firstName} ${learner.lastName}`,
+          learnerEmail: externalEvidence?.learnerEmail || learner.email || '',
           badgeId,
           verificationId,
           issuedBadgeId: issuedBadgeRef.id
