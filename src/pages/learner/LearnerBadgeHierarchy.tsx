@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowUpRight, CheckCircle2, Lock, Clock3, Award } from 'lucide-react';
+import { CheckCircle2, Lock, Clock3, Award } from 'lucide-react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '@/src/lib/firebase';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
@@ -127,7 +127,6 @@ const StatusBadge = ({ status }: { status: LearnerBadgeStatus }) => {
 export default function LearnerBadgeHierarchy() {
   const { user, isAuthReady } = useFirebase();
   const [issuedBadges, setIssuedBadges] = useState<any[]>([]);
-  const [emailIssuedBadges, setEmailIssuedBadges] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [completions, setCompletions] = useState<any[]>([]);
   const [templates, setTemplates] = useState<BadgeTemplate[]>([]);
@@ -138,7 +137,6 @@ export default function LearnerBadgeHierarchy() {
     if (!isAuthReady) return;
     if (!user) {
       setIssuedBadges([]);
-      setEmailIssuedBadges([]);
       setRequests([]);
       setCompletions([]);
       setLoading(false);
@@ -147,7 +145,7 @@ export default function LearnerBadgeHierarchy() {
 
     setLoading(true);
     const ready = new Set<string>();
-    const expected = user.email ? 4 : 3;
+    const expected = 3;
     const markReady = (source: string) => {
       ready.add(source);
       if (ready.size === expected) setLoading(false);
@@ -169,19 +167,10 @@ export default function LearnerBadgeHierarchy() {
       (snapshot) => { setCompletions(asRecords(snapshot)); markReady('completions'); },
       () => { setCompletions([]); markReady('completions'); },
     );
-    const unsubscribeEmailIssued = user.email
-      ? onSnapshot(
-          query(collection(db, 'issuedBadges'), where('learnerEmail', '==', user.email)),
-          (snapshot) => { setEmailIssuedBadges(asRecords(snapshot)); markReady('email-issued'); },
-          () => { setEmailIssuedBadges([]); markReady('email-issued'); },
-        )
-      : () => undefined;
-
     return () => {
       unsubscribeIssued();
       unsubscribeRequests();
       unsubscribeCompletions();
-      unsubscribeEmailIssued();
     };
   }, [isAuthReady, user]);
 
@@ -212,11 +201,7 @@ export default function LearnerBadgeHierarchy() {
     };
   }, [isAuthReady, user]);
 
-  const learnerIssuedBadges = useMemo(() => {
-    const unique = new Map<string, any>();
-    [...issuedBadges, ...emailIssuedBadges].forEach((badge) => unique.set(badge.id, badge));
-    return [...unique.values()];
-  }, [emailIssuedBadges, issuedBadges]);
+  const learnerIssuedBadges = useMemo(() => issuedBadges, [issuedBadges]);
 
   if (!isAuthReady || loading) return <div className="p-8 text-sm text-slate-500">Loading your badge hierarchy…</div>;
   if (!user) return <div className="p-8 text-sm text-slate-500">Sign in to view your badge hierarchy.</div>;
@@ -278,56 +263,21 @@ export default function LearnerBadgeHierarchy() {
                   <StatusBadge status={completionStatus} />
                 </div>
               </CardHeader>
-              <CardContent className="pt-5">
-                {competencyNodes.length > 0 && (
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    {competencyNodes.map(({ competency, status, issuedBadge, template }) => {
-                      const artwork = resolveNodeArtwork(issuedBadge, template, badgeDesigns);
-                      return (
-                      <div key={`${standard.id}-${competency.code ?? competency.title}`} className={`rounded-lg border p-4 ${statusStyle[status]}`}>
-                        <div className="flex items-start justify-between gap-2"><span className="text-xs font-semibold uppercase tracking-wider">Proficient</span><StatusBadge status={status} /></div>
-                        <div className="mt-3 flex justify-center">
-                          {artwork.isConfigured ? (
-                            <BadgeRenderer
-                              scale={0.24}
-                              allowEnlarge={false}
-                              data={{
-                                id: issuedBadge?.id || template?.id || `${standard.id}-${competency.code ?? competency.title}`,
-                                name: issuedBadge?.badgeName || template?.badgeName || `${standard.title} Proficient`,
-                                learnerName: issuedBadge?.learnerName || user.displayName || 'Learner Name',
-                                trainingProvider: issuedBadge?.trainingCenterName || 'Training Center',
-                                issueDate: formatDate(issuedBadge?.issueDate),
-                                validUntil: formatDate(issuedBadge?.expiryDate),
-                                verificationId: issuedBadge?.verificationId || 'PENDING',
-                                badgeId: issuedBadge?.badgeId || template?.id,
-                                imageUrl: artwork.artworkUrl,
-                                level: 'Proficient',
-                                qualificationTitle: standard.title,
-                                qualificationCode: standard.code || '',
-                                competencyTitle: competency.title,
-                                competencyCode: competency.code || '',
-                                templateConfig: template?.templateConfig,
-                              }}
-                            />
-                          ) : <p className="text-center text-xs text-slate-500">Badge artwork not configured</p>}
-                        </div>
-                        {competency.code && <p className="mt-3 font-mono text-xs">{competency.code}</p>}
-                        <p className="mt-1 text-sm font-medium">{competency.title}</p>
+              <CardContent className="pt-6">
+                <div className="relative">
+                  <div className={`relative z-10 mx-auto max-w-xl rounded-xl border p-5 text-center shadow-sm ${statusStyle[completionStatus]}`}>
+                    <div className="flex items-start justify-between gap-3 text-left">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wider">Skilled</p>
+                        <p className="mt-1 text-sm font-medium">Complete standard</p>
                       </div>
-                    )})}
-                  </div>
-                )}
-
-                {competencyNodes.length > 0 && <div className="my-5 flex items-center gap-2 text-sm font-medium text-slate-500"><ArrowUpRight className="h-4 w-4" /> Completed competency badges lead to the complete-standard badge.</div>}
-                <div className={`rounded-lg border p-5 ${statusStyle[completionStatus]}`}>
-                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wider">Complete standard</p>
-                      <p className="mt-1 text-lg font-bold">{completionType}</p>
-                      <div className="mt-3 flex justify-center sm:justify-start">
-                        {(() => {
-                          const artwork = resolveNodeArtwork(completionIssuedBadge, completionTemplate, badgeDesigns);
-                          return artwork.isConfigured ? (
+                      <StatusBadge status={completionStatus} />
+                    </div>
+                    <div className="mt-4 flex justify-center">
+                      {(() => {
+                        const artwork = resolveNodeArtwork(completionIssuedBadge, completionTemplate, badgeDesigns);
+                        return artwork.isConfigured ? (
+                          <div className={completionStatus === 'Locked' ? 'grayscale opacity-50' : ''}>
                             <BadgeRenderer
                               scale={0.28}
                               allowEnlarge={false}
@@ -347,12 +297,71 @@ export default function LearnerBadgeHierarchy() {
                                 templateConfig: completionTemplate?.templateConfig,
                               }}
                             />
-                          ) : <p className="text-xs text-slate-500">Badge artwork not configured</p>;
-                        })()}
-                      </div>
+                          </div>
+                        ) : <p className="text-xs text-slate-500">Badge artwork not configured</p>;
+                      })()}
                     </div>
-                    <StatusBadge status={completionStatus} />
+                    <p className="mt-4 text-base font-bold text-slate-900">Complete {standard.title}</p>
+                    {standard.code && <p className="mt-1 font-mono text-xs text-slate-600">{standard.code}</p>}
+                    {completionIssuedBadge?.badgeId && <p className="mt-3 text-xs font-medium text-slate-700">Badge ID: {completionIssuedBadge.badgeId}</p>}
                   </div>
+
+                  {competencyNodes.length > 0 && (
+                    <>
+                      <div aria-hidden="true" className="pointer-events-none relative mx-auto h-12 max-w-6xl">
+                        <span className="absolute left-1/2 top-0 h-6 w-px -translate-x-1/2 bg-slate-300" />
+                        {competencyNodes.length > 1 && <span className="absolute left-1/2 top-6 h-6 w-px -translate-x-1/2 bg-slate-300 xl:hidden" />}
+                        {competencyNodes.length > 1 && <span className="absolute left-[8.333%] right-[8.333%] top-6 hidden h-px bg-slate-300 xl:block" />}
+                      </div>
+
+                      <div className="mb-4 text-center xl:hidden">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Proficient competencies</p>
+                        <p className="mt-1 text-xs text-slate-500">Each competency contributes to the Skilled complete-standard badge.</p>
+                      </div>
+
+                      <div className="relative z-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                        {competencyNodes.map(({ competency, status, issuedBadge, template }) => {
+                          const artwork = resolveNodeArtwork(issuedBadge, template, badgeDesigns);
+                          return (
+                            <div key={`${standard.id}-${competency.code ?? competency.title}`} className="relative xl:before:absolute xl:before:-top-6 xl:before:left-1/2 xl:before:h-6 xl:before:w-px xl:before:-translate-x-1/2 xl:before:bg-slate-300">
+                              <div className={`h-full rounded-xl border p-4 shadow-sm ${statusStyle[status]}`}>
+                                <div className="flex items-start justify-between gap-2"><span className="text-xs font-semibold uppercase tracking-wider">Proficient</span><StatusBadge status={status} /></div>
+                                <div className="mt-3 flex justify-center">
+                                  {artwork.isConfigured ? (
+                                    <div className={status === 'Locked' ? 'grayscale opacity-50' : ''}>
+                                      <BadgeRenderer
+                                        scale={0.22}
+                                        allowEnlarge={false}
+                                        data={{
+                                          id: issuedBadge?.id || template?.id || `${standard.id}-${competency.code ?? competency.title}`,
+                                          name: issuedBadge?.badgeName || template?.badgeName || `${standard.title} Proficient`,
+                                          learnerName: issuedBadge?.learnerName || user.displayName || 'Learner Name',
+                                          trainingProvider: issuedBadge?.trainingCenterName || 'Training Center',
+                                          issueDate: formatDate(issuedBadge?.issueDate),
+                                          validUntil: formatDate(issuedBadge?.expiryDate),
+                                          verificationId: issuedBadge?.verificationId || 'PENDING',
+                                          badgeId: issuedBadge?.badgeId || template?.id,
+                                          imageUrl: artwork.artworkUrl,
+                                          level: 'Proficient',
+                                          qualificationTitle: standard.title,
+                                          qualificationCode: standard.code || '',
+                                          competencyTitle: competency.title,
+                                          competencyCode: competency.code || '',
+                                          templateConfig: template?.templateConfig,
+                                        }}
+                                      />
+                                    </div>
+                                  ) : <p className="text-center text-xs text-slate-500">Badge artwork not configured</p>}
+                                </div>
+                                {competency.code && <p className="mt-3 font-mono text-xs">{competency.code}</p>}
+                                <p className="mt-1 text-sm font-medium leading-snug">{competency.title}</p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
                 </div>
               </CardContent>
             </Card>
