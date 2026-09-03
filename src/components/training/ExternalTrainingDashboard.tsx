@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Award, BookOpenCheck, CheckCircle, Database, FileText, RefreshCw, Send, Users } from 'lucide-react';
-import { collection, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '@/src/lib/firebase';
-import { getExistingExternalBadgeRequestMessage, getExternalBadgeRequestIdentity, isFirestorePermissionDenied, type ExistingExternalBadgeRequest } from '@/src/lib/external-badge-request';
+import { getExternalBadgeRequestIdentity, getExternalBadgeRequestRoute } from '@/src/lib/external-badge-request';
 import { externalApi, ExternalApiError } from '@/src/services/externalApi';
 import type { ExternalBadgeEligibility, ExternalDashboardSummary, ExternalLearnerDetails, ExternalLearnerSummary, ExternalRegisteredProgram } from '@/src/types/external-api';
-import type { BadgeTemplate } from '@/src/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,37 +37,26 @@ function EligibilityBadge({ item }: { item: ExternalBadgeEligibility }) {
   </Badge>;
 }
 
-export default function ExternalTrainingDashboard({ firebaseTrainingCenterId, firebaseTrainingCenterName, firebaseUserId, districtOfficeId, initialView = 'programs' }: Props) {
+export default function ExternalTrainingDashboard({ firebaseTrainingCenterId, initialView = 'programs' }: Props) {
   const [summary, setSummary] = useState<ExternalDashboardSummary | null>(null);
   const [learners, setLearners] = useState<ExternalLearnerSummary[]>([]);
-  const [templates, setTemplates] = useState<BadgeTemplate[]>([]);
   const [requests, setRequests] = useState<FirebaseRecord[]>([]);
   const [issuedBadges, setIssuedBadges] = useState<FirebaseRecord[]>([]);
-  const [templateByEligibility, setTemplateByEligibility] = useState<Record<string, string>>({});
   const [activeView, setActiveView] = useState<ExternalTrainingView>(initialView);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState<string | null>(null);
   const [selectedLearner, setSelectedLearner] = useState<ExternalLearnerDetails | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const [dashboard, learnerResult, templateResult] = await Promise.all([
+      const [dashboard, learnerResult] = await Promise.all([
         externalApi.getMyTrainingCenterDashboardSummary(),
         externalApi.getMyTrainingCenterLearners(),
-        getDocs(query(collection(db, 'badgeTemplates'), where('status', 'in', ['Approved', 'Active']))),
       ]);
       setSummary(dashboard.data);
       setLearners(Array.isArray(learnerResult.data) ? learnerResult.data : []);
-      setTemplates(templateResult.docs.map((item) => ({ id: item.id, ...item.data() })) as BadgeTemplate[]);
-      const defaults: Record<string, string> = {};
-      learnerResult.data.forEach((learner) => learner.badgeEligibility.forEach((eligibility) => {
-        if (eligibility.firebaseBadgeTemplateId) defaults[eligibility.id] = eligibility.firebaseBadgeTemplateId;
-      }));
-      setTemplateByEligibility((current) => ({ ...defaults, ...current }));
     } catch (caught) { setError(messageFor(caught)); }
     finally { setLoading(false); }
   }, []);
@@ -103,77 +92,14 @@ export default function ExternalTrainingDashboard({ firebaseTrainingCenterId, fi
     finally { setDetailLoading(false); }
   };
 
-  const submitEligibility = async (learner: ExternalLearnerSummary, eligibility: ExternalBadgeEligibility) => {
-    if (!districtOfficeId) { setError('This Training Center is not linked to a District Office.'); return; }
-    const templateId = templateByEligibility[eligibility.id];
-    const template = templates.find((item) => item.id === templateId);
-    if (!template) { setError('Select an active Firebase badge template before filing this request.'); return; }
-    if (requestExists(eligibility, template.id)) { setNotice('A request for this learner, enrollment, and badge template has already been filed.'); setActiveView('requests'); return; }
-    setSubmitting(eligibility.id); setError(null); setNotice(null);
-    try {
-      const link = await getDoc(doc(db, 'integrationLearnerLinks', learner.learnerUli));
-      const firebaseLearnerId = link.exists() && link.data().active !== false ? link.data().firebaseLearnerId : null;
-      if (typeof firebaseLearnerId !== 'string' || !firebaseLearnerId) throw new Error(`No active Firebase learner link exists for ULI ${learner.learnerUli}.`);
-      const { mappingKey: externalEligibilityKey, externalRequestId } = getExternalBadgeRequestIdentity({
-        externalTrainingCenterId: eligibility.trainingCenterId,
-        externalEnrollmentId: eligibility.enrollmentId,
-        badgeTemplateId: template.id,
-      });
-      const requestRef = doc(db, 'badgeRequests', externalRequestId);
-      let existingRequestDocument;
-      try {
-        existingRequestDocument = await getDoc(requestRef);
-      } catch (caught) {
-        setError(isFirestorePermissionDenied(caught)
-          ? 'You do not have permission to check whether an existing badge request has already been filed.'
-          : 'Unable to check whether an existing badge request has already been filed.');
-        return;
-      }
-      if (existingRequestDocument.exists()) {
-        setNotice(getExistingExternalBadgeRequestMessage(existingRequestDocument.data() as ExistingExternalBadgeRequest));
-        setActiveView('requests');
-        return;
-      }
-      await setDoc(requestRef, {
-        requestType: 'Individual', requestNumber: `EXT-${Date.now()}`, badgeIdStatus: 'Pending District Approval',
-        trainingCenterId: firebaseTrainingCenterId, trainingCenterName: firebaseTrainingCenterName,
-        programOfferingId: `external:${eligibility.enrollmentId}`, learnerIds: [firebaseLearnerId],
-        badgeTemplateId: template.id, badgeTemplateName: template.badgeName, badgeType: template.badgeType,
-        programTitle: learner.enrollments.find((item) => item.id === eligibility.enrollmentId)?.registeredProgram.qualification.title || template.badgeName,
-        qualificationName: template.qualificationName, qualificationCode: template.qualificationCode,
-        districtOfficeId, status: 'Pending Review', submittedBy: firebaseUserId,
-        externalEligibilityKey,
-        externalEligibility: {
-          externalTrainingCenterId: eligibility.trainingCenterId, learnerUli: eligibility.learnerUli,
-          externalEnrollmentId: eligibility.enrollmentId, sourceRecordId: eligibility.sourceRecordId,
-          ctprNumber: eligibility.ctprNumber, requiredCompetencyCount: eligibility.requiredCompetencyCount,
-          completedCompetencyCount: eligibility.completedCompetencyCount, missingCompetencyCodes: eligibility.missingCompetencyCodes,
-          evaluatedAt: eligibility.evaluatedAt, retrievedAt: new Date().toISOString(),
-        },
-        templateDetails: {
-          badgeName: template.badgeName, description: template.description, criteria: template.criteria,
-          alignment: template.alignment, qualificationName: template.qualificationName,
-          qualificationCode: template.qualificationCode, badgeType: template.badgeType, credentialLevel: template.credentialLevel,
-        },
-        submittedAt: serverTimestamp(), createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
-      });
-      setNotice('Badge request filed. Its external eligibility evidence is now immutable in Firestore.');
-      setActiveView('requests');
-    } catch (caught) { setError(isFirestorePermissionDenied(caught) ? 'This Training Center is not authorized to file this badge request.' : caught instanceof Error ? caught.message : 'The Firebase badge request could not be created.'); }
-    finally { setSubmitting(null); }
-  };
-
   const requestButton = (learner: ExternalLearnerSummary, eligibility: ExternalBadgeEligibility) => {
-    const templateId = templateByEligibility[eligibility.id];
+    const templateId = eligibility.firebaseBadgeTemplateId || undefined;
     const alreadyFiled = requestExists(eligibility, templateId);
-    return <div className="flex items-center gap-2">
-      <select aria-label={`Badge template for ${learner.displayName}`} className="h-9 min-w-44 rounded border border-slate-300 bg-white px-2 text-sm" value={templateId || ''} onChange={(event) => setTemplateByEligibility((current) => ({ ...current, [eligibility.id]: event.target.value }))}>
-        <option value="">Select template</option>{templates.map((template) => <option key={template.id} value={template.id}>{template.badgeName}</option>)}
-      </select>
-      <Button size="sm" onClick={() => void submitEligibility(learner, eligibility)} disabled={submitting === eligibility.id || alreadyFiled}>
-        <Send className="h-3.5 w-3.5 mr-1" />{alreadyFiled ? 'Request filed' : submitting === eligibility.id ? 'Filing' : 'File request'}
-      </Button>
-    </div>;
+    if (!templateId) return <span className="text-sm text-amber-700">QSO mapping required</span>;
+    if (alreadyFiled) return <Button size="sm" disabled><Send className="mr-1 h-3.5 w-3.5" />Request filed</Button>;
+    return <Link to={getExternalBadgeRequestRoute(learner.learnerUli, eligibility)}>
+      <Button size="sm"><Send className="mr-1 h-3.5 w-3.5" />File request</Button>
+    </Link>;
   };
 
   const programRows = (program: ExternalRegisteredProgram) => <TableRow key={program.id}>
@@ -200,7 +126,6 @@ export default function ExternalTrainingDashboard({ firebaseTrainingCenterId, fi
     </CardHeader>
     <CardContent className="space-y-5">
       {error && <p role="alert" className="rounded border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
-      {notice && <p role="status" className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[["Learners", summary.counts.learners, Users], ["Eligible", summary.counts.eligibleLearners, CheckCircle], ["Programs", summary.registeredPrograms.length, Database], ["Completed competencies", summary.counts.completedCompetencies, BookOpenCheck]].map(([label, value, Icon]: any) => <div key={label} className="rounded border border-slate-200 p-3"><Icon className="h-4 w-4 text-violet-600 mb-2" /><p className="font-bold">{value}</p><p className="text-xs text-slate-500">{label}</p></div>)}
       </div>

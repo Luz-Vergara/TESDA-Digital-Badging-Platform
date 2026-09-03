@@ -17,6 +17,7 @@ export interface Qualification {
   code: string;
   title: string;
   pqfLevel: number | null;
+  standardType: "CS" | "MCC" | "TR" | null;
   status: "Active" | "Inactive";
 }
 
@@ -58,6 +59,7 @@ export interface CompetencyCompletion {
 /** External eligibility evidence. Firebase owns the linked badge template. */
 export interface BadgeEligibility {
   id: string;
+  externalBadgeDefinitionId: string;
   learnerId: string;
   learnerUli: string;
   enrollmentId: string;
@@ -65,9 +67,13 @@ export interface BadgeEligibility {
   trainingCenterId: string;
   ctprNumber: string;
   firebaseBadgeTemplateId: string | null;
+  badgeType: "Proficient" | "Expert" | "Skilled" | "Master";
+  standardType: "CS" | "MCC" | "TR" | null;
+  competency: { id: string; code: string; title: string } | null;
   eligible: boolean;
   requiredCompetencyCount: number;
   completedCompetencyCount: number;
+  completedCompetencyCodes: string[];
   missingCompetencyCodes: string[];
   evaluatedAt: string;
 }

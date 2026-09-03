@@ -356,6 +356,7 @@ export interface BadgeRequest {
     approvedAt?: any;
     externalEligibilityKey?: string;
     externalEligibility?: {
+      externalBadgeDefinitionId?: string;
       externalTrainingCenterId: string;
       trainingCenterName?: string;
       learnerName: string;
@@ -364,11 +365,17 @@ export interface BadgeRequest {
       externalEnrollmentId: string;
       sourceRecordId: string;
       ctprNumber: string;
+      standardType?: StandardType;
+      competencyId?: string;
+      competencyCode?: string;
+      competencyTitle?: string;
       programTitle?: string;
       qualificationCode?: string;
       requiredCompetencyCount: number;
       completedCompetencyCount: number;
+      completedCompetencyCodes?: string[];
       missingCompetencyCodes: string[];
+      firebaseBadgeTemplateId?: string;
       evaluatedAt: string;
       retrievedAt: string;
       mappedBadgeTemplateId: string;
