@@ -4,6 +4,7 @@ import { Send } from 'lucide-react';
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '@/src/lib/firebase';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
+import { getExistingExternalBadgeRequestMessage, getExternalBadgeRequestIdentity, isFirestorePermissionDenied, type ExistingExternalBadgeRequest } from '@/src/lib/external-badge-request';
 import { externalApi, ExternalApiError } from '@/src/services/externalApi';
 import type { ExternalBadgeEligibility, ExternalLearnerSummary } from '@/src/types/external-api';
 import type { BadgeRequest, BadgeTemplate } from '@/src/types';
@@ -27,6 +28,7 @@ export default function FileBadgeRequest() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [mappingError, setMappingError] = useState<string | null>(null);
+  const [existingRequest, setExistingRequest] = useState<ExistingExternalBadgeRequest | null>(null);
   const learnerUli = params.get('uli') || '';
   const enrollmentId = params.get('enrollment') || '';
 
@@ -36,6 +38,7 @@ export default function FileBadgeRequest() {
       setError(null);
       setMappingError(null);
       setMappedTemplate(null);
+      setExistingRequest(null);
 
       try {
         const response = await externalApi.getMyTrainingCenterLearners();
@@ -69,6 +72,22 @@ export default function FileBadgeRequest() {
         }
 
         setMappedTemplate(template);
+        const { externalRequestId } = getExternalBadgeRequestIdentity({
+          externalTrainingCenterId: eligibility.trainingCenterId,
+          externalEnrollmentId: eligibility.enrollmentId,
+          badgeTemplateId: template.id,
+        });
+
+        try {
+          const existingRequestDocument = await getDoc(doc(db, 'badgeRequests', externalRequestId));
+          if (existingRequestDocument.exists()) {
+            setExistingRequest(existingRequestDocument.data() as ExistingExternalBadgeRequest);
+          }
+        } catch (caughtError) {
+          setError(isFirestorePermissionDenied(caughtError)
+            ? 'You do not have permission to check whether an existing badge request has already been filed.'
+            : 'Unable to check whether an existing badge request has already been filed.');
+        }
       } catch (caughtError) {
         setError(
           caughtError instanceof ExternalApiError
@@ -94,6 +113,30 @@ export default function FileBadgeRequest() {
     setError(null);
 
     try {
+      const { mappingKey, externalRequestId } = getExternalBadgeRequestIdentity({
+        externalTrainingCenterId: target.eligibility.trainingCenterId,
+        externalEnrollmentId: target.eligibility.enrollmentId,
+        badgeTemplateId: mappedTemplate.id,
+      });
+      const requestRef = doc(db, 'badgeRequests', externalRequestId);
+
+      let existingRequestDocument;
+      try {
+        existingRequestDocument = await getDoc(requestRef);
+      } catch (caughtError) {
+        setError(isFirestorePermissionDenied(caughtError)
+          ? 'You do not have permission to check whether an existing badge request has already been filed.'
+          : 'Unable to check whether an existing badge request has already been filed.');
+        return;
+      }
+
+      if (existingRequestDocument.exists()) {
+        const existing = existingRequestDocument.data() as ExistingExternalBadgeRequest;
+        setExistingRequest(existing);
+        setNotice(getExistingExternalBadgeRequestMessage(existing));
+        return;
+      }
+
       const learnerLink = await getDoc(
         doc(db, 'integrationLearnerLinks', target.learner.learnerUli),
       );
@@ -107,12 +150,6 @@ export default function FileBadgeRequest() {
       );
       const programTitle = externalEnrollment?.registeredProgram.qualification.title;
       const qualificationCode = externalEnrollment?.registeredProgram.qualification.code;
-      const mappingKey = [
-        target.eligibility.trainingCenterId,
-        target.eligibility.enrollmentId,
-        mappedTemplate.id,
-      ].join(':');
-
       const externalEligibility: NonNullable<BadgeRequest['externalEligibility']> = {
         externalTrainingCenterId: target.eligibility.trainingCenterId,
         trainingCenterName: userProfile.office || userProfile.name,
@@ -134,7 +171,7 @@ export default function FileBadgeRequest() {
         mappedBadgeType: mappedTemplate.badgeType,
       };
 
-      await setDoc(doc(db, 'badgeRequests', `external-${mappingKey}`), {
+      await setDoc(requestRef, {
         requestType: 'Individual',
         requestNumber: `EXT-${Date.now()}`,
         badgeIdStatus: 'Pending District Approval',
@@ -172,7 +209,9 @@ export default function FileBadgeRequest() {
 
       setNotice('Badge request filed with an immutable external-evidence snapshot.');
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : 'Unable to file request.');
+      setError(isFirestorePermissionDenied(caughtError)
+        ? 'This Training Center is not authorized to file this badge request.'
+        : caughtError instanceof Error ? caughtError.message : 'Unable to file request.');
     } finally {
       setSaving(false);
     }
@@ -262,13 +301,24 @@ export default function FileBadgeRequest() {
               )}
             </div>
 
-            <Button
-              onClick={() => void submit()}
-              disabled={saving || !userProfile.assignedDistrictId || Boolean(mappingError)}
-            >
-              <Send className="mr-2 h-4 w-4" />
-              {saving ? 'Filing request…' : 'File Badge Request'}
-            </Button>
+            {existingRequest ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="text-sm font-medium text-emerald-800">
+                  {getExistingExternalBadgeRequestMessage(existingRequest)}
+                </p>
+                <Link className="font-semibold text-blue-600" to="/trainingcenter/requests">
+                  View Badge Requests
+                </Link>
+              </div>
+            ) : (
+              <Button
+                onClick={() => void submit()}
+                disabled={saving || !userProfile.assignedDistrictId || Boolean(mappingError)}
+              >
+                <Send className="mr-2 h-4 w-4" />
+                {saving ? 'Filing request…' : 'File Badge Request'}
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
