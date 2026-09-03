@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Award, BookOpenCheck, CheckCircle, Database, FileText, RefreshCw, Send, Users } from 'lucide-react';
 import { collection, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import { db } from '@/src/lib/firebase';
+import { getExistingExternalBadgeRequestMessage, getExternalBadgeRequestIdentity, isFirestorePermissionDenied, type ExistingExternalBadgeRequest } from '@/src/lib/external-badge-request';
 import { externalApi, ExternalApiError } from '@/src/services/externalApi';
 import type { ExternalBadgeEligibility, ExternalDashboardSummary, ExternalLearnerDetails, ExternalLearnerSummary, ExternalRegisteredProgram } from '@/src/types/external-api';
 import type { BadgeTemplate } from '@/src/types';
@@ -87,7 +88,11 @@ export default function ExternalTrainingDashboard({ firebaseTrainingCenterId, fi
 
   const allEligibility = useMemo(() => learners.flatMap((learner) => learner.badgeEligibility.map((eligibility) => ({ learner, eligibility }))), [learners]);
   const requestExists = useCallback((eligibility: ExternalBadgeEligibility, templateId?: string) => {
-    const key = templateId ? `${eligibility.trainingCenterId}:${eligibility.enrollmentId}:${templateId}` : null;
+    const key = templateId ? getExternalBadgeRequestIdentity({
+      externalTrainingCenterId: eligibility.trainingCenterId,
+      externalEnrollmentId: eligibility.enrollmentId,
+      badgeTemplateId: templateId,
+    }).mappingKey : null;
     return key ? requests.some((request) => request.externalEligibilityKey === key) : false;
   }, [requests]);
 
@@ -109,9 +114,27 @@ export default function ExternalTrainingDashboard({ firebaseTrainingCenterId, fi
       const link = await getDoc(doc(db, 'integrationLearnerLinks', learner.learnerUli));
       const firebaseLearnerId = link.exists() && link.data().active !== false ? link.data().firebaseLearnerId : null;
       if (typeof firebaseLearnerId !== 'string' || !firebaseLearnerId) throw new Error(`No active Firebase learner link exists for ULI ${learner.learnerUli}.`);
-      const externalEligibilityKey = `${eligibility.trainingCenterId}:${eligibility.enrollmentId}:${template.id}`;
-      const externalRequestId = `external-${externalEligibilityKey}`;
-      await setDoc(doc(db, 'badgeRequests', externalRequestId), {
+      const { mappingKey: externalEligibilityKey, externalRequestId } = getExternalBadgeRequestIdentity({
+        externalTrainingCenterId: eligibility.trainingCenterId,
+        externalEnrollmentId: eligibility.enrollmentId,
+        badgeTemplateId: template.id,
+      });
+      const requestRef = doc(db, 'badgeRequests', externalRequestId);
+      let existingRequestDocument;
+      try {
+        existingRequestDocument = await getDoc(requestRef);
+      } catch (caught) {
+        setError(isFirestorePermissionDenied(caught)
+          ? 'You do not have permission to check whether an existing badge request has already been filed.'
+          : 'Unable to check whether an existing badge request has already been filed.');
+        return;
+      }
+      if (existingRequestDocument.exists()) {
+        setNotice(getExistingExternalBadgeRequestMessage(existingRequestDocument.data() as ExistingExternalBadgeRequest));
+        setActiveView('requests');
+        return;
+      }
+      await setDoc(requestRef, {
         requestType: 'Individual', requestNumber: `EXT-${Date.now()}`, badgeIdStatus: 'Pending District Approval',
         trainingCenterId: firebaseTrainingCenterId, trainingCenterName: firebaseTrainingCenterName,
         programOfferingId: `external:${eligibility.enrollmentId}`, learnerIds: [firebaseLearnerId],
@@ -136,7 +159,7 @@ export default function ExternalTrainingDashboard({ firebaseTrainingCenterId, fi
       });
       setNotice('Badge request filed. Its external eligibility evidence is now immutable in Firestore.');
       setActiveView('requests');
-    } catch (caught) { setError(caught instanceof Error ? caught.message : 'The Firebase badge request could not be created.'); }
+    } catch (caught) { setError(isFirestorePermissionDenied(caught) ? 'This Training Center is not authorized to file this badge request.' : caught instanceof Error ? caught.message : 'The Firebase badge request could not be created.'); }
     finally { setSubmitting(null); }
   };
 
