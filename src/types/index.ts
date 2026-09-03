@@ -1,4 +1,16 @@
-export type BadgeType = 'Proficient' | 'Expert' | 'Skilled' | 'Master';
+/** Badge types available when creating or updating frontend records. */
+export type BadgeType = 'Proficient' | 'Skilled';
+
+/** Standards are classified independently from badge type. */
+export type StandardType = 'CS' | 'MCC' | 'TR';
+
+/**
+ * Values written by earlier versions of the application. Keep this separate
+ * from BadgeType so legacy Firestore documents can be displayed safely without
+ * making Expert or Master selectable in current UI flows.
+ */
+export type LegacyBadgeType = 'Expert' | 'Master';
+export type PersistedBadgeType = BadgeType | LegacyBadgeType;
 export type BadgeStatus = 
   | 'Active' 
   | 'Expired' 
@@ -16,7 +28,7 @@ export type BadgeStatus =
 export interface BadgeMetadata {
   id: string;
   programName: string;
-  badgeType: BadgeType;
+  badgeType: PersistedBadgeType;
   description: string;
   issuer: string;
   badgeHolder: string;
@@ -30,7 +42,7 @@ export interface BadgeMetadata {
   evidenceUrl?: string;
   status: BadgeStatus;
   termsOfUse: string;
-  hierarchyLevel: number; // 1: Proficient, 2: Expert, 3: Skilled, 4: Master
+  hierarchyLevel: number;
   badgeId?: string; // ID of the template it originated from
   pathway?: string; // Added to distinguish RPL vs Standard
   qualificationName?: string;
@@ -84,12 +96,53 @@ export interface FieldPosition {
   enabled?: boolean;
 }
 
+/** Reusable visual artwork. It deliberately contains no learner or standard data. */
+export interface BadgeDesign {
+  id: string;
+  name: string;
+  badgeType: BadgeType;
+  artworkUrl?: string;
+  status: 'Active' | 'Draft' | 'Archived';
+}
+
+/** Deliberately minimal public projection keyed by verificationId. */
+export interface PublicCredential {
+  verificationId: string;
+  badgeId: string;
+  badgeName: string;
+  badgeType: BadgeType;
+  badgeDesignId?: string;
+  badgeArtworkUrl?: string;
+  standardType: StandardType;
+  standardCode: string;
+  standardTitle: string;
+  competencyCode?: string;
+  competencyTitle?: string;
+  holderDisplayName: string;
+  trainingProviderDisplayName: string;
+  issueDate: any;
+  expiryDate: any;
+  credentialStatus: 'Active' | 'Expired' | 'Revoked' | 'Suspended';
+}
+
+export type RecognitionScope = 'Competency' | 'CompleteStandard';
+
 export interface BadgeTemplate {
   id: string;
+  /** Optional reference to the temporary QSO demo standard selected at authoring time. */
+  standardId?: string;
   badgeName: string;
   qualificationName: string;
   qualificationCode: string;
-  badgeType: 'Proficient' | 'Expert' | 'Skilled' | 'Master';
+  badgeType: BadgeType;
+  /** Optional so templates created before Phase 1 remain readable. */
+  standardType?: StandardType;
+  /** What the mapping recognizes within the selected standard. */
+  recognitionScope?: RecognitionScope;
+  competencyCode?: string;
+  competencyTitle?: string;
+  /** Reference to reusable visual artwork; imageUrl remains a legacy fallback. */
+  badgeDesignId?: string;
   credentialLevel: 'Unit of Competency' | 'Full Qualification / Certificate of Training' | 'Certificate of Competency' | 'National Certificate';
   relatedCompetency: string;
   description: string;
@@ -114,6 +167,11 @@ export interface BadgeTemplate {
     level?: FieldPosition;
     qualificationTitle?: FieldPosition;
     qualificationCode?: FieldPosition;
+    trainingProvider?: FieldPosition;
+    competencyTitle?: FieldPosition;
+    competencyCode?: FieldPosition;
+    badgeId?: FieldPosition;
+    verificationId?: FieldPosition;
     qr?: {
       x: number;
       y: number;
@@ -279,6 +337,10 @@ export interface BadgeRequest {
   learnerId?: string;
   learnerName?: string;
   learnerEmail?: string;
+  badgeTemplateName?: string;
+  programTitle?: string;
+  qualificationName?: string;
+  qualificationCode?: string;
   badgeId?: string;
   badgeName?: string;
   programName?: string;
@@ -291,8 +353,29 @@ export interface BadgeRequest {
   pathway?: string;
   rejectionRemarks?: string;
   approvedBy?: string;
-  approvedAt?: any;
-}
+    approvedAt?: any;
+    externalEligibilityKey?: string;
+    externalEligibility?: {
+      externalTrainingCenterId: string;
+      trainingCenterName?: string;
+      learnerName: string;
+      learnerEmail?: string;
+      learnerUli: string;
+      externalEnrollmentId: string;
+      sourceRecordId: string;
+      ctprNumber: string;
+      programTitle?: string;
+      qualificationCode?: string;
+      requiredCompetencyCount: number;
+      completedCompetencyCount: number;
+      missingCompetencyCodes: string[];
+      evaluatedAt: string;
+      retrievedAt: string;
+      mappedBadgeTemplateId: string;
+      mappedBadgeTemplateName: string;
+      mappedBadgeType: BadgeType;
+    };
+  }
 
 export interface NewIssuedBadge {
   id: string;
@@ -301,6 +384,7 @@ export interface NewIssuedBadge {
   learnerName: string;
   learnerEmail: string;
   badgeTemplateId: string;
+  badgeDesignId?: string;
   badgeRequestId: string;
   requestNumber?: string;
   trainingCenterId: string;
@@ -311,6 +395,11 @@ export interface NewIssuedBadge {
   programTitle: string;
   qualificationName: string;
   qualificationCode?: string; // Added
+  standardId?: string;
+  standardType?: StandardType;
+  recognitionScope?: RecognitionScope;
+  competencyTitle?: string;
+  competencyCode?: string;
   credentialLevel?: string; // Added
   criteria?: string; // Added
   alignment?: string; // Added
@@ -443,5 +532,3 @@ export interface RPLApplication {
   assessmentScheduleStatus?: 'Scheduled' | 'For Assessment' | 'Completed' | string;
   assessmentRemarks?: string;
 }
-
-

@@ -31,26 +31,12 @@ export default function Orientation() {
       desc: 'Awarded for each completed Unit of Competency (UC), based on institutional assessment or Recognition of Prior Learning (RPL). This badge recognizes that the learner has demonstrated competence in a specific unit.'
     },
     {
-      title: 'Expert Badge',
-      type: 'Training',
-      color: 'bg-amber-50 text-amber-700 border-amber-200',
-      badgeClass: 'text-amber-600 bg-amber-100',
-      desc: 'Awarded upon completion of all core units in a training program through institutional assessment, stacking of Proficient Badges, or through Recognition of Prior Learning (RPL). This badge represents completion of the required training program competencies.'
-    },
-    {
       title: 'Skilled Badge',
       type: 'Assessment',
       color: 'bg-blue-50 text-blue-700 border-blue-200',
       badgeClass: 'text-blue-600 bg-blue-100',
       desc: 'Represents the issuance of a Certificate of Competency (CoC) under national assessment or Recognition of Prior Learning (RPL). This badge shows that the learner has been certified for a specific cluster or unit of competency.'
     },
-    {
-      title: 'Master Badge',
-      type: 'Assessment',
-      color: 'bg-yellow-50 text-yellow-700 border-yellow-400',
-      badgeClass: 'text-yellow-600 bg-yellow-100',
-      desc: 'Represents the issuance of a National Certificate (NC) by TESDA following successful completion of all required competencies or RPL equivalency. This badge is the highest badge level in the hierarchy and represents full qualification certification.'
-    }
   ];
 
   const steps = [
@@ -65,15 +51,6 @@ export default function Orientation() {
     },
     {
       id: 'step-2',
-      badgeName: 'Expert Badge',
-      role: 'Program Completion',
-      color: 'border-amber-200 bg-amber-50/50 hover:bg-amber-50',
-      iconColor: 'bg-amber-500 text-white',
-      badgeText: 'Amber Tier',
-      desc: 'Awarded when multiple Proficient Badges are stacked or the full core training program is completed.'
-    },
-    {
-      id: 'step-3',
       badgeName: 'Skilled Badge',
       role: 'CoC Certification',
       color: 'border-blue-200 bg-blue-50/50 hover:bg-blue-50',
@@ -81,15 +58,6 @@ export default function Orientation() {
       badgeText: 'Blue Tier',
       desc: 'Recognizes Certificate of Competency (CoC) credentials after passing national assessment milestones.'
     },
-    {
-      id: 'step-4',
-      badgeName: 'Master Badge',
-      role: 'National Certificate (NC)',
-      color: 'border-yellow-200 bg-yellow-50/50 hover:bg-yellow-50',
-      iconColor: 'bg-yellow-500 text-white',
-      badgeText: 'Gold Tier',
-      desc: 'The pinnacle credential representing a full National Certificate (NC) qualification.'
-    }
   ];
 
   return (
@@ -222,19 +190,6 @@ export default function Orientation() {
                   </tr>
                   <tr className="hover:bg-slate-50/40 transition-colors">
                     <td className="py-4 px-6 md:px-8 font-bold text-slate-900 flex items-center gap-2">
-                      <div className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" />
-                      Expert Badge
-                    </td>
-                    <td className="py-4 px-6">
-                      <span className="bg-amber-55 text-amber-700 border border-amber-100 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-50">
-                        Training
-                      </span>
-                    </td>
-                    <td className="py-4 px-6 font-medium">Completion of Program / All Core UCs</td>
-                    <td className="py-4 px-6 md:px-8 text-slate-500">Completion of training, stacked Proficient Badges, or RPL</td>
-                  </tr>
-                  <tr className="hover:bg-slate-50/40 transition-colors">
-                    <td className="py-4 px-6 md:px-8 font-bold text-slate-900 flex items-center gap-2">
                       <div className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0" />
                       Skilled Badge
                     </td>
@@ -245,19 +200,6 @@ export default function Orientation() {
                     </td>
                     <td className="py-4 px-6 font-medium">Certificate of Competency (CoC)</td>
                     <td className="py-4 px-6 md:px-8 text-slate-500">National assessment or RPL</td>
-                  </tr>
-                  <tr className="hover:bg-slate-50/40 transition-colors">
-                    <td className="py-4 px-6 md:px-8 font-bold text-slate-900 flex items-center gap-2">
-                      <div className="w-2.5 h-2.5 rounded-full bg-yellow-500 shrink-0" />
-                      Master Badge
-                    </td>
-                    <td className="py-4 px-6">
-                      <span className="bg-yellow-50 text-yellow-700 border border-yellow-200 text-[11px] font-bold px-2.5 py-0.5 rounded-full">
-                        Assessment
-                      </span>
-                    </td>
-                    <td className="py-4 px-6 font-medium">National Certificate (NC)</td>
-                    <td className="py-4 px-6 md:px-8 text-slate-500">Full qualification certification or RPL equivalency</td>
                   </tr>
                 </tbody>
               </table>
@@ -293,7 +235,7 @@ export default function Orientation() {
                     </div>
                   </CardContent>
                 </Card>
-                {index < 3 && (
+                {index < steps.length - 1 && (
                   <div className="hidden md:flex absolute top-1/2 -right-3 -translate-y-1/2 bg-white rounded-full border border-slate-200 p-1 shadow-sm z-20">
                     <ArrowRight className="h-4 w-4 text-slate-400" />
                   </div>
@@ -312,15 +254,7 @@ export default function Orientation() {
               </li>
               <li className="flex gap-3">
                 <CheckSquare className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
-                <span>Multiple Proficient Badges may support the awarding of an Expert Badge.</span>
-              </li>
-              <li className="flex gap-3">
-                <CheckSquare className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
                 <span>Skilled Badges represent Certified Certificate of Competency (CoC) level recognition.</span>
-              </li>
-              <li className="flex gap-3">
-                <CheckSquare className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
-                <span>Master Badges represent high-level National Certificate (NC) qualification milestones.</span>
               </li>
               <li className="flex gap-3 md:col-span-2 lg:col-span-2">
                 <CheckSquare className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />

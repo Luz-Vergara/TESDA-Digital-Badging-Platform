@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { getAuth, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -21,8 +22,7 @@ async function runCleanup() {
   }
 
   const rawConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-  
-  // Re-map keys if needed to match standard Client SDK requirements
+
   const firebaseConfig = {
     apiKey: rawConfig.apiKey,
     authDomain: rawConfig.authDomain,
@@ -33,9 +33,25 @@ async function runCleanup() {
     measurementId: rawConfig.measurementId
   };
 
+  const databaseId = rawConfig.firestoreDatabaseId || '(default)';
+
+  console.log(`Target Firebase Project:  ${rawConfig.projectId}`);
+  console.log(`Target Firestore Database: ${databaseId}\n`);
+
   const app = initializeApp(firebaseConfig);
-  // Specify custom Firestore database ID if provided in config
-  const db = getFirestore(app, rawConfig.firestoreDatabaseId || '(default)');
+  const db = getFirestore(app, databaseId);
+  const auth = getAuth(app);
+
+  // Authenticate as a demo user for cleanup authorization
+  const demoEmail = process.env.DEMO_CLEANUP_EMAIL || 'training2@demo.com';
+  const demoPassword = process.env.DEMO_CLEANUP_PASSWORD || 'demo123456';
+
+  try {
+    await signInWithEmailAndPassword(auth, demoEmail, demoPassword);
+    console.log(`Authenticated cleanup session as demo user: ${demoEmail}`);
+  } catch (err: any) {
+    console.warn(`Warning: Could not authenticate cleanup session as ${demoEmail}. Scanning as unauthenticated session.`);
+  }
 
   const targetCollections = [
     'users',
@@ -60,19 +76,18 @@ async function runCleanup() {
     try {
       const colRef = collection(db, colName);
       const snap = await getDocs(colRef);
-      
+
       const demoDocs: string[] = [];
       snap.forEach((docSnap) => {
         totalScanned++;
         const data = docSnap.data();
         const id = docSnap.id;
-        
-        // Match condition: starts with "demo-", isDemo is true, or contains a demo email pattern
+
         const isDemoEmail = data.email && (
-          data.email.toLowerCase().endsWith('@demo.com') || 
+          data.email.toLowerCase().endsWith('@demo.com') ||
           data.email.toLowerCase().includes('demo')
         );
-        
+
         if (id.startsWith('demo-') || data.isDemo === true || isDemoEmail) {
           demoDocs.push(id);
           totalDemoItems++;
@@ -85,7 +100,7 @@ async function runCleanup() {
       }
 
       console.log(`  -> Found ${demoDocs.length} demo records: [${demoDocs.join(', ')}]`);
-      
+
       if (force) {
         for (const id of demoDocs) {
           const docRef = doc(db, colName, id);
@@ -101,6 +116,10 @@ async function runCleanup() {
       console.error(`  -> Failed to scan/clean collection "${colName}":`, err.message || err);
       console.log('');
     }
+  }
+
+  if (auth.currentUser) {
+    await signOut(auth);
   }
 
   console.log('=== Cleanup Summary ===');

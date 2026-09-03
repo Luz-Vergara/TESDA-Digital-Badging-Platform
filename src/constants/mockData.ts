@@ -4,7 +4,7 @@ export const MOCK_BADGES: BadgeMetadata[] = [
   {
     id: 'B-001',
     programName: 'Computer Systems Servicing NC II',
-    badgeType: 'Master',
+    badgeType: 'Skilled',
     description: 'Demonstrates mastery in installing and configuring computer systems, setting up computer networks and servers, and maintaining and repairing computer systems and networks.',
     issuer: 'TESDA National',
     badgeHolder: 'Juan Dela Cruz',
@@ -17,12 +17,12 @@ export const MOCK_BADGES: BadgeMetadata[] = [
     standards: ['Install and Configure Computer Systems', 'Set up Computer Networks'],
     status: 'Active',
     termsOfUse: 'This badge is the property of TESDA and is issued to the holder upon meeting the required standards.',
-    hierarchyLevel: 4,
+    hierarchyLevel: 2,
   },
   {
     id: 'B-002',
     programName: 'Cloud Computing Fundamentals',
-    badgeType: 'Expert',
+    badgeType: 'Skilled',
     description: 'Awarded for completion of the full Cloud Computing training program.',
     issuer: 'TESDA Training Center - Manila',
     badgeHolder: 'Juan Dela Cruz',
@@ -59,7 +59,5 @@ export const MOCK_BADGES: BadgeMetadata[] = [
 
 export const BADGE_HIERARCHY_INFO = [
   { type: 'Proficient', level: 1, description: 'Unit of Competency / Certificate of Achievement' },
-  { type: 'Expert', level: 2, description: 'Completion of Program / Certificate of Training' },
-  { type: 'Skilled', level: 3, description: 'Certificate of Competency' },
-  { type: 'Master', level: 4, description: 'National Certificate' },
+  { type: 'Skilled', level: 2, description: 'Certificate of Competency' },
 ];

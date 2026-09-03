@@ -17,17 +17,25 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
+import { demoStandards, getDemoStandardBadgeConfiguration } from '@/src/data/demoStandards';
+import type { BadgeTemplate } from '@/src/types';
 
 export default function QSODashboard() {
   const { isAuthReady } = useFirebase();
   const [stats, setStats] = useState({
     totalTemplates: 0,
     totalIssuedBadges: 0,
-    hierarchiesDefined: 4,
-    recentUpdate: '',
     issuedAnalytics: [] as any[]
   });
   const [loading, setLoading] = useState(true);
+  const [templates, setTemplates] = useState<BadgeTemplate[]>([]);
+  const activeMappings = demoStandards.filter((standard) =>
+    templates.some((template) =>
+      template.standardId === standard.id ||
+      (Boolean(standard.code) && template.qualificationCode === standard.code) ||
+      template.qualificationName === standard.title,
+    ),
+  ).length;
 
   useEffect(() => {
     if (!isAuthReady) return;
@@ -35,16 +43,12 @@ export default function QSODashboard() {
     // Fetch Templates
     const unsubTemplates = onSnapshot(collection(db, 'badgeTemplates'), (snap) => {
       const templates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const latestUpdate = templates.sort((a: any, b: any) => 
-        (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0)
-      )[0] as any;
-      const latestUpdateName = latestUpdate?.badgeName || latestUpdate?.name || 'None';
       
       setStats(prev => ({ 
         ...prev, 
-        totalTemplates: snap.size,
-        recentUpdate: latestUpdateName
+        totalTemplates: snap.size
       }));
+      setTemplates(templates as BadgeTemplate[]);
     });
 
     // Fetch Issued Badges (for Analytics)
@@ -105,10 +109,10 @@ export default function QSODashboard() {
       {/* Metrics Grid */}
       <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
+          { label: 'Standards', value: demoStandards.length, icon: FileText, color: 'text-indigo-600', bg: 'bg-indigo-50' },
           { label: 'Badge Templates', value: stats.totalTemplates, icon: Award, color: 'text-blue-600', bg: 'bg-blue-50' },
-          { label: 'Hierarchies Defined', value: stats.hierarchiesDefined, icon: Layers, color: 'text-purple-600', bg: 'bg-purple-50' },
+          { label: 'Active Mappings', value: activeMappings, icon: Layers, color: 'text-purple-600', bg: 'bg-purple-50' },
           { label: 'Issued Badges', value: stats.totalIssuedBadges, icon: BadgeCheck, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-          { label: 'Recent Update', value: stats.recentUpdate, icon: FileText, color: 'text-amber-600', bg: 'bg-amber-50' },
         ].map((stat) => (
           <Card key={stat.label} className="border-slate-200 shadow-sm">
             <CardContent className="p-6">
@@ -121,6 +125,67 @@ export default function QSODashboard() {
           </Card>
         ))}
       </div>
+
+      <Card className="border-slate-200">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <FileCode className="h-5 w-5 text-indigo-600" />
+            Standards
+          </CardTitle>
+          <CardDescription>Temporary QSO demo standards and their intended badge configuration.</CardDescription>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          <table className="w-full min-w-[760px] text-left text-sm">
+            <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="pb-3 pr-4 font-semibold">Standard</th>
+                <th className="pb-3 pr-4 font-semibold">Type</th>
+                <th className="pb-3 pr-4 font-semibold">Competencies</th>
+                <th className="pb-3 pr-4 font-semibold">Badge Configuration</th>
+                <th className="pb-3 font-semibold">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {demoStandards.map((standard) => {
+                const isMapped = templates.some((template) =>
+                  template.standardId === standard.id ||
+                  (Boolean(standard.code) && template.qualificationCode === standard.code) ||
+                  template.qualificationName === standard.title,
+                );
+
+                return (
+                  <tr key={standard.id} className="border-b border-slate-100 last:border-0 align-top">
+                    <td className="py-4 pr-4">
+                      <p className="font-semibold text-slate-900">{standard.title}</p>
+                      {standard.code && <p className="mt-1 text-xs text-slate-500">{standard.code}</p>}
+                    </td>
+                    <td className="py-4 pr-4">
+                      <Badge variant="outline" className="border-indigo-200 bg-indigo-50 text-indigo-700">{standard.type}</Badge>
+                    </td>
+                    <td className="py-4 pr-4 text-xs leading-relaxed text-slate-600">
+                      {standard.competencies.length > 0
+                        ? standard.competencies.map((competency) => (
+                          <p key={competency.code || competency.title}>
+                            {competency.code ? `${competency.code} — ` : ''}{competency.title}
+                          </p>
+                        ))
+                        : 'Complete MCC achievement'}
+                    </td>
+                    <td className="py-4 pr-4 text-xs font-medium text-slate-700">
+                      {getDemoStandardBadgeConfiguration(standard)}
+                    </td>
+                    <td className="py-4">
+                      <Badge className={isMapped ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100' : 'bg-slate-100 text-slate-600 hover:bg-slate-100'}>
+                        {isMapped ? 'Mapped' : 'Demo ready'}
+                      </Badge>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
 
       <div className="grid lg:grid-cols-3 gap-8">
         <Card className="lg:col-span-2 border-slate-200">
@@ -149,7 +214,7 @@ export default function QSODashboard() {
                   Badge Hierarchy
                   <ArrowRight className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
                 </h3>
-                <p className="text-xs text-slate-500 mt-1 text-pretty">Configure levels from Proficient to Master across qualifications.</p>
+                <p className="text-xs text-slate-500 mt-1 text-pretty">Configure Proficient and Skilled badge types across qualifications.</p>
               </div>
             </Link>
           </CardContent>
@@ -180,7 +245,7 @@ export default function QSODashboard() {
           </CardHeader>
           <CardContent className="space-y-4">
             {[
-              { text: 'Updated Master Hierarchy for ICT', time: '2h ago' },
+              { text: 'Updated Skilled badge standards for ICT', time: '2h ago' },
               { text: 'Revised Proficient Badge Metadata', time: '5h ago' },
               { text: 'New Alignment: Solar Panel Tech', time: '1d ago' },
               { text: 'Archived legacy Skilled template', time: '2d ago' },

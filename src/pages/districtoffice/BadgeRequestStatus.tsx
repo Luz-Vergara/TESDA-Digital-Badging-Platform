@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  TrendingUp, 
-  Search, 
-  Filter, 
+import {
+  TrendingUp,
+  Search,
+  Filter,
   Download,
   CheckCircle,
   XCircle,
@@ -67,21 +67,21 @@ export default function BadgeRequestStatus() {
 
       let q = query(
         collection(db, 'issuedBadges'),
-        where('districtOfficeId', 'in', districtIdentifiers),
-        orderBy('submittedAt', 'desc')
+        where('districtOfficeId', 'in', districtIdentifiers)
       );
 
       if (statusFilter !== 'All') {
         q = query(
           collection(db, 'issuedBadges'),
           where('districtOfficeId', 'in', districtIdentifiers),
-          where('status', '==', statusFilter),
-          orderBy('submittedAt', 'desc')
+          where('status', '==', statusFilter)
         );
       }
 
       const unsub = onSnapshot(q, (snapshot) => {
-        setRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+          .sort((a: any, b: any) => ((b.submittedAt?.seconds || 0) - (a.submittedAt?.seconds || 0)));
+        setRequests(data);
         setLoading(false);
       });
 
@@ -94,7 +94,7 @@ export default function BadgeRequestStatus() {
     };
   }, [userProfile, statusFilter]);
 
-  const filteredRequests = requests.filter(req => 
+  const filteredRequests = requests.filter(req =>
     req.learnerName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     req.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
     req.badgeName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -136,8 +136,8 @@ export default function BadgeRequestStatus() {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <Input 
-                placeholder="Search learner, qualification, or ID..." 
+              <Input
+                placeholder="Search learner, qualification, or ID..."
                 className="pl-9"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}

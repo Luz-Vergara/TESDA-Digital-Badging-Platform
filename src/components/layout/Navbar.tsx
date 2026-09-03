@@ -21,10 +21,10 @@ export default function Navbar() {
   const [isOpen, setIsOpen] = React.useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, userProfile, logout, offlineError } = useFirebase();
+  const { user, userProfile, linkedExternalLearner, logout, offlineError } = useFirebase();
 
   const getCleanDisplayName = () => {
-    const raw = userProfile?.name || user?.displayName || '';
+    const raw = linkedExternalLearner?.displayName || userProfile?.name || user?.displayName || '';
     if (!raw) return 'User';
     const parenthesizedMatch = raw.match(/\(([^)]+)\)/);
     if (parenthesizedMatch && parenthesizedMatch[1]) {

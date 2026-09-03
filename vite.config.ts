@@ -11,10 +11,13 @@ export default defineConfig(({mode}) => {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
     },
     resolve: {
-      alias: {
-        '@': path.resolve(__dirname, '.'),
-        'firebase/firestore': path.resolve(__dirname, './src/lib/firestore-wrapper.ts'),
-      },
+      alias: [
+        {find: '@', replacement: path.resolve(__dirname, '.')},
+        {
+          find: /^firebase\/firestore$/,
+          replacement: path.resolve(__dirname, './src/lib/firestore-wrapper.ts'),
+        },
+      ],
     },
     optimizeDeps: {
       exclude: ['firebase/app', 'firebase/auth', 'firebase/firestore', '@firebase/firestore', '@firebase/app', '@firebase/auth'],

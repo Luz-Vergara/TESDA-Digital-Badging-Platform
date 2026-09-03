@@ -186,25 +186,14 @@ export default function ApplyRPL() {
   const [applicationType, setApplicationType] = useState<'Enrolled Learner' | 'Walk-in RPL'>('Walk-in RPL');
   const [selectedTrainingCenterId, setSelectedTrainingCenterId] = useState('');
 
-  // Auto-select template matching target credential type on change (Connect Skilled to COC & Master to NC)
+  // Badge type is selected by the template; it is not inferred from the RPL
+  // credential class or from a standard type.
   useEffect(() => {
     if (templates.length === 0) return;
-    const filtered = templates.filter(t => {
-      if (targetCredential === 'Certificate of Competency') {
-        return t.badgeType === 'Skilled' || t.badgeType === 'Expert';
-      } else {
-        return t.badgeType === 'Master';
-      }
-    });
-    if (filtered.length > 0) {
-      const exists = filtered.some(t => t.id === selectedTemplateId);
-      if (!exists) {
-        setSelectedTemplateId(filtered[0].id);
-      }
-    } else {
+    if (!templates.some(t => t.id === selectedTemplateId)) {
       setSelectedTemplateId(templates[0].id);
     }
-  }, [targetCredential, templates]);
+  }, [selectedTemplateId, templates]);
 
   // Fetch learner's own RPL Applications for the tracking view
   useEffect(() => {
@@ -864,16 +853,7 @@ export default function ApplyRPL() {
                       </SelectTrigger>
                       <SelectContent>
                         {(() => {
-                          const filtered = templates.filter(t => {
-                            if (targetCredential === 'Certificate of Competency') {
-                              return t.badgeType === 'Skilled' || t.badgeType === 'Expert';
-                            } else if (targetCredential === 'National Certificate') {
-                              return t.badgeType === 'Master';
-                            }
-                            return true;
-                          });
-                          const display = filtered.length > 0 ? filtered : templates;
-                          return display.map(t => {
+                          return templates.map(t => {
                             const isDifferent = t.badgeName && t.qualificationName && t.badgeName !== t.qualificationName;
                             const displayName = isDifferent 
                               ? `${t.badgeName} (under ${t.qualificationName})` 
@@ -898,7 +878,7 @@ export default function ApplyRPL() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="Certificate of Competency">Certificate of Competency (COC) - Skilled Badge</SelectItem>
-                        <SelectItem value="National Certificate">National Certificate (NC) - Master Badge</SelectItem>
+                        <SelectItem value="National Certificate">National Certificate (NC)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

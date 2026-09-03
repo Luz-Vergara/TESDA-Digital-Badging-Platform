@@ -1,39 +1,39 @@
 import React, { useState, useEffect } from 'react';
 import { Search, CheckCircle2, Clock, Award, Plus, Filter, AlertCircle } from 'lucide-react';
-import { 
-  collection, 
-  query, 
-  where, 
-  onSnapshot, 
-  addDoc, 
-  updateDoc, 
-  doc, 
-  serverTimestamp 
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+  addDoc,
+  updateDoc,
+  doc,
+  serverTimestamp
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogDescription, 
-  DialogFooter, 
-  DialogHeader, 
-  DialogTitle 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
 } from '@/components/ui/dialog';
-import { 
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -50,10 +50,10 @@ export default function UCCompletions() {
   const [offerings, setOfferings] = useState<ProgramOffering[]>([]);
   const [batches, setBatches] = useState<ProgramBatch[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   const [formData, setFormData] = useState({
     enrollmentId: '',
     ucTitle: '',
@@ -121,16 +121,16 @@ export default function UCCompletions() {
         alert("Enrollment not found. Please select a valid learner.");
         return;
       }
-      
+
       const offering = offerings.find(o => o.id === enrollment.programOfferingId);
-      
+
       const payload = {
         ...formData,
         trainingCenterId: userProfile?.organizationId || user.uid,
         learnerId: enrollment.learnerId,
         programOfferingId: enrollment.programOfferingId,
         programBatchId: enrollment.programBatchId,
-        badgeTemplateId: (enrollment as any).badgeTemplateId || offering?.badgeTemplateId || '', 
+        badgeTemplateId: (enrollment as any).badgeTemplateId || offering?.badgeTemplateId || '',
         verifiedBy: userProfile.name,
         completedAt: serverTimestamp(),
         createdAt: serverTimestamp(),
@@ -138,7 +138,7 @@ export default function UCCompletions() {
       };
 
       await addDoc(collection(db, 'ucCompletions'), payload);
-      
+
       // Update enrollment progress
       await updateDoc(doc(db, 'enrollments', enrollment.id), {
         completionStatus: 'Completed',
@@ -189,7 +189,7 @@ export default function UCCompletions() {
                     <TableCell className="pl-6 font-medium">
                       <div className="flex flex-col">
                         <span>{enrollment?.learnerName || 'Learner'}</span>
-                        <span className="text-[10px] text-slate-400 font-mono uppercase">ID: {comp.learnerId.slice(-8).toUpperCase()}</span>
+                        <span className="text-[10px] text-slate-400 font-mono uppercase">ID: {comp.learnerId ? comp.learnerId.slice(-8).toUpperCase() : 'N/A'}</span>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -199,7 +199,7 @@ export default function UCCompletions() {
                       </div>
                     </TableCell>
                     <TableCell className="text-sm">
-                      {comp.completedAt ? new Date(comp.completedAt.seconds * 1000).toLocaleDateString() : 'N/A'}
+                      {comp.completedAt ? (typeof comp.completedAt === 'object' && 'seconds' in comp.completedAt ? new Date((comp.completedAt as any).seconds * 1000).toLocaleDateString() : new Date(comp.completedAt as any).toLocaleDateString()) : 'N/A'}
                     </TableCell>
                     <TableCell>
                       <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 shadow-none">
@@ -208,7 +208,7 @@ export default function UCCompletions() {
                     </TableCell>
                     <TableCell className="text-right pr-6">
                       <Badge variant={comp.completionStatus === 'Badge Requested' ? 'default' : 'secondary'} className={
-                        comp.completionStatus === 'Badge Requested' ? 'bg-blue-600' : 
+                        comp.completionStatus === 'Badge Requested' ? 'bg-blue-600' :
                         comp.completionStatus === 'For Badge Request' ? 'bg-amber-100 text-amber-700 border-amber-200' : ''
                       }>
                         {comp.completionStatus}
@@ -241,7 +241,7 @@ export default function UCCompletions() {
                   const enr = enrollments.find(e => e.id === v);
                   const off = offerings.find(o => o.id === enr?.programOfferingId);
                   setFormData({
-                    ...formData, 
+                    ...formData,
                     enrollmentId: v,
                     ucTitle: off?.programTitle || '',
                     ucCode: off?.qualificationCode || ''

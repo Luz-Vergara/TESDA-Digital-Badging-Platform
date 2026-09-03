@@ -70,10 +70,19 @@ function wrapQuerySnapshot(snapshot: any, isDemo: boolean): any {
   });
 }
 
+function isCanonicalIntegrationDocument(snapshot: any): boolean {
+  const collectionId = snapshot?.ref?.parent?.id;
+  return (
+    collectionId === 'integrationLearnerLinks' ||
+    collectionId === 'integrationTrainingCenterLinks'
+  );
+}
+
 function wrapDocumentSnapshot(snapshot: any, isDemo: boolean): any {
   const exists = () => {
     if (!snapshot.exists()) return false;
     if (isVerificationPage()) return true;
+    if (isCanonicalIntegrationDocument(snapshot)) return true;
     const data = snapshot.data();
     const isRecordDemo = data && data.isDemo === true;
     return isDemo ? isRecordDemo : !isRecordDemo;

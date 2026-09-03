@@ -22,7 +22,7 @@ import {
   FileText,
   CreditCard
 } from 'lucide-react';
-import { collection, query, onSnapshot, limit, orderBy, where, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, onSnapshot, limit, orderBy, where, doc, serverTimestamp, writeBatch, getDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -115,11 +115,27 @@ export default function CODashboard() {
 
   const updateStatus = async (id: string, status: string, additionalData: any = {}) => {
     try {
-      await updateDoc(doc(db, 'issuedBadges', id), {
+      const batch = writeBatch(db);
+      batch.update(doc(db, 'issuedBadges', id), {
         status,
         updatedAt: serverTimestamp(),
         ...additionalData
       });
+
+      const issuedBadge = allBadges.find((badge) => badge.id === id);
+      if (issuedBadge?.verificationId) {
+        const publicRef = doc(db, 'publicCredentials', issuedBadge.verificationId);
+        const publicSnapshot = await getDoc(publicRef);
+        if (publicSnapshot.exists()) {
+          const credentialStatus = ['Revoked', 'Suspended', 'Expired'].includes(status) ? status : 'Active';
+          batch.update(publicRef, {
+            credentialStatus,
+            ...(additionalData.expiryDate ? { expiryDate: additionalData.expiryDate } : {}),
+          });
+        }
+      }
+
+      await batch.commit();
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, 'issuedBadges');
     }

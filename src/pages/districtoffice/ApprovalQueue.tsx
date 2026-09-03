@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  Search, 
-  Filter, 
-  Eye, 
-  CheckCircle2, 
+import {
+  Search,
+  Filter,
+  Eye,
+  CheckCircle2,
   XCircle,
   Clock,
   Building2,
@@ -17,17 +17,32 @@ import { useFirebase } from '@/src/lib/FirebaseProvider';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { BadgeRequest, ProgramOffering } from '@/src/types';
 import RequestDetailsModal from '@/src/components/districtoffice/RequestDetailsModal';
+
+const isExternalRequest = (request: BadgeRequest) => Boolean(request.externalEligibility);
+
+const getRequestProgramTitle = (request: BadgeRequest, offering?: ProgramOffering) =>
+  request.externalEligibility?.programTitle ||
+  request.programTitle ||
+  request.qualificationName ||
+  offering?.programTitle ||
+  '—';
+
+const getRequestTrainingCenter = (request: BadgeRequest, offering?: ProgramOffering) =>
+  request.externalEligibility?.trainingCenterName ||
+  request.trainingCenterName ||
+  offering?.trainingCenterName ||
+  '—';
 
 export default function ApprovalQueue() {
   const { userProfile, isAuthReady, user } = useFirebase();
@@ -49,22 +64,28 @@ export default function ApprovalQueue() {
     const q = query(
       collection(db, 'badgeRequests'),
       where('districtOfficeId', '==', districtId),
-      where('status', '==', 'Pending Review'),
-      orderBy('submittedAt', 'desc')
+      where('status', '==', 'Pending Review')
     );
 
     const unsubscribe = onSnapshot(q, async (snapshot) => {
-      const requestData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as BadgeRequest[];
+      const requestData = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .sort((a: any, b: any) => ((b.submittedAt?.seconds || 0) - (a.submittedAt?.seconds || 0))) as BadgeRequest[];
       setRequests(requestData);
-      
+
       // Fetch offering titles for display
       if (requestData.length > 0) {
-        const offeringIds = [...new Set(requestData.map(r => r.programOfferingId))];
+        const offeringIds = [...new Set(
+          requestData
+            .filter((request) => !isExternalRequest(request))
+            .map((request) => request.programOfferingId)
+            .filter(Boolean),
+        )];
         const offeringDocs = await Promise.all(offeringIds.map(id => getDoc(doc(db, 'programOfferings', id))));
         const offeringData = offeringDocs.filter(d => d.exists()).map(d => ({ id: d.id, ...d.data() })) as ProgramOffering[];
         setOfferings(offeringData);
       }
-      
+
       setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'badgeRequests');
@@ -75,7 +96,7 @@ export default function ApprovalQueue() {
 
   const filteredRequests = requests.filter(req => {
     const offering = offerings.find(o => o.id === req.programOfferingId);
-    const searchString = `${offering?.programTitle} ${req.requestType} ${req.badgeType}`.toLowerCase();
+    const searchString = `${getRequestProgramTitle(req, offering)} ${getRequestTrainingCenter(req, offering)} ${req.requestType} ${req.badgeType}`.toLowerCase();
     return searchString.includes(searchQuery.toLowerCase());
   });
 
@@ -100,8 +121,8 @@ export default function ApprovalQueue() {
           <div className="flex gap-2">
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-              <Input 
-                placeholder="Search requests..." 
+              <Input
+                placeholder="Search requests..."
                 className="pl-9 w-64"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -133,12 +154,12 @@ export default function ApprovalQueue() {
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-col">
-                        <span className="text-sm font-bold text-slate-900">{offering?.programTitle || 'Program Title'}</span>
+                        <span className="text-sm font-bold text-slate-900">{getRequestProgramTitle(req, offering)}</span>
                         <span className="text-[10px] text-blue-600 font-bold uppercase">{req.badgeType}</span>
                       </div>
                     </TableCell>
                     <TableCell className="text-sm font-medium">
-                      {offering?.trainingCenterName || 'Source Center'}
+                      {getRequestTrainingCenter(req, offering)}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1.5 font-bold text-slate-600">
@@ -150,9 +171,9 @@ export default function ApprovalQueue() {
                       {req.submittedAt ? new Date(req.submittedAt.seconds * 1000).toLocaleDateString() : 'N/A'}
                     </TableCell>
                     <TableCell className="text-right pr-6">
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         className="text-blue-600 font-bold gap-1.5"
                         onClick={() => {
                           setSelectedRequest(req);
@@ -175,7 +196,7 @@ export default function ApprovalQueue() {
         </CardContent>
       </Card>
 
-      <RequestDetailsModal 
+      <RequestDetailsModal
         request={selectedRequest}
         isOpen={isModalOpen}
         onClose={() => {

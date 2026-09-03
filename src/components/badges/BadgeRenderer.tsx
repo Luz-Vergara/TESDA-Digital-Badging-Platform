@@ -7,13 +7,17 @@ export interface BadgeRendererData {
   id: string;
   name: string;
   learnerName: string;
+  trainingProvider?: string;
   issueDate: string;
   validUntil: string;
   verificationId: string;
+  badgeId?: string;
   imageUrl?: string;
-  level: string; // e.g. Proficient, Expert, etc.
+  level: string; // Display value; legacy values are rendered defensively.
   qualificationTitle: string;
   qualificationCode: string;
+  competencyTitle?: string;
+  competencyCode?: string;
   templateConfig?: {
     fitMode?: 'cover' | 'contain' | 'fill';
     name?: FieldPosition;
@@ -23,6 +27,11 @@ export interface BadgeRendererData {
     level?: FieldPosition;
     qualificationTitle?: FieldPosition;
     qualificationCode?: FieldPosition;
+    trainingProvider?: FieldPosition;
+    competencyTitle?: FieldPosition;
+    competencyCode?: FieldPosition;
+    badgeId?: FieldPosition;
+    verificationId?: FieldPosition;
     qr?: {
       x: number;
       y: number;
@@ -45,13 +54,17 @@ export const BadgeRenderer: React.FC<BadgeRendererProps> = ({ scale = 1, data, a
     id,
     name,
     learnerName,
+    trainingProvider,
     issueDate,
     validUntil,
     verificationId,
+    badgeId,
     imageUrl,
     level,
     qualificationTitle,
     qualificationCode,
+    competencyTitle,
+    competencyCode,
     templateConfig,
   } = data;
 
@@ -222,6 +235,23 @@ export const BadgeRenderer: React.FC<BadgeRendererProps> = ({ scale = 1, data, a
               }
             )}
 
+            {renderField(templateConfig?.trainingProvider, trainingProvider || '', {
+              fontSize: templateConfig?.trainingProvider?.fontSize || '0.75rem',
+              color: templateConfig?.trainingProvider?.color || '#475569',
+              fontWeight: '500',
+            })}
+
+            {renderField(templateConfig?.competencyTitle, competencyTitle || '', {
+              fontSize: templateConfig?.competencyTitle?.fontSize || '0.85rem',
+              color: templateConfig?.competencyTitle?.color || '#334155',
+              maxWidth: '85%', whiteSpace: 'normal', lineHeight: '1.2',
+            })}
+
+            {renderField(templateConfig?.competencyCode, competencyCode ? `Competency: ${competencyCode}` : '', {
+              fontSize: templateConfig?.competencyCode?.fontSize || '0.7rem',
+              color: templateConfig?.competencyCode?.color || '#64748b',
+            })}
+
             {renderField(templateConfig?.level, level, {
               fontSize: templateConfig?.level?.fontSize || '0.95rem',
               color: templateConfig?.level?.color || '#2563eb',
@@ -241,14 +271,20 @@ export const BadgeRenderer: React.FC<BadgeRendererProps> = ({ scale = 1, data, a
             })}
 
             {renderField(
-              templateConfig?.id,
-              finalId ? `ID: ${finalId}` : '',
+              templateConfig?.badgeId || templateConfig?.id,
+              badgeId || id ? `Badge ID: ${badgeId || id}` : '',
               {
                 fontSize: templateConfig?.id?.fontSize || '0.7rem',
                 color: templateConfig?.id?.color || '#64748b',
                 fontFamily: 'monospace',
               }
             )}
+
+            {renderField(templateConfig?.verificationId, finalId ? `Verification: ${finalId}` : '', {
+              fontSize: templateConfig?.verificationId?.fontSize || '0.65rem',
+              color: templateConfig?.verificationId?.color || '#64748b',
+              fontFamily: 'monospace',
+            })}
 
             {/* QR Code Overlay (linked to verification endpoint or details) */}
             {renderQR(

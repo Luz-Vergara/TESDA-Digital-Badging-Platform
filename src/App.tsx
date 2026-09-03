@@ -11,6 +11,7 @@ import ApplyRPL from './pages/learner/ApplyRPL';
 import MyApplications from './pages/learner/MyApplications';
 import MyEnrollments from './pages/learner/MyEnrollments';
 import MyBadgeWallet from './pages/learner/MyBadgeWallet';
+import LearnerBadgeHierarchy from './pages/learner/LearnerBadgeHierarchy';
 import DistrictOfficeDashboard from './pages/districtoffice/DistrictOfficeDashboard';
 import ApprovalQueue from './pages/districtoffice/ApprovalQueue';
 import RenewalManagement from './pages/districtoffice/RenewalManagement';
@@ -37,6 +38,10 @@ import LearnerApplications from './pages/training/LearnerApplications';
 import UCCompletions from './pages/training/UCCompletions';
 import BadgeRequests from './pages/training/BadgeRequests';
 import RPLApplications from './pages/training/RPLApplications';
+import BadgeEligibility from './pages/training/BadgeEligibility';
+import FileBadgeRequest from './pages/training/FileBadgeRequest';
+import IssuedBadges from './pages/training/IssuedBadges';
+import IntegrationStatusPage from './pages/training/IntegrationStatusPage';
 import DashboardLayout from './components/layout/DashboardLayout';
 
 export default function App() {
@@ -50,7 +55,7 @@ export default function App() {
           <Route path="/orientation" element={<Orientation />} />
           <Route path="/verify" element={<Verification />} />
           <Route path="/verify/:verificationId" element={<Verification />} />
-          
+
           {/* Learner Portal */}
           <Route path="/learner" element={<DashboardLayout role="Learner" />}>
             <Route index element={<LearnerDashboard />} />
@@ -59,7 +64,7 @@ export default function App() {
             <Route path="applications" element={<MyApplications />} />
             <Route path="enrollments" element={<MyEnrollments />} />
             <Route path="wallet" element={<MyBadgeWallet />} />
-            <Route path="hierarchy" element={<BadgeHierarchy />} />
+            <Route path="hierarchy" element={<LearnerBadgeHierarchy />} />
           </Route>
 
           {/* Super Admin Module */}
@@ -108,12 +113,16 @@ export default function App() {
           <Route path="/trainingcenter" element={<DashboardLayout role="TrainingCenter" />}>
             <Route index element={<TrainingDashboard />} />
             <Route path="learners" element={<LearnerManagement />} />
-            <Route path="rpl" element={<RPLApplications />} />
+            <Route path="eligibility" element={<BadgeEligibility />} />
+            <Route path="file-request" element={<FileBadgeRequest />} />
             <Route path="programs" element={<ProgramOfferings />} />
+            <Route path="requests" element={<BadgeRequests />} />
+            <Route path="issued" element={<IssuedBadges />} />
+            <Route path="integration" element={<IntegrationStatusPage />} />
+            <Route path="rpl" element={<RPLApplications />} />
             <Route path="batches" element={<ProgramBatches />} />
             <Route path="applications" element={<LearnerApplications />} />
             <Route path="completions" element={<UCCompletions />} />
-            <Route path="requests" element={<BadgeRequests />} />
             <Route path="reports" element={<div className="p-8 text-center text-slate-500 font-medium">Training Center performance reports (Coming Soon)</div>} />
             <Route path="notifications" element={<div className="p-8 text-center text-slate-500">Notifications (Coming Soon)</div>} />
           </Route>

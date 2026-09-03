@@ -1,28 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { Search, CheckCircle, XCircle, UserCheck, Clock } from 'lucide-react';
-import { 
-  collection, 
-  query, 
-  where, 
-  onSnapshot, 
-  updateDoc, 
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+  updateDoc,
   getDoc,
   getDocs,
-  doc, 
-  serverTimestamp 
+  doc,
+  serverTimestamp
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Enrollment, ProgramOffering, ProgramBatch } from '@/src/types';
@@ -83,7 +83,7 @@ export default function LearnerApplications() {
         }
 
         // Find open or ongoing batches for this program offering and training center
-        const programBatches = batches.filter(batch => 
+        const programBatches = batches.filter(batch =>
           batch.programOfferingId === enr.programOfferingId &&
           batch.trainingCenterId === enr.trainingCenterId &&
           (batch.status === 'Open' || batch.status === 'Ongoing')
@@ -238,21 +238,21 @@ export default function LearnerApplications() {
                       <Badge variant="outline">{batch?.batchName || 'No specific batch'}</Badge>
                     </TableCell>
                     <TableCell className="text-xs text-slate-500">
-                      {enr.dateApplied ? new Date(enr.dateApplied.seconds * 1000).toLocaleDateString() : 'N/A'}
+                      {enr.dateApplied ? (typeof enr.dateApplied === 'object' && 'seconds' in enr.dateApplied ? new Date((enr.dateApplied as any).seconds * 1000).toLocaleDateString() : new Date(enr.dateApplied as any).toLocaleDateString()) : 'N/A'}
                     </TableCell>
                     <TableCell className="text-right pr-6">
                       <div className="flex justify-end gap-2">
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
+                        <Button
+                          variant="outline"
+                          size="sm"
                           className="text-emerald-600 border-emerald-200 hover:bg-emerald-50 gap-1.5"
                           onClick={() => handleStatusUpdate(enr.id, 'Enrolled')}
                         >
                           <CheckCircle className="h-4 w-4" /> Accept
                         </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
+                        <Button
+                          variant="outline"
+                          size="sm"
                           className="text-rose-600 border-rose-200 hover:bg-rose-50 gap-1.5"
                           onClick={() => handleStatusUpdate(enr.id, 'Rejected')}
                         >

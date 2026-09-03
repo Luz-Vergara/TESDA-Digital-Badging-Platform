@@ -18,8 +18,7 @@ import { Link, useNavigate } from 'react-router-dom';
 
 export default function LearnerDashboard() {
   const navigate = useNavigate();
-  const { user, userProfile, isAuthReady } = useFirebase();
-  const [badgesEmail, setBadgesEmail] = useState<any[]>([]);
+  const { user, userProfile, linkedExternalLearner, isAuthReady } = useFirebase();
   const [badgesId, setBadgesId] = useState<any[]>([]);
   const [badgesRequests, setBadgesRequests] = useState<any[]>([]);
   const [templates, setTemplates] = useState<BadgeTemplate[]>([]);
@@ -34,15 +33,9 @@ export default function LearnerDashboard() {
   const [showComingSoon, setShowComingSoon] = useState(false);
   const [myRplSubmissions, setMyRplSubmissions] = useState<any[]>([]);
 
-  // Combine badges from both email, ID queries, and approved requests
+  // Combine UID-owned issued badges and approved requests.
   const activeBadges = useMemo(() => {
-    const combined = [...badgesEmail];
-    
-    badgesId.forEach(item => {
-      if (!combined.find(c => c.id === item.id)) {
-        combined.push(item);
-      }
-    });
+    const combined = [...badgesId];
 
     // Add approved requests to the list only if there is no individual issued badge
     badgesRequests.forEach(req => {
@@ -177,7 +170,7 @@ export default function LearnerDashboard() {
       const dateB = b.issueDate?.seconds || b.submittedAt?.seconds || 0;
       return dateB - dateA;
     });
-  }, [badgesEmail, badgesId, badgesRequests, templates, user]);
+  }, [badgesId, badgesRequests, templates, user]);
 
   useEffect(() => {
     if (!isAuthReady || !user?.email) {
@@ -200,10 +193,6 @@ export default function LearnerDashboard() {
       );
     };
 
-    const qEmail = query(
-      collection(db, path),
-      where('learnerEmail', '==', user.email)
-    );
     const qId = query(
       collection(db, path),
       where('learnerId', '==', user.uid)
@@ -215,22 +204,15 @@ export default function LearnerDashboard() {
       where('status', 'in', ['Approved', 'Badge ID Generated'])
     );
 
-    const unsubEmail = onSnapshot(qEmail, (snapshot) => {
-      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setBadgesEmail(filterValid(docs));
-      setLoading(false);
-    }, (error) => {
-      console.error("Dashboard Email Error:", error);
-      setLoading(false);
-      handleFirestoreError(error, OperationType.GET, path);
-    });
-
     const unsubId = onSnapshot(qId, (snapshot) => {
       const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setBadgesId(filterValid(docs));
       setLoading(false);
     }, (error) => {
       console.error("Dashboard ID Error:", error);
+      setBadgesId([]);
+      setLoading(false);
+      handleFirestoreError(error, OperationType.GET, path);
     });
 
     const unsubRequests = onSnapshot(qRequests, (snapshot) => {
@@ -247,7 +229,6 @@ export default function LearnerDashboard() {
     });
 
     return () => {
-      unsubEmail();
       unsubId();
       unsubRequests();
       unsubTemplates();
@@ -357,23 +338,23 @@ export default function LearnerDashboard() {
 
           // 1. Specifically look for 2D Animation NC III if interested
           if (hasAnimationInterest) {
-            const animationExpert = allTemplates.find(t => 
+            const animationTemplate = allTemplates.find(t =>
               t.badgeName?.includes('2D Animation NC III') || 
-              (t.qualificationName?.includes('2D Animation') && t.badgeType === 'Expert')
+              (t.qualificationName?.includes('2D Animation') && t.badgeType === 'Skilled')
             );
-            if (animationExpert && !activeIds.includes(animationExpert.id)) {
-              recs.push(animationExpert);
+            if (animationTemplate && !activeIds.includes(animationTemplate.id)) {
+              recs.push(animationTemplate);
             }
           }
 
-          // 2. Fill with other expert badges from same qualification
-          const sameQualExpert = allTemplates.filter(t => 
+          // 2. Fill with other Skilled badges from the same qualification.
+          const sameQualSkilled = allTemplates.filter(t =>
             !activeIds.includes(t.id) && 
             t.qualificationName === qual && 
-            t.badgeType === 'Expert' &&
+            t.badgeType === 'Skilled' &&
             !recs.find(r => r.id === t.id)
           );
-          recs = [...recs, ...sameQualExpert];
+          recs = [...recs, ...sameQualSkilled];
 
           // 3. Fill with other badges from same qualification
           const sameQualOther = allTemplates.filter(t => 
@@ -383,14 +364,14 @@ export default function LearnerDashboard() {
           );
           recs = [...recs, ...sameQualOther];
 
-          // 4. Fill with any expert badges
+          // 4. Fill with any remaining Skilled badges.
           if (recs.length < 3) {
-            const otherExperts = allTemplates.filter(t => 
+            const otherSkilled = allTemplates.filter(t =>
               !activeIds.includes(t.id) && 
-              t.badgeType === 'Expert' && 
+              t.badgeType === 'Skilled' &&
               !recs.find(r => r.id === t.id)
             );
-            recs = [...recs, ...otherExperts];
+            recs = [...recs, ...otherSkilled];
           }
 
           setRecommendations(recs.slice(0, 3));
@@ -417,8 +398,11 @@ export default function LearnerDashboard() {
   }
 
   const getLearnerDisplayName = () => {
+    if (linkedExternalLearner?.displayName) {
+      return linkedExternalLearner.displayName;
+    }
     if (learnerData?.firstName) {
-      return learnerData.firstName;
+      return [learnerData.firstName, learnerData.lastName].filter(Boolean).join(' ');
     }
     const rawName = userProfile?.name || '';
     if (!rawName) return 'Learner';
@@ -457,6 +441,9 @@ export default function LearnerDashboard() {
             )}
           </h1>
           <p className="text-slate-500">You have {activeBadges.length} active badges. Keep it up!</p>
+          {linkedExternalLearner?.learnerUli && (
+            <p className="mt-1 font-mono text-xs text-slate-500">ULI: {linkedExternalLearner.learnerUli}</p>
+          )}
         </div>
         <div className="flex gap-3">
           <Button 
@@ -480,7 +467,7 @@ export default function LearnerDashboard() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Total Badges */}
         <Card className="border-slate-200">
           <CardContent className="p-4 flex items-center gap-3">
@@ -509,21 +496,6 @@ export default function LearnerDashboard() {
           </CardContent>
         </Card>
 
-        {/* Expert */}
-        <Card className="border-slate-200 border-l-4 border-l-green-500">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-50 text-green-600 flex items-center justify-center shrink-0">
-              <Award className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Expert</p>
-              <p className="text-xl font-bold text-slate-900">
-                {activeBadges.filter(b => b.badgeType === 'Expert').length}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Skilled */}
         <Card className="border-slate-200 border-l-4 border-l-amber-500">
           <CardContent className="p-4 flex items-center gap-3">
@@ -539,20 +511,6 @@ export default function LearnerDashboard() {
           </CardContent>
         </Card>
 
-        {/* Master */}
-        <Card className="border-slate-200 border-l-4 border-l-purple-500">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
-              <Award className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Master</p>
-              <p className="text-xl font-bold text-slate-900">
-                {activeBadges.filter(b => b.badgeType === 'Master').length}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       <div className="grid lg:grid-cols-3 gap-8">

@@ -1,0 +1,35 @@
+project_id = "tesda-digital-badging-local"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 15
+
+[auth]
+# Preserve the linked prototype's existing Auth settings when pushing the
+# Firebase third-party provider configuration.
+site_url = "http://localhost:3000"
+additional_redirect_urls = []
+
+[auth.email]
+enable_confirmations = true
+max_frequency = "1m"
+otp_length = 8
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
+[auth.third_party.firebase]
+enabled = true
+# Must match the Firebase project whose ID tokens this API accepts.
+project_id = "gen-lang-client-0173546340"
+
+[functions.api]
+verify_jwt = false

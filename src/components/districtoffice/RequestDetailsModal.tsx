@@ -24,7 +24,7 @@ import {
   AlertCircle,
   Users
 } from 'lucide-react';
-import { BadgeRequest, ProgramOffering, Learner, BadgeTemplate, NewIssuedBadge } from '@/src/types';
+import { BadgeRequest, ProgramOffering, Learner, BadgeTemplate, NewIssuedBadge, PublicCredential } from '@/src/types';
 import { doc, updateDoc, serverTimestamp, addDoc, collection, getDoc, getDocs, query, where, writeBatch } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
@@ -50,15 +50,22 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
 
     const fetchData = async () => {
       try {
-        const offDoc = await getDoc(doc(db, 'programOfferings', request.programOfferingId));
         let resolvedOffering: ProgramOffering | null = null;
-        if (offDoc.exists()) {
-          const offData = offDoc.data() as ProgramOffering;
-          setOffering(offData);
-          resolvedOffering = offData;
+        setOffering(null);
+        setTemplate(null);
+
+        if (!request.externalEligibility && request.programOfferingId) {
+          const offDoc = await getDoc(doc(db, 'programOfferings', request.programOfferingId));
+          if (offDoc.exists()) {
+            const offData = offDoc.data() as ProgramOffering;
+            setOffering(offData);
+            resolvedOffering = offData;
+          }
         }
 
-        const templateId = request.badgeTemplateId || resolvedOffering?.badgeTemplateId;
+        const templateId = request.externalEligibility?.mappedBadgeTemplateId ||
+          request.badgeTemplateId ||
+          resolvedOffering?.badgeTemplateId;
         if (templateId) {
           const tempDoc = await getDoc(doc(db, 'badgeTemplates', templateId));
           if (tempDoc.exists()) {
@@ -81,14 +88,10 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
   if (!request) return null;
 
   const generateVerificationId = () => {
-    return `V26-${Math.random().toString(36).substring(2, 12).toUpperCase()}`;
-  };
-
-  const generateBadgeId = (badgeType: string) => {
-    const prefix = badgeType === 'Master' ? 'NC-IV' : badgeType === 'Skilled' ? 'NC-II' : 'COC';
-    const randomDigits = Math.floor(100000 + Math.random() * 900000);
-    const suffix = Date.now().toString().slice(-2);
-    return `${prefix}-2026-${randomDigits}-${suffix}`;
+    const randomBytes = new Uint8Array(16);
+    window.crypto.getRandomValues(randomBytes);
+    const randomId = Array.from(randomBytes, (byte) => byte.toString(16).padStart(2, '0')).join('').toUpperCase();
+    return `V${new Date().getFullYear().toString().slice(-2)}-${randomId}`;
   };
 
   const handleApprove = async () => {
@@ -100,11 +103,25 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
       const issuedBadgeSummary = [];
       const year = new Date().getFullYear();
       const districtId = request.districtOfficeId || userProfile?.organizationId || userProfile?.assignedDistrictId || 'demo-district-office';
+      const externalEvidence = request.externalEligibility;
+      const isExternalRequest = Boolean(externalEvidence);
+      const badgeDesignId = template?.badgeDesignId || '';
+      const recognitionScope = template?.recognitionScope || (request as any).recognitionScope || '';
+      const configuredCompetencyTitle = template?.competencyTitle || template?.relatedCompetency || '';
+      const configuredCompetencyCode = template?.competencyCode || '';
+      let badgeArtworkUrl = template?.imageUrl || '';
+
+      if (badgeDesignId) {
+        const designSnapshot = await getDoc(doc(db, 'badgeDesigns', badgeDesignId));
+        if (designSnapshot.exists()) {
+          badgeArtworkUrl = String(designSnapshot.data().artworkUrl || badgeArtworkUrl);
+        }
+      }
 
       // Determine template prefix per specifications (Rule B)
       let prefix = template?.badgeIdPrefix || '';
       if (!prefix) {
-        const qCode = template?.qualificationCode || request.templateDetails?.qualificationCode || (offering && offering.qualificationCode) || "QUAL";
+        const qCode = externalEvidence?.qualificationCode || request.qualificationCode || template?.qualificationCode || request.templateDetails?.qualificationCode || (offering && offering.qualificationCode) || "QUAL";
         const bType = template?.badgeType || request.badgeType || "PROF";
         prefix = `${qCode}-${bType}`.toUpperCase();
       }
@@ -114,7 +131,12 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
       // 1. Create IssuedBadge for each learner sequentially via Firestore transaction counter inside generateOfficialBadgeId
       for (const learner of learners) {
         const verificationId = generateVerificationId();
-        const badgeId = await generateOfficialBadgeId(year, districtId, template?.id || request.badgeTemplateId, prefix);
+        const badgeId = await generateOfficialBadgeId(
+          year,
+          districtId,
+          externalEvidence?.mappedBadgeTemplateId || template?.id || request.badgeTemplateId,
+          prefix,
+        );
         const verificationUrl = `${window.location.origin}/#/verify/${verificationId}`;
         const qrPayload = verificationUrl;
 
@@ -129,17 +151,19 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
         const badgeData: any = {
           badgeId,
           verificationId,
-          badgeTemplateId: request.badgeTemplateId || template?.id || '',
-          badgeTemplateName: (request as any).badgeTemplateName || request.templateDetails?.badgeName || template?.badgeName || (offering && offering.badgeTemplateName) || (offering && offering.programTitle) || '',
+          badgeTemplateId: externalEvidence?.mappedBadgeTemplateId || request.badgeTemplateId || template?.id || '',
+          badgeDesignId,
+          badgeArtworkUrl,
+          badgeTemplateName: externalEvidence?.mappedBadgeTemplateName || request.badgeTemplateName || request.templateDetails?.badgeName || template?.badgeName || (offering && offering.badgeTemplateName) || (offering && offering.programTitle) || '',
           badgeRequestId: request.id,
           requestNumber: request.requestNumber || '',
           programOfferingId: request.programOfferingId || '',
           programBatchId: request.programBatchId || '',
-          programTitle: (request as any).programTitle || (offering && offering.programTitle) || template?.badgeName || '',
-          badgeType: request.badgeType || template?.badgeType || 'Proficient',
+          programTitle: externalEvidence?.programTitle || request.programTitle || (offering && offering.programTitle) || template?.badgeName || '',
+          badgeType: externalEvidence?.mappedBadgeType || request.badgeType || template?.badgeType || 'Proficient',
           learnerId: learner.id,
-          learnerName: `${learner.firstName} ${learner.lastName}`,
-          learnerEmail: learner.email,
+          learnerName: externalEvidence?.learnerName || `${learner.firstName} ${learner.lastName}`,
+          learnerEmail: externalEvidence?.learnerEmail || learner.email,
           trainingCenterId: request.trainingCenterId || (offering && offering.trainingCenterId) || '',
           trainingCenterName: request.trainingCenterName || (offering && offering.trainingCenterName) || '',
           districtOfficeId: districtId,
@@ -151,8 +175,13 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
           status: 'Active',
           publishedToLearner: true,
           evidenceUrl: request.evidenceUrl || '',
-          qualificationName: (request as any).qualificationName || request.templateDetails?.qualificationName || template?.qualificationName || (offering && offering.qualificationName) || '',
-          qualificationCode: (request as any).qualificationCode || request.templateDetails?.qualificationCode || template?.qualificationCode || (offering && offering.qualificationCode) || '',
+          qualificationName: externalEvidence?.programTitle || request.qualificationName || request.templateDetails?.qualificationName || template?.qualificationName || (offering && offering.qualificationName) || '',
+          qualificationCode: externalEvidence?.qualificationCode || request.qualificationCode || request.templateDetails?.qualificationCode || template?.qualificationCode || (offering && offering.qualificationCode) || '',
+          standardId: template?.standardId || (request as any).standardId || '',
+          standardType: template?.standardType || (request as any).standardType || '',
+          recognitionScope,
+          ...(recognitionScope === 'Competency' && configuredCompetencyTitle ? { competencyTitle: configuredCompetencyTitle } : {}),
+          ...(recognitionScope === 'Competency' && configuredCompetencyCode ? { competencyCode: configuredCompetencyCode } : {}),
           credentialLevel: request.templateDetails?.credentialLevel || template?.credentialLevel || 'Unit of Competency',
           criteria: request.templateDetails?.criteria || template?.criteria || '',
           alignment: request.templateDetails?.alignment || template?.alignment || '',
@@ -162,16 +191,41 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
           qrPayload,
           isDemo: (request as any).isDemo || false,
           metadata: {
-            batchId: request.programBatchId,
-            programTitle: (request as any).programTitle || (offering && offering.programTitle) || '',
-            qualificationCode: (request as any).qualificationCode || (offering && offering.qualificationCode) || '',
-            requestType: request.requestType
+            ...(request.programBatchId ? { batchId: request.programBatchId } : {}),
+            programTitle: externalEvidence?.programTitle || request.programTitle || (offering && offering.programTitle) || '',
+            qualificationCode: externalEvidence?.qualificationCode || request.qualificationCode || (offering && offering.qualificationCode) || '',
+            requestType: request.requestType,
+            externalEligibility: externalEvidence || null,
           },
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         };
 
         batch.set(issuedBadgeRef, badgeData);
+
+        const standardCode = badgeData.qualificationCode || '';
+        const standardTitle = badgeData.qualificationName || badgeData.programTitle || badgeData.badgeTemplateName;
+        const competencyCode = badgeData.competencyCode || '';
+        const competencyTitle = badgeData.competencyTitle || '';
+        const publicCredential: PublicCredential = {
+          verificationId,
+          badgeId,
+          badgeName: badgeData.badgeTemplateName || badgeData.programTitle,
+          badgeType: badgeData.badgeType,
+          ...(badgeDesignId ? { badgeDesignId } : {}),
+          ...(badgeArtworkUrl ? { badgeArtworkUrl } : {}),
+          standardType: badgeData.standardType || template?.standardType || 'TR',
+          standardCode,
+          standardTitle,
+          ...(badgeData.recognitionScope === 'Competency' && competencyCode ? { competencyCode } : {}),
+          ...(badgeData.recognitionScope === 'Competency' && competencyTitle ? { competencyTitle } : {}),
+          holderDisplayName: badgeData.learnerName,
+          trainingProviderDisplayName: badgeData.trainingCenterName || 'Training Center',
+          issueDate: serverTimestamp(),
+          expiryDate,
+          credentialStatus: 'Active',
+        };
+        batch.set(doc(db, 'publicCredentials', verificationId), publicCredential);
 
         // Update learner badge status
         const learnerRef = doc(db, 'learners', learner.id);
@@ -183,8 +237,8 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
         // Add to the summary array (Rule F and Goal 9)
         issuedBadgeSummary.push({
           learnerId: learner.id,
-          learnerName: `${learner.firstName} ${learner.lastName}`,
-          learnerEmail: learner.email || '',
+          learnerName: externalEvidence?.learnerName || `${learner.firstName} ${learner.lastName}`,
+          learnerEmail: externalEvidence?.learnerEmail || learner.email || '',
           badgeId,
           verificationId,
           issuedBadgeId: issuedBadgeRef.id
@@ -192,21 +246,23 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
       }
 
       // 2. Fetch and update matching enrollments for these approved learners (Rule G)
-      const enrollmentsRef = collection(db, 'enrollments');
-      const qEnr = query(
-        enrollmentsRef,
-        where('programOfferingId', '==', request.programOfferingId),
-        where('learnerId', 'in', request.learnerIds)
-      );
-      const enrSnap = await getDocs(qEnr);
-      enrSnap.docs.forEach(enrDoc => {
-        batch.update(enrDoc.ref, {
-          badgeRequestStatus: 'Approved',
-          enrollmentStatus: 'Completed',
-          dateCompleted: serverTimestamp(),
-          updatedAt: serverTimestamp()
+      if (!isExternalRequest) {
+        const enrollmentsRef = collection(db, 'enrollments');
+        const qEnr = query(
+          enrollmentsRef,
+          where('programOfferingId', '==', request.programOfferingId),
+          where('learnerId', 'in', request.learnerIds)
+        );
+        const enrSnap = await getDocs(qEnr);
+        enrSnap.docs.forEach(enrDoc => {
+          batch.update(enrDoc.ref, {
+            badgeRequestStatus: 'Approved',
+            enrollmentStatus: 'Completed',
+            dateCompleted: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
         });
-      });
+      }
 
       // 3. Update Badge Request status (Rule F and Goal 9)
       const requestRef = doc(db, 'badgeRequests', request.id);
@@ -227,7 +283,7 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
         action: `Approved Badge Request: ${request.id}`,
         userName: userProfile?.name || 'District Staff',
         timestamp: serverTimestamp(),
-        details: `Issued ${learners.length} badges for ${(offering && offering.programTitle) || request.templateDetails?.badgeName || 'program'}`
+        details: `Issued ${learners.length} badges for ${externalEvidence?.programTitle || request.programTitle || (offering && offering.programTitle) || request.templateDetails?.badgeName || 'program'}`
       });
 
       await batch.commit();
@@ -244,6 +300,7 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
     setIsSubmitting(true);
     const batch = writeBatch(db);
     try {
+      const isExternalRequest = Boolean(request.externalEligibility);
       // 1. Update Badge Request status and badgeIdStatus (Rule 15 rejection)
       const requestRef = doc(db, 'badgeRequests', request.id);
       batch.update(requestRef, {
@@ -255,19 +312,21 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
       });
 
       // 2. Fetch and update matching enrollments for these rejected learners
-      const enrollmentsRef = collection(db, 'enrollments');
-      const qEnr = query(
-        enrollmentsRef,
-        where('programOfferingId', '==', request.programOfferingId),
-        where('learnerId', 'in', request.learnerIds)
-      );
-      const enrSnap = await getDocs(qEnr);
-      enrSnap.docs.forEach(enrDoc => {
-        batch.update(enrDoc.ref, {
-          badgeRequestStatus: 'Rejected',
-          updatedAt: serverTimestamp()
+      if (!isExternalRequest) {
+        const enrollmentsRef = collection(db, 'enrollments');
+        const qEnr = query(
+          enrollmentsRef,
+          where('programOfferingId', '==', request.programOfferingId),
+          where('learnerId', 'in', request.learnerIds)
+        );
+        const enrSnap = await getDocs(qEnr);
+        enrSnap.docs.forEach(enrDoc => {
+          batch.update(enrDoc.ref, {
+            badgeRequestStatus: 'Rejected',
+            updatedAt: serverTimestamp()
+          });
         });
-      });
+      }
 
       // 3. Audit Log
       const auditRef = doc(collection(db, 'auditLogs'));
@@ -296,7 +355,7 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
             Badge Issuance Review
           </DialogTitle>
           <DialogDescription>
-            Approval request for {request.requestType} issuance from {offering?.trainingCenterName}
+            Approval request for {request.requestType} issuance from {request.externalEligibility?.trainingCenterName || request.trainingCenterName || offering?.trainingCenterName || 'the submitting center'}
           </DialogDescription>
         </DialogHeader>
 
@@ -305,21 +364,45 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
             <Card className="bg-slate-50 border-slate-100 shadow-none">
               <CardContent className="p-4">
                 <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Program / Qualification</p>
-                <p className="text-sm font-bold text-slate-900">{offering?.programTitle}</p>
-                <p className="text-xs text-slate-500">{offering?.qualificationCode}</p>
+                <p className="text-sm font-bold text-slate-900">{request.externalEligibility?.programTitle || request.programTitle || request.qualificationName || offering?.programTitle || '—'}</p>
+                <p className="text-xs text-slate-500">{request.externalEligibility?.qualificationCode || request.qualificationCode || offering?.qualificationCode || ''}</p>
               </CardContent>
             </Card>
             <Card className="bg-slate-50 border-slate-100 shadow-none">
               <CardContent className="p-4">
                 <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Badge Level</p>
                 <Badge className={
-                  request.badgeType === 'Master' ? 'bg-purple-100 text-purple-700' :
                   request.badgeType === 'Skilled' ? 'bg-blue-100 text-blue-700' :
                   'bg-emerald-100 text-emerald-700'
                 }>{request.badgeType}</Badge>
               </CardContent>
             </Card>
           </div>
+
+          {request.externalEligibility && (
+            <Card className="border-indigo-100 bg-indigo-50/40 shadow-none">
+              <CardContent className="space-y-3 p-4 text-sm">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-indigo-700">External eligibility evidence snapshot</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <p><span className="text-slate-500">Learner:</span> {request.externalEligibility.learnerName}</p>
+                  <p><span className="text-slate-500">Learner ULI:</span> {request.externalEligibility.learnerUli}</p>
+                  <p><span className="text-slate-500">CTPR:</span> {request.externalEligibility.ctprNumber}</p>
+                  <p><span className="text-slate-500">Enrollment/source:</span> {request.externalEligibility.externalEnrollmentId} / {request.externalEligibility.sourceRecordId}</p>
+                  <p><span className="text-slate-500">Competencies:</span> {request.externalEligibility.completedCompetencyCount}/{request.externalEligibility.requiredCompetencyCount} complete</p>
+                  <p><span className="text-slate-500">Evaluated:</span> {request.externalEligibility.evaluatedAt}</p>
+                  <p><span className="text-slate-500">Retrieved:</span> {request.externalEligibility.retrievedAt}</p>
+                </div>
+                {request.externalEligibility.missingCompetencyCodes.length > 0 && (
+                  <p><span className="text-slate-500">Missing competencies:</span> {request.externalEligibility.missingCompetencyCodes.join(', ')}</p>
+                )}
+                <div className="border-t border-indigo-100 pt-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-indigo-700">Mapped QSO template</p>
+                  <p className="font-semibold text-slate-900">{request.externalEligibility.mappedBadgeTemplateName}</p>
+                  <p className="text-xs text-slate-600">{request.externalEligibility.mappedBadgeType} · {request.externalEligibility.mappedBadgeTemplateId}</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <div>
             <h3 className="text-sm font-bold text-slate-900 mb-2 flex items-center gap-2">
@@ -330,8 +413,12 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
               {learners.map(learner => (
                 <div key={learner.id} className="p-3 flex items-center justify-between hover:bg-slate-50/50 transition-colors">
                   <div className="flex flex-col">
-                    <span className="text-sm font-medium">{learner.firstName} {learner.lastName}</span>
-                    <span className="text-[10px] text-slate-500">{learner.email}</span>
+                    <span className="text-sm font-medium">
+                      {request.externalEligibility?.learnerName || `${learner.firstName} ${learner.lastName}`}
+                    </span>
+                    <span className="text-[10px] text-slate-500">
+                      {request.externalEligibility?.learnerEmail || learner.email}
+                    </span>
                   </div>
                   <Badge variant="outline" className="text-[10px] font-mono uppercase">ID: {learner.id.slice(-6).toUpperCase()}</Badge>
                 </div>
