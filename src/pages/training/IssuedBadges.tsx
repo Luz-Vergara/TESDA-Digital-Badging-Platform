@@ -55,6 +55,8 @@ const formatIssuedDate = (value: unknown): string => {
   }
 };
 
+const verificationPath = (verificationId: string): string => `/#/verify/${encodeURIComponent(verificationId)}`;
+
 export default function IssuedBadges() {
   const { user, userProfile, isAuthReady } = useFirebase();
   const [issuedBadges, setIssuedBadges] = useState<any[]>([]);
@@ -201,7 +203,7 @@ export default function IssuedBadges() {
                           View
                         </Button>
                         <a
-                          href={`/verify/${badge.verificationId || badge.id}`}
+                          href={verificationPath(badge.verificationId || badge.id)}
                           target="_blank"
                           rel="noreferrer"
                         >
@@ -252,7 +254,7 @@ export default function IssuedBadges() {
                 </div>
                 <div className="flex justify-between">
                   <span className="font-semibold text-slate-500">Verification Link:</span>
-                  <span className="font-mono text-blue-600">/verify/{selectedBadge.verificationId || selectedBadge.id}</span>
+                  <span className="font-mono text-blue-600">{verificationPath(selectedBadge.verificationId || selectedBadge.id)}</span>
                 </div>
               </div>
             </div>
