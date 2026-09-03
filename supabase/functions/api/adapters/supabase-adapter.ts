@@ -53,13 +53,28 @@ export class SupabaseExternalDataSourceAdapter implements ExternalDataSourceAdap
     if (!learners.length || !enrollments.length) return [];
     const raw = await this.rows("learner_badge_eligibility", (query) => query.in("learner_id", learners.map((learner) => learner.id)));
     const definitions = byId(await this.rows("badge_definitions", (query) => query.in("id", unique(raw.map((row) => row.badge_definition_id)))));
+    const requirements = raw.length ? await this.rows("badge_requirements", (query) => query.in("badge_definition_id", unique(raw.map((row) => row.badge_definition_id)))) : [];
+    const competencies = requirements.length ? byId(await this.rows("competencies", (query) => query.in("id", unique(requirements.map((row) => row.competency_id))))) : new Map<string, Row>();
+    const competencyRowsByDefinition = new Map<string, Row[]>();
+    requirements.forEach((requirement) => {
+      const competency = competencies.get(requirement.competency_id);
+      if (!competency) return;
+      const definitionId = requirement.badge_definition_id as string;
+      competencyRowsByDefinition.set(definitionId, [
+        ...(competencyRowsByDefinition.get(definitionId) ?? []),
+        competency,
+      ]);
+    });
     const learnerById = new Map(learners.map((learner) => [learner.id, map.learner(learner)]));
     const enrollmentById = new Map(enrollments.map((enrollment) => [enrollment.id, enrollment]));
     return raw.flatMap((row) => {
       const learner = learnerById.get(row.learner_id);
       const enrollment = enrollmentById.get(row.enrollment_id);
       const definition = definitions.get(row.badge_definition_id);
-      return learner && enrollment && definition ? [map.badgeEligibility({ ...row, firebase_badge_template_id: definition.firebase_badge_template_id }, learner, enrollment)] : [];
+      const requiredCompetencies = competencyRowsByDefinition.get(row.badge_definition_id) ?? [];
+      return learner && enrollment && definition
+        ? [map.badgeEligibility(row, learner, enrollment, definition, requiredCompetencies)]
+        : [];
     });
   }
 

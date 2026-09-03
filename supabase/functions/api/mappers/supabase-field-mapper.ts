@@ -10,6 +10,8 @@ import type {
 
 type Row = Record<string, unknown>;
 const text = (value: unknown) => typeof value === "string" ? value : "";
+const standardType = (value: unknown): Qualification["standardType"] =>
+  value === "CS" || value === "MCC" || value === "TR" ? value : null;
 
 export const supabaseFieldMapper = {
   trainingCenter(row: Row): TrainingCenter {
@@ -24,6 +26,7 @@ export const supabaseFieldMapper = {
     return {
       id: text(row.id), externalQualificationId: text(row.id), code: text(row.qualification_code), title: text(row.title),
       pqfLevel: typeof row.pqf_level === "number" ? row.pqf_level : null,
+      standardType: standardType(row.standard_type),
       status: text(row.status) as Qualification["status"],
     };
   },
@@ -56,16 +59,31 @@ export const supabaseFieldMapper = {
       status: text(row.status) as CompetencyCompletion["status"], completedAt: text(row.completed_at), verifiedBy: text(row.verified_by),
     };
   },
-  badgeEligibility(row: Row, learner: Learner, enrollment: Enrollment): BadgeEligibility {
+  badgeEligibility(row: Row, learner: Learner, enrollment: Enrollment, definition: Row, competencies: Row[]): BadgeEligibility {
+    const requiredCompetencies = competencies.map((competency) => ({
+      id: text(competency.id),
+      code: text(competency.competency_code),
+      title: text(competency.title),
+    }));
+    const missingCompetencyCodes = Array.isArray(row.missing_competency_codes)
+      ? row.missing_competency_codes.filter((value): value is string => typeof value === "string")
+      : [];
     return {
-      id: `${enrollment.id}:${text(row.badge_definition_id)}`,
+      id: `${enrollment.id}:${text(definition.id)}`,
+      externalBadgeDefinitionId: text(definition.id),
       learnerId: learner.id, learnerUli: learner.learnerUli, enrollmentId: enrollment.id,
       sourceRecordId: enrollment.sourceRecordId, trainingCenterId: enrollment.registeredProgram.trainingCenterId,
       ctprNumber: enrollment.registeredProgram.ctprNumber,
-      firebaseBadgeTemplateId: typeof row.firebase_badge_template_id === "string" && row.firebase_badge_template_id ? row.firebase_badge_template_id : null,
+      firebaseBadgeTemplateId: typeof definition.firebase_badge_template_id === "string" && definition.firebase_badge_template_id ? definition.firebase_badge_template_id : null,
+      badgeType: text(definition.badge_type) as BadgeEligibility["badgeType"],
+      standardType: enrollment.registeredProgram.qualification.standardType,
+      competency: requiredCompetencies.length === 1 ? requiredCompetencies[0] : null,
       eligible: row.eligible === true, requiredCompetencyCount: Number(row.required_competency_count || 0),
       completedCompetencyCount: Number(row.completed_competency_count || 0),
-      missingCompetencyCodes: Array.isArray(row.missing_competency_codes) ? row.missing_competency_codes.filter((value): value is string => typeof value === "string") : [],
+      completedCompetencyCodes: requiredCompetencies
+        .map((competency) => competency.code)
+        .filter((code) => code && !missingCompetencyCodes.includes(code)),
+      missingCompetencyCodes,
       evaluatedAt: text(row.evaluated_at),
     };
   },

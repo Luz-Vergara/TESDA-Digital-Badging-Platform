@@ -6,7 +6,9 @@ export interface ExternalTrainingCenter {
   id: string; externalTrainingCenterId: string; code: string; name: string; status: 'Active' | 'Inactive'; districtName: string;
   address: { line: string; city: string; province: string }; contact: { email: string | null; phone: string | null };
 }
-export interface ExternalQualification { id: string; externalQualificationId: string; code: string; title: string; pqfLevel: number | null; status: 'Active' | 'Inactive'; }
+export type ExternalStandardType = 'CS' | 'MCC' | 'TR';
+export type ExternalBadgeType = 'Proficient' | 'Expert' | 'Skilled' | 'Master';
+export interface ExternalQualification { id: string; externalQualificationId: string; code: string; title: string; pqfLevel: number | null; standardType: ExternalStandardType | null; status: 'Active' | 'Inactive'; }
 export interface ExternalRegisteredProgram {
   id: string; externalProgramId: string; trainingCenterId: string; ctprNumber: string; qualification: ExternalQualification;
   deliveryMode: string; status: 'Active' | 'Inactive' | 'Expired'; registeredAt: string; validUntil: string | null;
@@ -16,8 +18,10 @@ export interface ExternalEnrollment {
   enrollmentStatus: string; completionStatus: string; enrolledAt: string; completedAt: string | null;
 }
 export interface ExternalBadgeEligibility {
-  id: string; learnerId: string; learnerUli: string; enrollmentId: string; sourceRecordId: string; trainingCenterId: string; ctprNumber: string;
-  firebaseBadgeTemplateId: string | null; eligible: boolean; requiredCompetencyCount: number; completedCompetencyCount: number;
+  id: string; externalBadgeDefinitionId: string; learnerId: string; learnerUli: string; enrollmentId: string; sourceRecordId: string; trainingCenterId: string; ctprNumber: string;
+  firebaseBadgeTemplateId: string | null; badgeType: ExternalBadgeType; standardType: ExternalStandardType | null;
+  competency: { id: string; code: string; title: string } | null;
+  eligible: boolean; requiredCompetencyCount: number; completedCompetencyCount: number; completedCompetencyCodes: string[];
   missingCompetencyCodes: string[]; evaluatedAt: string;
 }
 export interface ExternalLearnerSummary {

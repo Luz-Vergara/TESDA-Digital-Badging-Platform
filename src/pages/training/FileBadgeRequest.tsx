@@ -4,7 +4,14 @@ import { Send } from 'lucide-react';
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '@/src/lib/firebase';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
-import { getExistingExternalBadgeRequestMessage, getExternalBadgeRequestIdentity, isFirestorePermissionDenied, type ExistingExternalBadgeRequest } from '@/src/lib/external-badge-request';
+import {
+  getExistingExternalBadgeRequestMessage,
+  getExternalBadgeRequestIdentity,
+  isFirestorePermissionDenied,
+  selectExternalBadgeEligibility,
+  validateExternalBadgeTemplateMapping,
+  type ExistingExternalBadgeRequest,
+} from '@/src/lib/external-badge-request';
 import { externalApi, ExternalApiError } from '@/src/services/externalApi';
 import type { ExternalBadgeEligibility, ExternalLearnerSummary } from '@/src/types/external-api';
 import type { BadgeRequest, BadgeTemplate } from '@/src/types';
@@ -31,6 +38,7 @@ export default function FileBadgeRequest() {
   const [existingRequest, setExistingRequest] = useState<ExistingExternalBadgeRequest | null>(null);
   const learnerUli = params.get('uli') || '';
   const enrollmentId = params.get('enrollment') || '';
+  const eligibilityId = params.get('eligibility') || undefined;
 
   useEffect(() => {
     void (async () => {
@@ -43,14 +51,17 @@ export default function FileBadgeRequest() {
       try {
         const response = await externalApi.getMyTrainingCenterLearners();
         const learner = response.data.find((item) => item.learnerUli === learnerUli);
-        const eligibility = learner?.badgeEligibility.find(
-          (item) => item.enrollmentId === enrollmentId && item.eligible,
-        );
-
-        if (!learner || !eligibility) {
+        if (!learner) {
           setTarget(null);
           return;
         }
+        const selection = selectExternalBadgeEligibility(learner, enrollmentId, eligibilityId);
+        if (!selection.eligibility) {
+          setTarget(null);
+          setError(selection.error);
+          return;
+        }
+        const eligibility = selection.eligibility;
 
         setTarget({ learner, eligibility, retrievedAt: response.meta.retrievedAt });
 
@@ -66,8 +77,9 @@ export default function FileBadgeRequest() {
           ? ({ id: templateDocument.id, ...templateDocument.data() } as BadgeTemplate)
           : null;
 
-        if (!template || template.status !== 'Active') {
-          setMappingError('QSO badge mapping not configured.');
+        const mappingValidationError = validateExternalBadgeTemplateMapping(eligibility, template);
+        if (mappingValidationError) {
+          setMappingError(mappingValidationError);
           return;
         }
 
@@ -98,14 +110,15 @@ export default function FileBadgeRequest() {
         setLoading(false);
       }
     })();
-  }, [enrollmentId, learnerUli]);
+  }, [eligibilityId, enrollmentId, learnerUli]);
 
   const submit = async () => {
     if (!target || !mappedTemplate || !user || !userProfile) return;
 
     const mappedTemplateId = target.eligibility.firebaseBadgeTemplateId;
-    if (!mappedTemplateId || mappedTemplate.id !== mappedTemplateId || mappedTemplate.status !== 'Active') {
-      setMappingError('QSO badge mapping not configured.');
+    const mappingValidationError = validateExternalBadgeTemplateMapping(target.eligibility, mappedTemplate);
+    if (!mappedTemplateId || mappingValidationError) {
+      setMappingError(mappingValidationError || 'QSO badge mapping not configured.');
       return;
     }
 
@@ -151,6 +164,7 @@ export default function FileBadgeRequest() {
       const programTitle = externalEnrollment?.registeredProgram.qualification.title;
       const qualificationCode = externalEnrollment?.registeredProgram.qualification.code;
       const externalEligibility: NonNullable<BadgeRequest['externalEligibility']> = {
+        externalBadgeDefinitionId: target.eligibility.externalBadgeDefinitionId,
         externalTrainingCenterId: target.eligibility.trainingCenterId,
         trainingCenterName: userProfile.office || userProfile.name,
         learnerName: target.learner.displayName,
@@ -159,11 +173,17 @@ export default function FileBadgeRequest() {
         externalEnrollmentId: target.eligibility.enrollmentId,
         sourceRecordId: target.eligibility.sourceRecordId,
         ctprNumber: target.eligibility.ctprNumber,
+        standardType: target.eligibility.standardType!,
+        competencyId: target.eligibility.competency!.id,
+        competencyCode: target.eligibility.competency!.code,
+        competencyTitle: target.eligibility.competency!.title,
         ...(programTitle ? { programTitle } : {}),
         ...(qualificationCode ? { qualificationCode } : {}),
         requiredCompetencyCount: target.eligibility.requiredCompetencyCount,
         completedCompetencyCount: target.eligibility.completedCompetencyCount,
+        completedCompetencyCodes: target.eligibility.completedCompetencyCodes,
         missingCompetencyCodes: target.eligibility.missingCompetencyCodes,
+        firebaseBadgeTemplateId: mappedTemplate.id,
         evaluatedAt: target.eligibility.evaluatedAt,
         retrievedAt: target.retrievedAt,
         mappedBadgeTemplateId: mappedTemplate.id,
