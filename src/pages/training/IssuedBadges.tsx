@@ -35,6 +35,26 @@ import {
   DialogFooter
 } from '@/components/ui/dialog';
 
+const formatIssuedDate = (value: unknown): string => {
+  try {
+    let date: Date | null = null;
+
+    if (value instanceof Date) {
+      date = value;
+    } else if (value && typeof value === 'object' && 'toDate' in value && typeof value.toDate === 'function') {
+      date = value.toDate();
+    } else if (value && typeof value === 'object' && 'seconds' in value && typeof value.seconds === 'number') {
+      date = new Date(value.seconds * 1000);
+    } else if (typeof value === 'string' || typeof value === 'number') {
+      date = new Date(value);
+    }
+
+    return date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString() : '—';
+  } catch {
+    return '—';
+  }
+};
+
 export default function IssuedBadges() {
   const { user, userProfile, isAuthReady } = useFirebase();
   const [issuedBadges, setIssuedBadges] = useState<any[]>([]);
@@ -161,7 +181,7 @@ export default function IssuedBadges() {
                     </TableCell>
                     <TableCell>
                       <p className="text-xs text-slate-600">
-                        {badge.issueDate || (badge.createdAt?.toDate ? badge.createdAt.toDate().toLocaleDateString() : '2026-08-01')}
+                        {formatIssuedDate(badge.issueDate ?? badge.createdAt)}
                       </p>
                     </TableCell>
                     <TableCell>
@@ -221,7 +241,7 @@ export default function IssuedBadges() {
                 <p className="text-sm font-bold text-emerald-400 mt-4">Issued to: {selectedBadge.learnerName}</p>
                 <div className="mt-4 pt-3 border-t border-white/10 flex justify-between items-center text-[10px] text-slate-300">
                   <span>ID: {selectedBadge.verificationId || selectedBadge.id}</span>
-                  <span>Issued: {selectedBadge.issueDate || '2026-08-01'}</span>
+                  <span>Issued: {formatIssuedDate(selectedBadge.issueDate ?? selectedBadge.createdAt)}</span>
                 </div>
               </div>
 
