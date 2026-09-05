@@ -70,6 +70,37 @@
       },
       "required": ["action", "userName", "timestamp"]
     },
+    "BadgeRequestRetirement": {
+      "title": "BadgeRequestRetirement",
+      "description": "Immutable Admin receipt for an atomic pending external badge-request retirement.",
+      "type": "object",
+      "properties": {
+        "requestId": { "type": "string" },
+        "externalEligibilityKey": { "type": "string" },
+        "trainingCenterId": { "type": "string" },
+        "districtOfficeId": { "type": "string" },
+        "badgeTemplateId": { "type": "string" },
+        "originalStatus": { "type": "string", "enum": ["Pending Review"] },
+        "originalBadgeIdStatus": { "type": "string", "enum": ["Pending District Approval"] },
+        "reasonCode": { "type": "string", "enum": ["pre_hardening_security_recreation"] },
+        "retiredByUid": { "type": "string" },
+        "retiredByRole": { "type": "string", "enum": ["Admin"] },
+        "retiredAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "requestId",
+        "externalEligibilityKey",
+        "trainingCenterId",
+        "districtOfficeId",
+        "badgeTemplateId",
+        "originalStatus",
+        "originalBadgeIdStatus",
+        "reasonCode",
+        "retiredByUid",
+        "retiredByRole",
+        "retiredAt"
+      ]
+    },
     "Learner": {
       "title": "Learner",
       "description": "Records of individuals enrolled in programs.",
@@ -313,6 +344,7 @@
     "/issuedBadges/{issuedBadgeId}": { "schema": "IssuedBadge", "description": "Badges issued to learners" },
     "/assessmentRecords/{recordId}": { "schema": "AssessmentRecord", "description": "Assessment and RPL results" },
     "/badgeRequests/{requestId}": { "schema": "BadgeRequest", "description": "Requests for badge approval" },
+    "/badgeRequestRetirements/{requestId}": { "schema": "BadgeRequestRetirement", "description": "Immutable audited pending-request retirements" },
     "/programOfferings/{offeringId}": { "schema": "ProgramOffering", "description": "Programs offered" },
     "/programBatches/{batchId}": { "schema": "ProgramBatch", "description": "Program batches" },
     "/enrollments/{enrollmentId}": { "schema": "Enrollment", "description": "Learner enrollments" },

@@ -347,6 +347,68 @@ service cloud.firestore {
       );
     }
 
+    function badgeRequestRetirementPath(requestId) {
+      return /databases/$(database)/documents/badgeRequestRetirements/$(requestId);
+    }
+
+    function badgeRequestPath(requestId) {
+      return /databases/$(database)/documents/badgeRequests/$(requestId);
+    }
+
+    function isRetirableExternalBadgeRequest(requestId, data) {
+      return isExternalBadgeRequest(data) &&
+        data.get('status', '') == 'Pending Review' &&
+        data.get('badgeIdStatus', '') == 'Pending District Approval' &&
+        data.get('externalEligibilityKey', '') is string &&
+        data.get('externalEligibilityKey', '').size() > 0 &&
+        requestId == 'external-' + data.get('externalEligibilityKey', '') &&
+        hasValidExternalRequestIdentity(requestId, data);
+    }
+
+    function retirementAuditMatchesRequest(requestId, requestData, auditData) {
+      return auditData.keys().hasAll([
+          'requestId', 'externalEligibilityKey', 'trainingCenterId',
+          'districtOfficeId', 'badgeTemplateId', 'originalStatus',
+          'originalBadgeIdStatus', 'reasonCode', 'retiredByUid',
+          'retiredByRole', 'retiredAt'
+        ]) &&
+        auditData.keys().hasOnly([
+          'requestId', 'externalEligibilityKey', 'trainingCenterId',
+          'districtOfficeId', 'badgeTemplateId', 'originalStatus',
+          'originalBadgeIdStatus', 'reasonCode', 'retiredByUid',
+          'retiredByRole', 'retiredAt'
+        ]) &&
+        auditData.get('requestId', '') == requestId &&
+        auditData.get('externalEligibilityKey', '') == requestData.get('externalEligibilityKey', '') &&
+        auditData.get('trainingCenterId', '') == requestData.get('trainingCenterId', '') &&
+        auditData.get('districtOfficeId', '') == requestData.get('districtOfficeId', '') &&
+        auditData.get('badgeTemplateId', '') == requestData.get('badgeTemplateId', '') &&
+        auditData.get('originalStatus', '') == requestData.get('status', '') &&
+        auditData.get('originalBadgeIdStatus', '') == requestData.get('badgeIdStatus', '') &&
+        auditData.get('reasonCode', '') == 'pre_hardening_security_recreation' &&
+        auditData.get('retiredByUid', '') == request.auth.uid &&
+        auditData.get('retiredByRole', '') == 'Admin' &&
+        auditData.get('retiredAt', null) == request.time;
+    }
+
+    function canRetireBadgeRequest(requestId, data) {
+      let auditPath = badgeRequestRetirementPath(requestId);
+      return isAdmin() &&
+        isRetirableExternalBadgeRequest(requestId, data) &&
+        !exists(auditPath) &&
+        existsAfter(auditPath) &&
+        retirementAuditMatchesRequest(requestId, data, getAfter(auditPath).data);
+    }
+
+    function canCreateBadgeRequestRetirement(requestId, auditData) {
+      let requestPath = badgeRequestPath(requestId);
+      return isAdmin() &&
+        exists(requestPath) &&
+        !existsAfter(requestPath) &&
+        isRetirableExternalBadgeRequest(requestId, get(requestPath).data) &&
+        retirementAuditMatchesRequest(requestId, get(requestPath).data, auditData);
+    }
+
     function externalEligibilityIsImmutable() {
       return incoming().get('externalEligibilityKey', '') == existing().get('externalEligibilityKey', '') &&
         incoming().get('externalEligibility', {}) == existing().get('externalEligibility', {});
@@ -628,7 +690,12 @@ service cloud.firestore {
         externalEligibilityIsImmutable() &&
         onlyApprovalFieldsChanged() &&
         isValidApprovalTransition();
-      allow delete: if isAdmin();
+      allow delete: if canRetireBadgeRequest(requestId, existing());
+    }
+
+    match /badgeRequestRetirements/{requestId} {
+      allow get, list: if isAdmin() || isICTO();
+      allow create: if canCreateBadgeRequestRetirement(requestId, incoming());
     }
 
     match /auditLogs/{logId} {
