@@ -1,3 +1,11 @@
+import {
+  collection,
+  getDocs,
+  limit,
+  query,
+  where,
+  type Firestore,
+} from 'firebase/firestore';
 import type { ExternalBadgeEligibility, ExternalLearnerSummary } from '@/src/types/external-api';
 
 export interface ExternalBadgeRequestIdentityInput {
@@ -22,8 +30,60 @@ export interface ExternalEligibilitySelection {
 }
 
 export interface ExistingExternalBadgeRequest {
+  id?: string;
+  trainingCenterId?: unknown;
   status?: unknown;
   badgeIdStatus?: unknown;
+}
+
+export type ExternalBadgeRequestQueryRunner = (
+  firestore: Firestore,
+  requestId: string,
+  trainingCenterId: string,
+) => Promise<ExistingExternalBadgeRequest[]>;
+
+async function queryOwnedExternalBadgeRequest(
+  firestore: Firestore,
+  requestId: string,
+  trainingCenterId: string,
+): Promise<ExistingExternalBadgeRequest[]> {
+  const externalEligibilityKey = requestId.slice('external-'.length);
+  const snapshot = await getDocs(query(
+    collection(firestore, 'badgeRequests'),
+    where('trainingCenterId', '==', trainingCenterId),
+    where('externalEligibilityKey', '==', externalEligibilityKey),
+    limit(1),
+  ));
+
+  return snapshot.docs.map((item) => ({
+    ...item.data(),
+    id: item.id,
+  } as ExistingExternalBadgeRequest));
+}
+
+export async function findExistingExternalBadgeRequestForTrainingCenter(
+  requestId: string,
+  trainingCenterId: string,
+  firestore: Firestore,
+  runQuery: ExternalBadgeRequestQueryRunner = queryOwnedExternalBadgeRequest,
+): Promise<ExistingExternalBadgeRequest | null> {
+  const ownedTrainingCenterId = trainingCenterId.trim();
+  if (!ownedTrainingCenterId) {
+    throw new Error('Authenticated Training Center organization ID is required to check existing requests.');
+  }
+
+  const exactRequestId = requestId.trim();
+  if (!exactRequestId) {
+    throw new Error('External badge request ID is required to check existing requests.');
+  }
+  if (!exactRequestId.startsWith('external-')) {
+    throw new Error('External badge request ID must use the deterministic external request format.');
+  }
+
+  const matches = await runQuery(firestore, exactRequestId, ownedTrainingCenterId);
+  return matches.find((request) =>
+    request.id === exactRequestId && request.trainingCenterId === ownedTrainingCenterId,
+  ) || null;
 }
 
 export function getExternalBadgeRequestIdentity({
