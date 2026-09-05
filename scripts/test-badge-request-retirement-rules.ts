@@ -127,11 +127,9 @@ async function seedBase() {
       setDoc(doc(firestore, 'integrationLearnerLinks', learnerUli), {
         firebaseLearnerId: linkedLearnerUid,
         firebaseTrainingCenterId: trainingCenterId,
-        learnerUli,
         active: true,
       }),
       setDoc(doc(firestore, 'integrationTrainingCenterLinks', trainingCenterId), {
-        firebaseOrganizationId: trainingCenterId,
         externalTrainingCenterId,
         active: true,
       }),
