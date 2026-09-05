@@ -122,7 +122,6 @@ async function seedTrustedDocuments(options: {
       assignedDistrictId: districtOfficeId,
     });
     await setDoc(doc(firestore, 'integrationTrainingCenterLinks', trainingCenterId), {
-      firebaseOrganizationId: trainingCenterId,
       externalTrainingCenterId,
       active: true,
       linkVersion: 1,
@@ -131,7 +130,6 @@ async function seedTrustedDocuments(options: {
       await setDoc(doc(firestore, 'integrationLearnerLinks', learnerUli), {
         firebaseLearnerId: learnerUid,
         firebaseTrainingCenterId: options.learnerLinkTrainingCenterId || trainingCenterId,
-        learnerUli,
         active: true,
         linkVersion: 1,
       });
@@ -139,7 +137,6 @@ async function seedTrustedDocuments(options: {
     await setDoc(doc(firestore, 'integrationLearnerLinks', 'DEMO-ULI-0003'), {
       firebaseLearnerId: 'different-learner-uid',
       firebaseTrainingCenterId: trainingCenterId,
-      learnerUli: 'DEMO-ULI-0003',
       active: true,
       linkVersion: 1,
     });

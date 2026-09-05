@@ -303,7 +303,6 @@ service cloud.firestore {
       let linkPath = /databases/$(database)/documents/integrationLearnerLinks/$(learnerUli);
       return exists(linkPath) &&
         get(linkPath).data.get('active', false) == true &&
-        get(linkPath).data.get('learnerUli', '') == learnerUli &&
         get(linkPath).data.get('firebaseLearnerId', '') == data.get('learnerIds', [])[0] &&
         get(linkPath).data.get('firebaseTrainingCenterId', '') == data.get('trainingCenterId', '');
     }
@@ -313,7 +312,6 @@ service cloud.firestore {
       let linkPath = /databases/$(database)/documents/integrationTrainingCenterLinks/$(trainingCenterId);
       return isValidId(trainingCenterId) && exists(linkPath) &&
         get(linkPath).data.get('active', false) == true &&
-        get(linkPath).data.get('firebaseOrganizationId', '') == trainingCenterId &&
         get(linkPath).data.get('externalTrainingCenterId', '') ==
           data.get('externalEligibility', {}).get('externalTrainingCenterId', '');
     }
