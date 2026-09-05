@@ -21,6 +21,7 @@ import CentralAdminDashboard from './pages/admin/CentralAdminDashboard';
 import Organizations from './pages/admin/Organizations';
 import Users from './pages/admin/Users';
 import BadgeTemplates from './pages/admin/BadgeTemplates';
+import BadgeRequestRetirement from './pages/admin/BadgeRequestRetirement';
 
 // Office Modules
 import QSODashboard from './pages/qso/QSODashboard';
@@ -72,6 +73,7 @@ export default function App() {
             <Route index element={<CentralAdminDashboard />} />
             <Route path="organizations" element={<Organizations />} />
             <Route path="users" element={<Users />} />
+            <Route path="request-retirement" element={<BadgeRequestRetirement />} />
             <Route path="assignments" element={<div className="p-8 text-center text-slate-500">District Assignment Module</div>} />
             <Route path="reports" element={<div className="p-8 text-center text-slate-500">System Reports</div>} />
             <Route path="logs" element={<div className="p-8 text-center text-slate-500 font-medium italic">Audit Trail Logs (Live Monitoring)</div>} />

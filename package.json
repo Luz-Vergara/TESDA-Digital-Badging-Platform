@@ -14,6 +14,7 @@
     "check:integration-api": "npx --yes deno@2.1.4 check --config supabase/functions/api/deno.json supabase/functions/api/index.ts",
     "test:external-badge-request": "node --experimental-strip-types scripts/test-external-badge-request.ts",
     "test:external-badge-request-rules": "node --experimental-strip-types scripts/test-external-badge-request-rules.ts",
+    "test:badge-request-retirement-rules": "node --experimental-strip-types scripts/test-badge-request-retirement-rules.ts",
     "seed-demo": "tsx scripts/seed-demo-environment.ts"
   },
   "dependencies": {

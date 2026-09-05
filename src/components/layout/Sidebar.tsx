@@ -89,6 +89,7 @@ export default function Sidebar({ role }: SidebarProps) {
         ...common,
         { name: 'Organizations', href: '/admin/organizations', icon: Building2 },
         { name: 'User Accounts', href: '/admin/users', icon: Users },
+        { name: 'Request Retirement', href: '/admin/request-retirement', icon: ShieldAlert },
         { name: 'District Assignments', href: '/admin/assignments', icon: GitMerge },
         { name: 'Reports', href: '/admin/reports', icon: FileText },
         { name: 'Audit Logs', href: '/admin/logs', icon: Activity },
