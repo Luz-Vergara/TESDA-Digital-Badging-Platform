@@ -263,22 +263,87 @@ service cloud.firestore {
       return data.keys().hasAny(['externalEligibilityKey', 'externalEligibility']);
     }
 
-    // An external request has a deterministic document ID. Because Training
-    // Centers have no update permission, a second concurrent create becomes
-    // an update attempt and is denied after the first create wins.
+    function hasValidExternalRequestShape(requestId, data) {
+      let eligibility = data.get('externalEligibility', {});
+      let learnerIds = data.get('learnerIds', []);
+      let templateId = data.get('badgeTemplateId', '');
+      let expectedKey = eligibility.get('externalTrainingCenterId', '') + ':' +
+        eligibility.get('externalEnrollmentId', '') + ':' + templateId;
+      return data.get('requestType', '') == 'Individual' &&
+        learnerIds is list && learnerIds.size() == 1 &&
+        data.get('learnerId', '') == learnerIds[0] &&
+        data.get('status', '') == 'Pending Review' &&
+        data.get('badgeIdStatus', '') == 'Pending District Approval' &&
+        data.get('externalEligibilityKey', '') == expectedKey &&
+        requestId == 'external-' + expectedKey &&
+        eligibility.keys().hasAll([
+          'externalTrainingCenterId', 'learnerName', 'learnerUli',
+          'externalEnrollmentId', 'sourceRecordId', 'ctprNumber',
+          'standardType', 'competencyId', 'competencyCode',
+          'competencyTitle', 'requiredCompetencyCount',
+          'completedCompetencyCount', 'missingCompetencyCodes',
+          'firebaseBadgeTemplateId', 'mappedBadgeTemplateId',
+          'mappedBadgeTemplateName', 'mappedBadgeType', 'evaluatedAt',
+          'retrievedAt'
+        ]) &&
+        eligibility.get('learnerName', '') is string &&
+        eligibility.get('learnerName', '').size() > 0 &&
+        eligibility.get('learnerUli', '') is string &&
+        eligibility.get('learnerUli', '').matches('^[A-Za-z0-9_-]+$') &&
+        eligibility.get('externalTrainingCenterId', '') is string &&
+        eligibility.get('externalTrainingCenterId', '').size() > 0 &&
+        eligibility.get('externalEnrollmentId', '') is string &&
+        eligibility.get('externalEnrollmentId', '').size() > 0 &&
+        templateId is string && isValidId(templateId);
+    }
+
+    function hasValidExternalLearnerLink(data) {
+      let eligibility = data.get('externalEligibility', {});
+      let learnerUli = eligibility.get('learnerUli', '');
+      let linkPath = /databases/$(database)/documents/integrationLearnerLinks/$(learnerUli);
+      return exists(linkPath) &&
+        get(linkPath).data.get('active', false) == true &&
+        get(linkPath).data.get('learnerUli', '') == learnerUli &&
+        get(linkPath).data.get('firebaseLearnerId', '') == data.get('learnerIds', [])[0] &&
+        get(linkPath).data.get('firebaseTrainingCenterId', '') == data.get('trainingCenterId', '');
+    }
+
+    function hasValidExternalTrainingCenterLink(data) {
+      let trainingCenterId = data.get('trainingCenterId', '');
+      let linkPath = /databases/$(database)/documents/integrationTrainingCenterLinks/$(trainingCenterId);
+      return isValidId(trainingCenterId) && exists(linkPath) &&
+        get(linkPath).data.get('active', false) == true &&
+        get(linkPath).data.get('firebaseOrganizationId', '') == trainingCenterId &&
+        get(linkPath).data.get('externalTrainingCenterId', '') ==
+          data.get('externalEligibility', {}).get('externalTrainingCenterId', '');
+    }
+
+    function hasValidExternalBadgeTemplate(data) {
+      let templateId = data.get('badgeTemplateId', '');
+      let eligibility = data.get('externalEligibility', {});
+      let templatePath = /databases/$(database)/documents/badgeTemplates/$(templateId);
+      return exists(templatePath) &&
+        get(templatePath).data.get('status', '') == 'Active' &&
+        data.get('badgeType', '') == get(templatePath).data.get('badgeType', '') &&
+        eligibility.get('firebaseBadgeTemplateId', '') == templateId &&
+        eligibility.get('mappedBadgeTemplateId', '') == templateId &&
+        eligibility.get('mappedBadgeType', '') == get(templatePath).data.get('badgeType', '') &&
+        eligibility.get('mappedBadgeTemplateName', '') == get(templatePath).data.get('badgeName', '') &&
+        eligibility.get('standardType', '') == get(templatePath).data.get('standardType', '') &&
+        get(templatePath).data.get('recognitionScope', '') == 'Competency' &&
+        eligibility.get('competencyCode', '') == get(templatePath).data.get('competencyCode', '') &&
+        eligibility.get('competencyTitle', '') == get(templatePath).data.get('competencyTitle', '');
+    }
+
+    // External request identity is bound to administrator/QSO-controlled
+    // Firestore links and templates. External completion remains evidence;
+    // Firestore rules cannot independently attest records held in Supabase.
     function hasValidExternalRequestIdentity(requestId, data) {
       return !isExternalBadgeRequest(data) || (
-        data.keys().hasAll(['externalEligibilityKey', 'externalEligibility']) &&
-        data.get('externalEligibilityKey', '') is string &&
-        data.get('externalEligibilityKey', '').matches('^[A-Za-z0-9_:-]+$') &&
-        requestId == 'external-' + data.get('externalEligibilityKey', '') &&
-        data.get('externalEligibility', {}) is map &&
-        data.get('externalEligibility', {}).keys().hasAll([
-          'externalTrainingCenterId', 'learnerUli', 'externalEnrollmentId',
-          'sourceRecordId', 'ctprNumber', 'requiredCompetencyCount',
-          'completedCompetencyCount', 'missingCompetencyCodes', 'evaluatedAt',
-          'retrievedAt'
-        ])
+        hasValidExternalRequestShape(requestId, data) &&
+        hasValidExternalLearnerLink(data) &&
+        hasValidExternalTrainingCenterLink(data) &&
+        hasValidExternalBadgeTemplate(data)
       );
     }
 

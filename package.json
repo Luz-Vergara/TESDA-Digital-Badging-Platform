@@ -13,6 +13,7 @@
     "sync-integration-scopes": "tsx scripts/sync-integration-scopes.ts",
     "check:integration-api": "npx --yes deno@2.1.4 check --config supabase/functions/api/deno.json supabase/functions/api/index.ts",
     "test:external-badge-request": "node --experimental-strip-types scripts/test-external-badge-request.ts",
+    "test:external-badge-request-rules": "node --experimental-strip-types scripts/test-external-badge-request-rules.ts",
     "seed-demo": "tsx scripts/seed-demo-environment.ts"
   },
   "dependencies": {
@@ -41,6 +42,7 @@
     "vite": "^6.2.0"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
     "@supabase/supabase-js": "^2.111.0",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
