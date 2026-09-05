@@ -5,6 +5,7 @@ import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '@/src/lib/firebase';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
 import {
+  findExistingExternalBadgeRequestForTrainingCenter,
   getExistingExternalBadgeRequestMessage,
   getExternalBadgeRequestIdentity,
   isFirestorePermissionDenied,
@@ -91,14 +92,18 @@ export default function FileBadgeRequest() {
         });
 
         try {
-          const existingRequestDocument = await getDoc(doc(db, 'badgeRequests', externalRequestId));
-          if (existingRequestDocument.exists()) {
-            setExistingRequest(existingRequestDocument.data() as ExistingExternalBadgeRequest);
-          }
+          const existing = await findExistingExternalBadgeRequestForTrainingCenter(
+            externalRequestId,
+            userProfile?.organizationId || '',
+            db,
+          );
+          setExistingRequest(existing);
         } catch (caughtError) {
           setError(isFirestorePermissionDenied(caughtError)
             ? 'You do not have permission to check whether an existing badge request has already been filed.'
-            : 'Unable to check whether an existing badge request has already been filed.');
+            : caughtError instanceof Error
+              ? caughtError.message
+              : 'Unable to check whether an existing badge request has already been filed.');
         }
       } catch (caughtError) {
         setError(
@@ -110,7 +115,7 @@ export default function FileBadgeRequest() {
         setLoading(false);
       }
     })();
-  }, [eligibilityId, enrollmentId, learnerUli]);
+  }, [eligibilityId, enrollmentId, learnerUli, userProfile?.organizationId]);
 
   const submit = async () => {
     if (!target || !mappedTemplate || !user || !userProfile) return;
@@ -133,18 +138,23 @@ export default function FileBadgeRequest() {
       });
       const requestRef = doc(db, 'badgeRequests', externalRequestId);
 
-      let existingRequestDocument;
+      let existing: ExistingExternalBadgeRequest | null;
       try {
-        existingRequestDocument = await getDoc(requestRef);
+        existing = await findExistingExternalBadgeRequestForTrainingCenter(
+          externalRequestId,
+          userProfile.organizationId || '',
+          db,
+        );
       } catch (caughtError) {
         setError(isFirestorePermissionDenied(caughtError)
           ? 'You do not have permission to check whether an existing badge request has already been filed.'
-          : 'Unable to check whether an existing badge request has already been filed.');
+          : caughtError instanceof Error
+            ? caughtError.message
+            : 'Unable to check whether an existing badge request has already been filed.');
         return;
       }
 
-      if (existingRequestDocument.exists()) {
-        const existing = existingRequestDocument.data() as ExistingExternalBadgeRequest;
+      if (existing) {
         setExistingRequest(existing);
         setNotice(getExistingExternalBadgeRequestMessage(existing));
         return;

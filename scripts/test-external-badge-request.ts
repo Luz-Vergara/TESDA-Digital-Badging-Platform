@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import type { Firestore } from 'firebase/firestore';
 import {
+  findExistingExternalBadgeRequestForTrainingCenter,
+  getExistingExternalBadgeRequestMessage,
   getExternalBadgeRequestIdentity,
   getExternalBadgeRequestRoute,
   selectExternalBadgeEligibility,
@@ -92,7 +95,69 @@ const secondIdentity = getExternalBadgeRequestIdentity({
   externalEnrollmentId: 'ENR-MOCK-TRAINING-0002',
   badgeTemplateId: log432302.firebaseBadgeTemplateId!,
 });
+assert.equal(
+  firstIdentity.externalRequestId,
+  'external-TC-DEMO-001:ENR-MOCK-TRAINING-0002:vurWRNY5Wq20Xu3UxS2c',
+);
 assert.notEqual(firstIdentity.externalRequestId, secondIdentity.externalRequestId);
+
+const ownedRequest = await findExistingExternalBadgeRequestForTrainingCenter(
+  firstIdentity.externalRequestId,
+  'demo-training-center',
+  {} as Firestore,
+  async (_firestore, requestId, trainingCenterId) => {
+    assert.equal(requestId, firstIdentity.externalRequestId);
+    assert.equal(trainingCenterId, 'demo-training-center');
+    return [{
+      id: requestId,
+      trainingCenterId,
+      status: 'Approved',
+      badgeIdStatus: 'Issued',
+    }];
+  },
+);
+assert.equal(ownedRequest?.status, 'Approved');
+assert.equal(ownedRequest?.badgeIdStatus, 'Issued');
+assert.equal(
+  getExistingExternalBadgeRequestMessage(ownedRequest!),
+  'This badge request has already been approved and issued.',
+);
+
+const missingRequest = await findExistingExternalBadgeRequestForTrainingCenter(
+  firstIdentity.externalRequestId,
+  'demo-training-center',
+  {} as Firestore,
+  async () => [],
+);
+assert.equal(missingRequest, null);
+
+let missingOrganizationQueryRan = false;
+await assert.rejects(
+  findExistingExternalBadgeRequestForTrainingCenter(
+    firstIdentity.externalRequestId,
+    '',
+    {} as Firestore,
+    async () => {
+      missingOrganizationQueryRan = true;
+      return [];
+    },
+  ),
+  /organization ID is required/,
+);
+assert.equal(missingOrganizationQueryRan, false);
+
+const crossTrainingCenterRequest = await findExistingExternalBadgeRequestForTrainingCenter(
+  firstIdentity.externalRequestId,
+  'demo-training-center',
+  {} as Firestore,
+  async (_firestore, requestId) => [{
+    id: requestId,
+    trainingCenterId: 'another-training-center',
+    status: 'Approved',
+    badgeIdStatus: 'Issued',
+  }],
+);
+assert.equal(crossTrainingCenterRequest, null);
 
 const migration = readFileSync(new URL(
   '../supabase/migrations/20260903062847_prepare_log432301_proficient_pilot.sql',
@@ -104,5 +169,13 @@ assert.match(migration, /'LEARNER-DEMO-0002'[\s\S]*'ENR-MOCK-TRAINING-0002'[\s\S
 assert.match(migration, /set status = 'Inactive'[\s\S]*where id = 'BADGE-DEF-WH-001'/);
 assert.doesNotMatch(migration, /delete\s+from\s+public\.badge_definitions/i);
 assert.equal((migration.match(/insert into public\.learner_competency_completions/g) || []).length, 1);
+
+const requestHelperSource = readFileSync(new URL(
+  '../src/lib/external-badge-request.ts',
+  import.meta.url,
+), 'utf8');
+assert.match(requestHelperSource, /where\('trainingCenterId', '==', trainingCenterId\)/);
+assert.match(requestHelperSource, /where\('externalEligibilityKey', '==', externalEligibilityKey\)/);
+assert.doesNotMatch(requestHelperSource, /where\(documentId\(\)/);
 
 console.log('External badge request fixture tests passed.');

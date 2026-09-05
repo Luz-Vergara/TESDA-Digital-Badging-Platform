@@ -3,7 +3,12 @@ import { Link } from 'react-router-dom';
 import { Award, BookOpenCheck, CheckCircle, Database, FileText, RefreshCw, Send, Users } from 'lucide-react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '@/src/lib/firebase';
-import { getExternalBadgeRequestIdentity, getExternalBadgeRequestRoute } from '@/src/lib/external-badge-request';
+import { useFirebase } from '@/src/lib/FirebaseProvider';
+import {
+  findExistingExternalBadgeRequestForTrainingCenter,
+  getExternalBadgeRequestIdentity,
+  getExternalBadgeRequestRoute,
+} from '@/src/lib/external-badge-request';
 import { externalApi, ExternalApiError } from '@/src/services/externalApi';
 import type { ExternalBadgeEligibility, ExternalDashboardSummary, ExternalLearnerDetails, ExternalLearnerSummary, ExternalRegisteredProgram } from '@/src/types/external-api';
 import { Badge } from '@/components/ui/badge';
@@ -22,6 +27,7 @@ interface Props {
 
 export type ExternalTrainingView = 'programs' | 'learners' | 'eligibility' | 'requests' | 'issued';
 type FirebaseRecord = Record<string, unknown> & { id: string };
+type ExistingRequestCheck = 'checking' | 'exists' | 'missing' | 'error';
 
 const messageFor = (error: unknown) => error instanceof ExternalApiError ? error.message : 'The external training records could not be loaded.';
 const date = (value?: string | null) => value ? new Date(value).toLocaleDateString() : '—';
@@ -38,6 +44,7 @@ function EligibilityBadge({ item }: { item: ExternalBadgeEligibility }) {
 }
 
 export default function ExternalTrainingDashboard({ firebaseTrainingCenterId, initialView = 'programs' }: Props) {
+  const { userProfile } = useFirebase();
   const [summary, setSummary] = useState<ExternalDashboardSummary | null>(null);
   const [learners, setLearners] = useState<ExternalLearnerSummary[]>([]);
   const [requests, setRequests] = useState<FirebaseRecord[]>([]);
@@ -47,6 +54,8 @@ export default function ExternalTrainingDashboard({ firebaseTrainingCenterId, in
   const [error, setError] = useState<string | null>(null);
   const [selectedLearner, setSelectedLearner] = useState<ExternalLearnerDetails | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [existingRequestChecks, setExistingRequestChecks] = useState<Record<string, ExistingRequestCheck>>({});
+  const [requestCheckError, setRequestCheckError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -76,14 +85,46 @@ export default function ExternalTrainingDashboard({ firebaseTrainingCenterId, in
   }, [firebaseTrainingCenterId]);
 
   const allEligibility = useMemo(() => learners.flatMap((learner) => learner.badgeEligibility.map((eligibility) => ({ learner, eligibility }))), [learners]);
-  const requestExists = useCallback((eligibility: ExternalBadgeEligibility, templateId?: string) => {
-    const key = templateId ? getExternalBadgeRequestIdentity({
-      externalTrainingCenterId: eligibility.trainingCenterId,
-      externalEnrollmentId: eligibility.enrollmentId,
-      badgeTemplateId: templateId,
-    }).mappingKey : null;
-    return key ? requests.some((request) => request.externalEligibilityKey === key) : false;
-  }, [requests]);
+  useEffect(() => {
+    let active = true;
+    const requestIds: string[] = [...new Set<string>(learners.flatMap((learner) => learner.badgeEligibility.flatMap((eligibility) => {
+      if (!eligibility.eligible || !eligibility.firebaseBadgeTemplateId) return [];
+      return [getExternalBadgeRequestIdentity({
+        externalTrainingCenterId: eligibility.trainingCenterId,
+        externalEnrollmentId: eligibility.enrollmentId,
+        badgeTemplateId: eligibility.firebaseBadgeTemplateId,
+      }).externalRequestId];
+    })))];
+
+    if (requestIds.length === 0) {
+      setExistingRequestChecks({});
+      setRequestCheckError(null);
+      return () => { active = false; };
+    }
+
+    setExistingRequestChecks(Object.fromEntries(requestIds.map((requestId) => [requestId, 'checking'])));
+    setRequestCheckError(null);
+    void Promise.all(requestIds.map(async (requestId) => {
+      try {
+        const existing = await findExistingExternalBadgeRequestForTrainingCenter(
+          requestId,
+          userProfile?.organizationId || '',
+          db,
+        );
+        return [requestId, existing ? 'exists' : 'missing'] as const;
+      } catch {
+        return [requestId, 'error'] as const;
+      }
+    })).then((results) => {
+      if (!active) return;
+      setExistingRequestChecks(Object.fromEntries(results));
+      if (results.some(([, state]) => state === 'error')) {
+        setRequestCheckError('Unable to verify whether an external badge request has already been filed.');
+      }
+    });
+
+    return () => { active = false; };
+  }, [learners, userProfile?.organizationId]);
 
   const openLearner = async (learnerUli: string) => {
     setDetailLoading(true); setSelectedLearner(null); setError(null);
@@ -94,9 +135,16 @@ export default function ExternalTrainingDashboard({ firebaseTrainingCenterId, in
 
   const requestButton = (learner: ExternalLearnerSummary, eligibility: ExternalBadgeEligibility) => {
     const templateId = eligibility.firebaseBadgeTemplateId || undefined;
-    const alreadyFiled = requestExists(eligibility, templateId);
     if (!templateId) return <span className="text-sm text-amber-700">QSO mapping required</span>;
-    if (alreadyFiled) return <Button size="sm" disabled><Send className="mr-1 h-3.5 w-3.5" />Request filed</Button>;
+    const requestId = getExternalBadgeRequestIdentity({
+      externalTrainingCenterId: eligibility.trainingCenterId,
+      externalEnrollmentId: eligibility.enrollmentId,
+      badgeTemplateId: templateId,
+    }).externalRequestId;
+    const requestCheck = existingRequestChecks[requestId] || 'checking';
+    if (requestCheck === 'checking') return <Button size="sm" disabled><Send className="mr-1 h-3.5 w-3.5" />Checking request…</Button>;
+    if (requestCheck === 'error') return <Button size="sm" disabled><Send className="mr-1 h-3.5 w-3.5" />Check unavailable</Button>;
+    if (requestCheck === 'exists') return <Button size="sm" disabled><Send className="mr-1 h-3.5 w-3.5" />Request filed</Button>;
     return <Link to={getExternalBadgeRequestRoute(learner.learnerUli, eligibility)}>
       <Button size="sm"><Send className="mr-1 h-3.5 w-3.5" />File request</Button>
     </Link>;
@@ -126,6 +174,7 @@ export default function ExternalTrainingDashboard({ firebaseTrainingCenterId, in
     </CardHeader>
     <CardContent className="space-y-5">
       {error && <p role="alert" className="rounded border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
+      {requestCheckError && <p role="alert" className="rounded border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{requestCheckError}</p>}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[["Learners", summary.counts.learners, Users], ["Eligible", summary.counts.eligibleLearners, CheckCircle], ["Programs", summary.registeredPrograms.length, Database], ["Completed competencies", summary.counts.completedCompetencies, BookOpenCheck]].map(([label, value, Icon]: any) => <div key={label} className="rounded border border-slate-200 p-3"><Icon className="h-4 w-4 text-violet-600 mb-2" /><p className="font-bold">{value}</p><p className="text-xs text-slate-500">{label}</p></div>)}
       </div>
