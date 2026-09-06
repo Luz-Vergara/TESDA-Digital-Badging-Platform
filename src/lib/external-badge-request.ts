@@ -187,6 +187,21 @@ export function getExistingExternalBadgeRequestMessage(request: ExistingExternal
   return 'A badge request already exists for this learner, enrollment, and badge.';
 }
 
+export function getExistingExternalBadgeRequestStatusLabel(request: ExistingExternalBadgeRequest) {
+  const status = typeof request.status === 'string' ? request.status.trim() : '';
+  const badgeIdStatus = typeof request.badgeIdStatus === 'string' ? request.badgeIdStatus.trim() : '';
+
+  if (status === 'Pending Review') {
+    return 'Pending';
+  }
+
+  if (status === 'Approved' && badgeIdStatus === 'Issued') {
+    return 'Approved / Issued';
+  }
+
+  return [status, badgeIdStatus].filter(Boolean).join(' / ') || 'Request filed';
+}
+
 export function isFirestorePermissionDenied(error: unknown) {
   return typeof error === 'object' && error !== null &&
     'code' in error && error.code === 'permission-denied';
