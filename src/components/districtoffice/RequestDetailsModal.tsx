@@ -29,6 +29,11 @@ import { doc, updateDoc, serverTimestamp, addDoc, collection, getDoc, getDocs, q
 import { db, handleFirestoreError, OperationType } from '@/src/lib/firebase';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
 import { generateOfficialBadgeId } from '@/src/lib/badge-utils';
+import {
+  getApprovalReadiness,
+  resolveRequestLearners,
+  type RequestLearnerResolution,
+} from '@/src/lib/request-learner-resolution';
 
 interface RequestDetailsModalProps {
   request: BadgeRequest | null;
@@ -43,12 +48,27 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [offering, setOffering] = useState<ProgramOffering | null>(null);
   const [template, setTemplate] = useState<BadgeTemplate | null>(null);
-  const [learners, setLearners] = useState<Learner[]>([]);
+  const [learnerResolution, setLearnerResolution] = useState<RequestLearnerResolution>({
+    requestedLearnerCount: 0,
+    resolvedLearnerCount: 0,
+    learners: [],
+    error: null,
+  });
+  const [isResolvingLearners, setIsResolvingLearners] = useState(false);
+  const [approvalError, setApprovalError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!request || !isOpen) return;
 
     const fetchData = async () => {
+      setIsResolvingLearners(true);
+      setApprovalError(null);
+      setLearnerResolution({
+        requestedLearnerCount: Array.isArray(request.learnerIds) ? request.learnerIds.length : 0,
+        resolvedLearnerCount: 0,
+        learners: [],
+        error: null,
+      });
       try {
         let resolvedOffering: ProgramOffering | null = null;
         setOffering(null);
@@ -73,12 +93,27 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
           }
         }
 
-        const learnerDocs = await Promise.all(
-          request.learnerIds.map(id => getDoc(doc(db, 'learners', id)))
-        );
-        setLearners(learnerDocs.filter(d => d.exists()).map(d => ({ id: d.id, ...d.data() })) as Learner[]);
+        let internalLearners: Learner[] = [];
+        if (!request.externalEligibility) {
+          const learnerDocs = await Promise.all(
+            request.learnerIds.map(id => getDoc(doc(db, 'learners', id)))
+          );
+          internalLearners = learnerDocs
+            .filter(d => d.exists())
+            .map(d => ({ id: d.id, ...d.data() })) as Learner[];
+        }
+
+        setLearnerResolution(resolveRequestLearners(request, internalLearners));
       } catch (error) {
         console.error("Error fetching request details:", error);
+        setLearnerResolution({
+          requestedLearnerCount: Array.isArray(request.learnerIds) ? request.learnerIds.length : 0,
+          resolvedLearnerCount: 0,
+          learners: [],
+          error: 'Unable to resolve the requested learners for approval.',
+        });
+      } finally {
+        setIsResolvingLearners(false);
       }
     };
 
@@ -86,6 +121,14 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
   }, [request, isOpen]);
 
   if (!request) return null;
+
+  const learners = learnerResolution.learners;
+  const plannedCredentialCount = learners.length;
+  const approvalReadiness = getApprovalReadiness(
+    learnerResolution.requestedLearnerCount,
+    learnerResolution.resolvedLearnerCount,
+    plannedCredentialCount,
+  );
 
   const generateVerificationId = () => {
     const randomBytes = new Uint8Array(16);
@@ -96,6 +139,16 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
 
   const handleApprove = async () => {
     if (!user) return;
+    if (isResolvingLearners || learnerResolution.error || !approvalReadiness.ready) {
+      setApprovalError(
+        learnerResolution.error ||
+        approvalReadiness.error ||
+        'Unable to approve: learner resolution is not complete.',
+      );
+      return;
+    }
+
+    setApprovalError(null);
     setIsSubmitting(true);
     const batch = writeBatch(db);
 
@@ -162,8 +215,8 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
           programTitle: externalEvidence?.programTitle || request.programTitle || (offering && offering.programTitle) || template?.badgeName || '',
           badgeType: externalEvidence?.mappedBadgeType || request.badgeType || template?.badgeType || 'Proficient',
           learnerId: learner.id,
-          learnerName: externalEvidence?.learnerName || `${learner.firstName} ${learner.lastName}`,
-          learnerEmail: externalEvidence?.learnerEmail || learner.email,
+          learnerName: learner.displayName,
+          learnerEmail: learner.email || '',
           trainingCenterId: request.trainingCenterId || (offering && offering.trainingCenterId) || '',
           trainingCenterName: request.trainingCenterName || (offering && offering.trainingCenterName) || '',
           districtOfficeId: districtId,
@@ -228,17 +281,19 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
         batch.set(doc(db, 'publicCredentials', verificationId), publicCredential);
 
         // Update learner badge status
-        const learnerRef = doc(db, 'learners', learner.id);
-        batch.update(learnerRef, {
-          badgeStatus: 'Active',
-          updatedAt: serverTimestamp()
-        });
+        if (learner.source === 'internal') {
+          const learnerRef = doc(db, 'learners', learner.id);
+          batch.update(learnerRef, {
+            badgeStatus: 'Active',
+            updatedAt: serverTimestamp()
+          });
+        }
 
         // Add to the summary array (Rule F and Goal 9)
         issuedBadgeSummary.push({
           learnerId: learner.id,
-          learnerName: externalEvidence?.learnerName || `${learner.firstName} ${learner.lastName}`,
-          learnerEmail: externalEvidence?.learnerEmail || learner.email || '',
+          learnerName: learner.displayName,
+          learnerEmail: learner.email || '',
           badgeId,
           verificationId,
           issuedBadgeId: issuedBadgeRef.id
@@ -283,7 +338,7 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
         action: `Approved Badge Request: ${request.id}`,
         userName: userProfile?.name || 'District Staff',
         timestamp: serverTimestamp(),
-        details: `Issued ${learners.length} badges for ${externalEvidence?.programTitle || request.programTitle || (offering && offering.programTitle) || request.templateDetails?.badgeName || 'program'}`
+        details: `Issued ${plannedCredentialCount} badges for ${externalEvidence?.programTitle || request.programTitle || (offering && offering.programTitle) || request.templateDetails?.badgeName || 'program'}`
       });
 
       await batch.commit();
@@ -389,10 +444,13 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
                   <p><span className="text-slate-500">CTPR:</span> {request.externalEligibility.ctprNumber}</p>
                   <p><span className="text-slate-500">Enrollment/source:</span> {request.externalEligibility.externalEnrollmentId} / {request.externalEligibility.sourceRecordId}</p>
                   <p><span className="text-slate-500">Competencies:</span> {request.externalEligibility.completedCompetencyCount}/{request.externalEligibility.requiredCompetencyCount} complete</p>
+                  {request.externalEligibility.competencyCode && (
+                    <p><span className="text-slate-500">Competency:</span> {request.externalEligibility.competencyCode} — {request.externalEligibility.competencyTitle}</p>
+                  )}
                   <p><span className="text-slate-500">Evaluated:</span> {request.externalEligibility.evaluatedAt}</p>
                   <p><span className="text-slate-500">Retrieved:</span> {request.externalEligibility.retrievedAt}</p>
                 </div>
-                {request.externalEligibility.missingCompetencyCodes.length > 0 && (
+                {request.externalEligibility.missingCompetencyCodes?.length > 0 && (
                   <p><span className="text-slate-500">Missing competencies:</span> {request.externalEligibility.missingCompetencyCodes.join(', ')}</p>
                 )}
                 <div className="border-t border-indigo-100 pt-3">
@@ -407,24 +465,41 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
           <div>
             <h3 className="text-sm font-bold text-slate-900 mb-2 flex items-center gap-2">
               <Users className="h-4 w-4 text-slate-400" />
-              Learners ({learners.length})
+              Learners ({learnerResolution.resolvedLearnerCount})
             </h3>
             <div className="border border-slate-100 rounded-lg divide-y divide-slate-50">
               {learners.map(learner => (
                 <div key={learner.id} className="p-3 flex items-center justify-between hover:bg-slate-50/50 transition-colors">
                   <div className="flex flex-col">
                     <span className="text-sm font-medium">
-                      {request.externalEligibility?.learnerName || `${learner.firstName} ${learner.lastName}`}
+                      {learner.displayName}
                     </span>
                     <span className="text-[10px] text-slate-500">
-                      {request.externalEligibility?.learnerEmail || learner.email}
+                      {learner.source === 'external' ? `ULI: ${learner.learnerUli}` : learner.email}
                     </span>
                   </div>
-                  <Badge variant="outline" className="text-[10px] font-mono uppercase">ID: {learner.id.slice(-6).toUpperCase()}</Badge>
+                  <Badge variant="outline" className="text-[10px] font-mono uppercase">
+                    {learner.source === 'external' ? 'External' : `ID: ${learner.id.slice(-6).toUpperCase()}`}
+                  </Badge>
                 </div>
               ))}
             </div>
           </div>
+
+          {(approvalError || learnerResolution.error) && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <div>
+                  <p className="font-bold">Approval blocked</p>
+                  <p>{approvalError || learnerResolution.error}</p>
+                  <p className="mt-1 text-xs">
+                    Resolved {learnerResolution.resolvedLearnerCount} of {learnerResolution.requestedLearnerCount} requested learners.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {request.remarks && (
             <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100">
@@ -472,10 +547,10 @@ export default function RequestDetailsModal({ request, isOpen, onClose }: Reques
               <Button 
                 className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
                 onClick={handleApprove}
-                disabled={isSubmitting}
+                disabled={isSubmitting || isResolvingLearners || Boolean(learnerResolution.error) || !approvalReadiness.ready}
               >
                 <CheckCircle2 className="h-4 w-4 mr-2" />
-                {isSubmitting ? 'Processing...' : 'Approve & Issue Badges'}
+                {isResolvingLearners ? 'Resolving learners…' : isSubmitting ? 'Processing...' : 'Approve & Issue Badges'}
               </Button>
             </>
           ) : (
