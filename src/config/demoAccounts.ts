@@ -79,22 +79,26 @@ export const demoAccountGroups: DemoAccountGroup[] = [
       {
         id: "demo-learner-2",
         label: "Demo Learner 2",
-        email: "learner2@demo.com"
+        email: "learner2@demo.com",
+        externalLearnerUli: "DEMO-ULI-0002"
       },
       {
         id: "demo-learner-3",
         label: "Demo Learner 3",
-        email: "learner3@demo.com"
+        email: "learner3@demo.com",
+        externalLearnerUli: "DEMO-ULI-0003"
       },
       {
         id: "demo-learner-4",
         label: "Demo Learner 4",
-        email: "learner4@demo.com"
+        email: "learner4@demo.com",
+        externalLearnerUli: "DEMO-ULI-0004"
       },
       {
         id: "demo-learner-5",
         label: "Demo Learner 5",
-        email: "learner5@demo.com"
+        email: "learner5@demo.com",
+        externalLearnerUli: "DEMO-ULI-0005"
       }
     ]
   },
