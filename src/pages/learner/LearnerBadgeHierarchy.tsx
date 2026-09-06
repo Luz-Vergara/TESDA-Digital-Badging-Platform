@@ -9,6 +9,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { BadgeRenderer } from '@/src/components/badges/BadgeRenderer';
 import { DEFAULT_BADGE_DESIGNS, mergeBadgeDesigns, resolveBadgeDesign } from '@/src/lib/badge-designs';
 import type { BadgeDesign, BadgeTemplate, BadgeType } from '@/src/types';
+import type { ExternalLearnerDetails } from '@/src/types/external-api';
+import { externalApi } from '@/src/services/externalApi';
+import {
+  projectWarehousingHierarchy,
+  WAREHOUSING_SKILLED_TEMPLATE_ID,
+  WAREHOUSING_STANDARD_ID,
+} from '@/src/lib/warehousing-badge-hierarchy';
 
 type LearnerBadgeStatus = 'Locked' | 'Eligible' | 'Pending' | 'Issued';
 
@@ -125,12 +132,14 @@ const StatusBadge = ({ status }: { status: LearnerBadgeStatus }) => {
 };
 
 export default function LearnerBadgeHierarchy() {
-  const { user, isAuthReady } = useFirebase();
+  const { user, isAuthReady, linkedExternalLearner, linkedExternalLearnerLoading } = useFirebase();
   const [issuedBadges, setIssuedBadges] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [completions, setCompletions] = useState<any[]>([]);
   const [templates, setTemplates] = useState<BadgeTemplate[]>([]);
   const [badgeDesigns, setBadgeDesigns] = useState<BadgeDesign[]>(DEFAULT_BADGE_DESIGNS);
+  const [externalTrainingData, setExternalTrainingData] = useState<ExternalLearnerDetails | null>(null);
+  const [externalTrainingDataLoading, setExternalTrainingDataLoading] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -175,6 +184,37 @@ export default function LearnerBadgeHierarchy() {
   }, [isAuthReady, user]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    if (!isAuthReady || !user || linkedExternalLearnerLoading) {
+      setExternalTrainingData(null);
+      setExternalTrainingDataLoading(Boolean(isAuthReady && user && linkedExternalLearnerLoading));
+      return () => { cancelled = true; };
+    }
+
+    if (!linkedExternalLearner) {
+      setExternalTrainingData(null);
+      setExternalTrainingDataLoading(false);
+      return () => { cancelled = true; };
+    }
+
+    setExternalTrainingDataLoading(true);
+    void externalApi.getLearnerDetails(linkedExternalLearner.learnerUli)
+      .then((response) => {
+        if (!cancelled) setExternalTrainingData(response.data);
+      })
+      .catch((error) => {
+        console.error('[LearnerBadgeHierarchy] External training data unavailable:', error);
+        if (!cancelled) setExternalTrainingData(null);
+      })
+      .finally(() => {
+        if (!cancelled) setExternalTrainingDataLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [isAuthReady, user, linkedExternalLearner, linkedExternalLearnerLoading]);
+
+  useEffect(() => {
     if (!isAuthReady || !user) {
       setTemplates([]);
       setBadgeDesigns(DEFAULT_BADGE_DESIGNS);
@@ -203,7 +243,7 @@ export default function LearnerBadgeHierarchy() {
 
   const learnerIssuedBadges = useMemo(() => issuedBadges, [issuedBadges]);
 
-  if (!isAuthReady || loading) return <div className="p-8 text-sm text-slate-500">Loading your badge hierarchy…</div>;
+  if (!isAuthReady || loading || linkedExternalLearnerLoading || externalTrainingDataLoading) return <div className="p-8 text-sm text-slate-500">Loading your badge hierarchy…</div>;
   if (!user) return <div className="p-8 text-sm text-slate-500">Sign in to view your badge hierarchy.</div>;
 
   return (
@@ -222,9 +262,23 @@ export default function LearnerBadgeHierarchy() {
 
       <div className="space-y-6">
         {demoStandards.map((standard) => {
-          const competencyProgress = standard.competencies.filter((competency) => completedFor(completions, competency)).length;
+          const warehousingProjection = standard.id === WAREHOUSING_STANDARD_ID
+            ? projectWarehousingHierarchy({
+              issuedBadges: learnerIssuedBadges,
+              badgeRequests: requests,
+              externalTrainingData,
+            })
+            : null;
+          const competencyProgress = warehousingProjection?.achievedProficient ?? standard.competencies.filter((competency) => completedFor(completions, competency)).length;
           const allCompetenciesComplete = standard.competencies.length > 0 && competencyProgress === standard.competencies.length;
-          const competencyNodes = standard.competencies.map((competency) => {
+          const competencyNodes = warehousingProjection ? warehousingProjection.competencies.map((mapping) => {
+            const competency = standard.competencies.find((item) => item.code === mapping.code) ?? mapping;
+            const issuedBadge = learnerIssuedBadges.find((badge) =>
+              badge.badgeTemplateId === mapping.badgeTemplateId && badge.status === 'Active',
+            );
+            const template = templates.find((item) => item.id === mapping.badgeTemplateId);
+            return { competency, status: mapping.status, issuedBadge, template };
+          }) : standard.competencies.map((competency) => {
             const issuedBadge = issuedBadgeFor(learnerIssuedBadges, standard, 'Proficient', competency);
             const template = mappedTemplateFor(templates, standard, 'Proficient', competency);
             const status: LearnerBadgeStatus = issuedFor(learnerIssuedBadges, standard, 'Proficient', competency)
@@ -237,15 +291,19 @@ export default function LearnerBadgeHierarchy() {
             return { competency, status, issuedBadge, template };
           });
           const completionType = standard.completionBadgeType;
-          const completionIssuedBadge = issuedBadgeFor(learnerIssuedBadges, standard, completionType);
-          const completionTemplate = mappedTemplateFor(templates, standard, completionType);
-          const completionStatus: LearnerBadgeStatus = issuedFor(learnerIssuedBadges, standard, completionType)
+          const completionIssuedBadge = warehousingProjection
+            ? learnerIssuedBadges.find((badge) => badge.badgeTemplateId === WAREHOUSING_SKILLED_TEMPLATE_ID && badge.status === 'Active')
+            : issuedBadgeFor(learnerIssuedBadges, standard, completionType);
+          const completionTemplate = warehousingProjection
+            ? templates.find((template) => template.id === WAREHOUSING_SKILLED_TEMPLATE_ID)
+            : mappedTemplateFor(templates, standard, completionType);
+          const completionStatus: LearnerBadgeStatus = warehousingProjection?.skilledStatus ?? (issuedFor(learnerIssuedBadges, standard, completionType)
             ? 'Issued'
             : pendingFor(requests, standard, completionType)
               ? 'Pending'
               : allCompetenciesComplete
                 ? 'Eligible'
-                : 'Locked';
+                : 'Locked');
 
           return (
             <Card key={standard.id}>
@@ -255,7 +313,9 @@ export default function LearnerBadgeHierarchy() {
                     <div className="flex flex-wrap gap-2"><Badge variant="outline">{standard.type}</Badge>{standard.code && <Badge variant="outline">{standard.code}</Badge>}</div>
                     <CardTitle className="mt-3 text-xl">{standard.title}</CardTitle>
                     <CardDescription className="mt-2">
-                      {standard.competencies.length > 0
+                      {warehousingProjection
+                        ? `${competencyProgress} / ${warehousingProjection.totalProficient} Proficient badges achieved`
+                        : standard.competencies.length > 0
                         ? `${competencyProgress} / ${standard.competencies.length} competencies completed`
                         : `Complete ${standard.type} achievement`}
                     </CardDescription>
