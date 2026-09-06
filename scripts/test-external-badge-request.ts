@@ -193,6 +193,8 @@ const eligibilityPageSource = readFileSync(new URL(
 assert.match(eligibilityPageSource, /findExistingExternalBadgeRequestForTrainingCenter/);
 assert.match(eligibilityPageSource, /getExistingExternalBadgeRequestStatusLabel/);
 assert.match(eligibilityPageSource, /state: 'missing'/);
+assert.match(eligibilityPageSource, />View request</);
+assert.doesNotMatch(eligibilityPageSource, /getExistingExternalBadgeRequestMessage/);
 
 const issuedBadgesPageSource = readFileSync(new URL(
   '../src/pages/training/IssuedBadges.tsx',

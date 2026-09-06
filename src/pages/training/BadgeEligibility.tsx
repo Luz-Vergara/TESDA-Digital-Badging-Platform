@@ -5,7 +5,6 @@ import { db } from '@/src/lib/firebase';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
 import {
   findExistingExternalBadgeRequestForTrainingCenter,
-  getExistingExternalBadgeRequestMessage,
   getExistingExternalBadgeRequestStatusLabel,
   getExternalBadgeRequestIdentity,
   getExternalBadgeRequestRoute,
@@ -181,7 +180,7 @@ export default function BadgeEligibility() {
     const check = requestChecks[eligibility.id];
     if (!check || check.state === 'checking') return <Button size="sm" disabled>Checking request…</Button>;
     if (check.state === 'error') return <span className="text-xs text-rose-700">Unable to verify request status</span>;
-    if (check.state === 'exists') return <div className="space-y-1"><p className="max-w-52 text-xs text-slate-500">{getExistingExternalBadgeRequestMessage(check.request)}</p><Link className="text-xs font-semibold text-blue-600" to="/trainingcenter/requests">View requests</Link></div>;
+    if (check.state === 'exists') return <Link className="text-xs font-semibold text-blue-600" to="/trainingcenter/requests">View request</Link>;
 
     return <Link to={getExternalBadgeRequestRoute(learner.learnerUli, eligibility)}><Button size="sm"><CheckCircle2 className="mr-1 h-4 w-4" />File request</Button></Link>;
   };

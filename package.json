@@ -17,6 +17,7 @@
     "test:badge-request-retirement-rules": "node --experimental-strip-types scripts/test-badge-request-retirement-rules.ts",
     "test:warehousing-badge-hierarchy": "node --experimental-strip-types scripts/test-warehousing-badge-hierarchy.ts",
     "test:training-badge-eligibility-roster": "node --experimental-strip-types scripts/test-training-badge-eligibility-roster.ts",
+    "test:training-records-progress": "node --experimental-strip-types scripts/test-training-records-progress.ts",
     "seed-demo": "tsx scripts/seed-demo-environment.ts"
   },
   "dependencies": {
