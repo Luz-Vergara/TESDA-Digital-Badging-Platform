@@ -168,7 +168,7 @@ const crossTrainingCenterRequest = await findExistingExternalBadgeRequestForTrai
 assert.equal(crossTrainingCenterRequest, null);
 
 const migration = readFileSync(new URL(
-  '../supabase/migrations/20260903062847_prepare_log432301_proficient_pilot.sql',
+  '../supabase/migrations/20260903070027_prepare_log432301_proficient_pilot.sql',
   import.meta.url,
 ), 'utf8');
 assert.match(migration, /'LOG432301'[\s\S]*'Receive stocks\/goods'/);
