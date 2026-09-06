@@ -57,12 +57,51 @@ const formatIssuedDate = (value: unknown): string => {
 
 const verificationPath = (verificationId: string): string => `/#/verify/${encodeURIComponent(verificationId)}`;
 
+interface IssuedBadgeRecord {
+  id: string;
+  learnerName?: unknown;
+  learnerUli?: unknown;
+  verificationId?: unknown;
+  badgeType?: unknown;
+  badgeTemplateName?: unknown;
+  badgeTitle?: unknown;
+  competencyCode?: unknown;
+  competencyTitle?: unknown;
+  recognitionScope?: unknown;
+  qualificationName?: unknown;
+  qualificationTitle?: unknown;
+  programTitle?: unknown;
+  issueDate?: unknown;
+  createdAt?: unknown;
+  badgeArtworkUrl?: unknown;
+}
+
+const text = (value: unknown): string | null => typeof value === 'string' && value.trim() ? value.trim() : null;
+
+const issuedBadgeDisplay = (badge: IssuedBadgeRecord) => {
+  const badgeType = text(badge.badgeType);
+  const competencyCode = text(badge.competencyCode);
+  const competencyTitle = text(badge.competencyTitle);
+  const competency = competencyCode && competencyTitle
+    ? `${competencyCode} — ${competencyTitle}`
+    : competencyCode || competencyTitle;
+  const templateName = text(badge.badgeTemplateName) || text(badge.badgeTitle);
+
+  return {
+    badgeType,
+    competency: text(badge.recognitionScope) === 'Competency' ? competency : null,
+    title: templateName || badgeType || 'TESDA Digital Badge',
+    qualification: text(badge.qualificationName) || text(badge.programTitle) || text(badge.qualificationTitle) || 'National Certificate',
+    artworkUrl: text(badge.badgeArtworkUrl),
+  };
+};
+
 export default function IssuedBadges() {
   const { user, userProfile, isAuthReady } = useFirebase();
-  const [issuedBadges, setIssuedBadges] = useState<any[]>([]);
+  const [issuedBadges, setIssuedBadges] = useState<IssuedBadgeRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedBadge, setSelectedBadge] = useState<any | null>(null);
+  const [selectedBadge, setSelectedBadge] = useState<IssuedBadgeRecord | null>(null);
 
   useEffect(() => {
     if (!isAuthReady || !user) return;
@@ -72,7 +111,7 @@ export default function IssuedBadges() {
     const q = query(collection(db, path), where('trainingCenterId', '==', tcId));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setIssuedBadges(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setIssuedBadges(snapshot.docs.map(item => ({ id: item.id, ...item.data() } as IssuedBadgeRecord)));
       setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, path);
@@ -85,10 +124,11 @@ export default function IssuedBadges() {
   const filteredBadges = issuedBadges.filter(badge => {
     const term = searchQuery.toLowerCase();
     return (
-      (badge.learnerName && badge.learnerName.toLowerCase().includes(term)) ||
-      (badge.verificationId && badge.verificationId.toLowerCase().includes(term)) ||
-      (badge.qualificationTitle && badge.qualificationTitle.toLowerCase().includes(term)) ||
-      (badge.badgeTitle && badge.badgeTitle.toLowerCase().includes(term))
+      text(badge.learnerName)?.toLowerCase().includes(term) ||
+      text(badge.verificationId)?.toLowerCase().includes(term) ||
+      issuedBadgeDisplay(badge).qualification.toLowerCase().includes(term) ||
+      issuedBadgeDisplay(badge).title.toLowerCase().includes(term) ||
+      issuedBadgeDisplay(badge).competency?.toLowerCase().includes(term)
     );
   });
 
@@ -159,27 +199,29 @@ export default function IssuedBadges() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredBadges.map((badge) => (
+                filteredBadges.map((badge) => {
+                  const display = issuedBadgeDisplay(badge);
+                  return (
                   <TableRow key={badge.id}>
                     <TableCell>
                       <span className="font-mono text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-100">
-                        {badge.verificationId || badge.id.slice(0, 8).toUpperCase()}
+                        {text(badge.verificationId) || badge.id.slice(0, 8).toUpperCase()}
                       </span>
                     </TableCell>
                     <TableCell>
-                      <p className="font-bold text-slate-900">{badge.learnerName || 'Learner'}</p>
-                      <p className="text-[10px] text-slate-500 font-mono">ULI: {badge.learnerUli || 'ULI-2026-DEMO'}</p>
+                      <p className="font-bold text-slate-900">{text(badge.learnerName) || 'Learner'}</p>
+                      <p className="text-[10px] text-slate-500 font-mono">ULI: {text(badge.learnerUli) || 'ULI-2026-DEMO'}</p>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white shrink-0">
                           <Award className="h-4 w-4" />
                         </div>
-                        <span className="font-semibold text-slate-800 text-sm">{badge.badgeTitle || 'TESDA Digital Badge'}</span>
+                        <div><span className="font-semibold text-slate-800 text-sm">{display.badgeType || display.title}</span>{display.competency ? <p className="text-xs text-slate-500">{display.competency}</p> : display.title !== display.badgeType ? <p className="text-xs text-slate-500">{display.title}</p> : null}</div>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <p className="text-xs font-medium text-slate-700">{badge.qualificationTitle || 'National Certificate'}</p>
+                      <p className="text-xs font-medium text-slate-700">{display.qualification}</p>
                     </TableCell>
                     <TableCell>
                       <p className="text-xs text-slate-600">
@@ -203,7 +245,7 @@ export default function IssuedBadges() {
                           View
                         </Button>
                         <a
-                          href={verificationPath(badge.verificationId || badge.id)}
+                          href={verificationPath(text(badge.verificationId) || badge.id)}
                           target="_blank"
                           rel="noreferrer"
                         >
@@ -215,7 +257,8 @@ export default function IssuedBadges() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))
+                  );
+                })
               )}
             </TableBody>
           </Table>
@@ -232,17 +275,18 @@ export default function IssuedBadges() {
             </DialogDescription>
           </DialogHeader>
 
-          {selectedBadge && (
+          {selectedBadge && (() => {
+            const display = issuedBadgeDisplay(selectedBadge);
+            return (
             <div className="space-y-4 py-2">
               <div className="p-6 bg-gradient-to-br from-slate-900 to-blue-950 text-white rounded-2xl text-center shadow-lg relative overflow-hidden">
-                <div className="mx-auto w-16 h-16 bg-blue-500/20 backdrop-blur-md rounded-full flex items-center justify-center border border-blue-400/30 text-blue-300 mb-3">
-                  <Award className="h-8 w-8" />
-                </div>
-                <h3 className="text-lg font-bold">{selectedBadge.badgeTitle || 'TESDA Digital Badge'}</h3>
-                <p className="text-xs text-blue-200 mt-1">{selectedBadge.qualificationTitle}</p>
-                <p className="text-sm font-bold text-emerald-400 mt-4">Issued to: {selectedBadge.learnerName}</p>
+                {display.artworkUrl ? <img className="mx-auto mb-3 h-16 w-16 rounded-full border border-blue-400/30 object-cover" src={display.artworkUrl} alt="Issued badge artwork" /> : <div className="mx-auto w-16 h-16 bg-blue-500/20 backdrop-blur-md rounded-full flex items-center justify-center border border-blue-400/30 text-blue-300 mb-3"><Award className="h-8 w-8" /></div>}
+                <h3 className="text-lg font-bold">{display.badgeType || display.title}</h3>
+                {display.competency ? <p className="text-xs text-blue-200 mt-1">{display.competency}</p> : display.title !== display.badgeType ? <p className="text-xs text-blue-200 mt-1">{display.title}</p> : null}
+                <p className="text-xs text-blue-200 mt-1">{display.qualification}</p>
+                <p className="text-sm font-bold text-emerald-400 mt-4">Issued to: {text(selectedBadge.learnerName) || 'Learner'}</p>
                 <div className="mt-4 pt-3 border-t border-white/10 flex justify-between items-center text-[10px] text-slate-300">
-                  <span>ID: {selectedBadge.verificationId || selectedBadge.id}</span>
+                  <span>ID: {text(selectedBadge.verificationId) || selectedBadge.id}</span>
                   <span>Issued: {formatIssuedDate(selectedBadge.issueDate ?? selectedBadge.createdAt)}</span>
                 </div>
               </div>
@@ -254,11 +298,12 @@ export default function IssuedBadges() {
                 </div>
                 <div className="flex justify-between">
                   <span className="font-semibold text-slate-500">Verification Link:</span>
-                  <span className="font-mono text-blue-600">{verificationPath(selectedBadge.verificationId || selectedBadge.id)}</span>
+                  <span className="font-mono text-blue-600">{verificationPath(text(selectedBadge.verificationId) || selectedBadge.id)}</span>
                 </div>
               </div>
             </div>
-          )}
+            );
+          })()}
 
           <DialogFooter>
             <Button variant="outline" className="w-full" onClick={() => setSelectedBadge(null)}>

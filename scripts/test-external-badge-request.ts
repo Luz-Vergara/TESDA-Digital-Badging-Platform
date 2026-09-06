@@ -4,6 +4,7 @@ import type { Firestore } from 'firebase/firestore';
 import {
   findExistingExternalBadgeRequestForTrainingCenter,
   getExistingExternalBadgeRequestMessage,
+  getExistingExternalBadgeRequestStatusLabel,
   getExternalBadgeRequestIdentity,
   getExternalBadgeRequestRoute,
   selectExternalBadgeEligibility,
@@ -122,6 +123,13 @@ assert.equal(
   getExistingExternalBadgeRequestMessage(ownedRequest!),
   'This badge request has already been approved and issued.',
 );
+assert.equal(getExistingExternalBadgeRequestStatusLabel(ownedRequest!), 'Approved / Issued');
+assert.equal(getExistingExternalBadgeRequestStatusLabel({ status: 'Pending Review' }), 'Pending');
+assert.equal(getExistingExternalBadgeRequestStatusLabel({ status: 'Rejected' }), 'Rejected');
+assert.equal(
+  getExistingExternalBadgeRequestStatusLabel({ status: 'Approved', badgeIdStatus: 'Issuance processing' }),
+  'Approved / Issuance processing',
+);
 
 const missingRequest = await findExistingExternalBadgeRequestForTrainingCenter(
   firstIdentity.externalRequestId,
@@ -177,5 +185,21 @@ const requestHelperSource = readFileSync(new URL(
 assert.match(requestHelperSource, /where\('trainingCenterId', '==', trainingCenterId\)/);
 assert.match(requestHelperSource, /where\('externalEligibilityKey', '==', externalEligibilityKey\)/);
 assert.doesNotMatch(requestHelperSource, /where\(documentId\(\)/);
+
+const eligibilityPageSource = readFileSync(new URL(
+  '../src/pages/training/BadgeEligibility.tsx',
+  import.meta.url,
+), 'utf8');
+assert.match(eligibilityPageSource, /findExistingExternalBadgeRequestForTrainingCenter/);
+assert.match(eligibilityPageSource, /getExistingExternalBadgeRequestStatusLabel/);
+assert.match(eligibilityPageSource, /state: 'missing'/);
+
+const issuedBadgesPageSource = readFileSync(new URL(
+  '../src/pages/training/IssuedBadges.tsx',
+  import.meta.url,
+), 'utf8');
+assert.match(issuedBadgesPageSource, /badgeTemplateName/);
+assert.match(issuedBadgesPageSource, /competencyCode/);
+assert.match(issuedBadgesPageSource, /qualificationName/);
 
 console.log('External badge request fixture tests passed.');
