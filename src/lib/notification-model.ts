@@ -15,6 +15,9 @@ export interface NotificationQuery {
 }
 export interface LiveNotification {
   id: string;
+  source: NotificationSource;
+  entityId: string;
+  status: string;
   title: string;
   message: string;
   time: number;
@@ -55,14 +58,38 @@ export function projectNotification(source: NotificationSource, id: string, data
   const label = [data.badgeTemplateName, data.badgeName, data.qualificationName].find(value => typeof value === 'string' && value) || id;
   const issued = source === 'issuedBadges';
   if (!issued && !status) return null;
-  // Issuance is stable across later badge edits. RPL updates include evidence reviews.
+  // Display time may change, but identity depends only on the workflow status.
+  // Repeated occurrences of the same status collapse without a trusted event log.
   const time = issued ? notificationTime(data.issueDate ?? data.createdAt) :
     notificationTime(data.updatedAt ?? data.approvedAt ?? data.submittedAt ?? data.createdAt);
   const title = issued ? 'Badge issued' : source === 'badgeRequests' ? 'Badge request status' : 'RPL update';
   return {
-    id: encodeURIComponent(JSON.stringify([source, id, issued ? 'issued' : status, time])),
+    id: encodeURIComponent(JSON.stringify([source, id, issued ? 'issued' : status])),
+    source, entityId: id, status,
     title, message: issued ? `${label} has been issued.` : `${label}: ${status}.`, time,
   };
+}
+
+export function notificationBaselineId(scope: NotificationScope): string {
+  return 'baseline-v2-' + encodeURIComponent(JSON.stringify([
+    scope.isDemo, scope.role, scope.organizationId || '', scope.assignedDistrictId || '', scope.office || '',
+  ]));
+}
+
+export function notificationDestination(item: LiveNotification, role: string): string | null {
+  if (role === 'Learner') {
+    if (item.source === 'issuedBadges') return '/learner/wallet';
+    if (item.source === 'rplApplications') return '/learner/rpl';
+    return ['Approved', 'Badge ID Generated'].includes(item.status) ? '/learner' : null;
+  }
+  if (role === 'TrainingCenter') return {
+    badgeRequests: '/trainingcenter/requests', issuedBadges: '/trainingcenter/issued', rplApplications: '/trainingcenter/rpl',
+  }[item.source];
+  if (role === 'DistrictOffice') {
+    if (item.source === 'issuedBadges') return '/districtoffice/status';
+    if (item.source === 'badgeRequests' && item.status === 'Pending Review') return '/districtoffice/queue';
+  }
+  return null;
 }
 
 export function sortNotifications(items: LiveNotification[]): LiveNotification[] {

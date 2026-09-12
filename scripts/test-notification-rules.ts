@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { assertFails, assertSucceeds, initializeTestEnvironment } from '@firebase/rules-unit-testing';
-import { collection, doc, getDocs, query, serverTimestamp, setDoc, where, deleteDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, serverTimestamp, setDoc, where, deleteDoc, updateDoc, writeBatch } from 'firebase/firestore';
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) throw new Error('Set FIRESTORE_EMULATOR_HOST to a local Firestore emulator. This test never uses production.');
 const env = await initializeTestEnvironment({ projectId: 'demo-notification-rules', firestore: {
@@ -13,6 +13,9 @@ try {
   const anonymous = env.unauthenticatedContext().firestore();
   const path = 'users/owner/notificationReads/event-1';
   const receipt = () => ({ isDemo: false, readAt: serverTimestamp() });
+  await assertSucceeds(getDoc(doc(owner, path)));
+  await assertFails(getDoc(doc(other, path)));
+  await assertFails(getDoc(doc(anonymous, path)));
   await assertSucceeds(setDoc(doc(owner, path), receipt()));
   await assertSucceeds(setDoc(doc(owner, path), receipt()));
   await assertSucceeds(getDocs(query(collection(owner, 'users/owner/notificationReads'), where('isDemo', '==', false))));
@@ -27,7 +30,18 @@ try {
   await assertFails(setDoc(doc(demo, 'users/demo/notificationReads/event-2'), receipt()));
   await env.withSecurityRulesDisabled(async context => {
     await setDoc(doc(context.firestore(), 'users/demo/notificationReads/production'), { isDemo: false, readAt: new Date() });
+    await setDoc(doc(context.firestore(), 'users/owner/notificationReads/demo'), { isDemo: true, readAt: new Date() });
+    await setDoc(doc(context.firestore(), 'badgeRequests/workflow'), { status: 'Pending Review', isDemo: false });
   });
+  await assertFails(getDoc(doc(demo, 'users/demo/notificationReads/production')));
+  await assertFails(getDoc(doc(owner, 'users/owner/notificationReads/demo')));
+  await assertFails(setDoc(doc(owner, 'users/owner/notificationReads/demo'), receipt()));
+  await assertFails(updateDoc(doc(owner, 'badgeRequests/workflow'), { status: 'Approved' }));
+  const maliciousBatch = writeBatch(owner);
+  maliciousBatch.set(doc(owner, 'users/owner/notificationReads/innocent'), receipt());
+  maliciousBatch.update(doc(owner, 'badgeRequests/workflow'), { status: 'Approved' });
+  await assertFails(maliciousBatch.commit());
+  await assertSucceeds(getDoc(doc(owner, path)));
   await assertFails(setDoc(doc(demo, 'users/demo/notificationReads/production'), { isDemo: true, readAt: serverTimestamp() }));
   console.log('Notification receipt authorization tests passed.');
 } finally { await env.cleanup(); }

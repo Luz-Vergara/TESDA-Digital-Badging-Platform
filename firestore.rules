@@ -569,7 +569,11 @@ service cloud.firestore {
     // Personal read receipts only. Workflow content remains in its canonical
     // collection and retains its existing authorization rules.
     match /users/{userId}/notificationReads/{notificationId} {
-      allow read: if isOwner(userId) && resource.data.isDemo == isDemoUser();
+      allow list: if isOwner(userId) && resource.data.isDemo == isDemoUser();
+      // Initialization transactions must be able to check an absent receipt.
+      allow get: if isOwner(userId) &&
+        (!exists(/databases/$(database)/documents/users/$(userId)/notificationReads/$(notificationId)) ||
+         resource.data.isDemo == isDemoUser());
       allow create: if isOwner(userId) &&
         incoming().keys().hasOnly(['isDemo', 'readAt']) &&
         incoming().isDemo == isDemoUser() && incoming().readAt == request.time;
