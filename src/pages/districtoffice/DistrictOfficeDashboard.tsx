@@ -1,3 +1,4 @@
+import NotificationsPanel from '../../components/notifications/NotificationsPanel';
 import React, { useEffect, useState } from 'react';
 import {
   CheckCircle,
@@ -45,7 +46,6 @@ export default function DistrictOfficeDashboard() {
     issuedBadges: 0
   });
   const [recentRequests, setRecentRequests] = useState<any[]>([]);
-  const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -134,13 +134,6 @@ export default function DistrictOfficeDashboard() {
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, pathOrgs);
     });
-
-    // Mock notifications for now, but linked to actions
-    setNotifications([
-      { id: 1, title: 'New badge request submitted', center: 'Manila Training Center', time: '10m ago', type: 'info' },
-      { id: 2, title: 'Request approved', learner: 'John Doe', time: '1h ago', type: 'success' },
-      { id: 3, title: 'Badge expiring soon', learner: 'Maria Santos', time: '2h ago', type: 'warning' },
-    ]);
 
     return () => {
         unsubRequests();
@@ -353,19 +346,7 @@ export default function DistrictOfficeDashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="divide-y divide-slate-100">
-                {notifications.map(note => (
-                  <div key={note.id} className="p-4 hover:bg-slate-50 transition-colors cursor-default">
-                    <div className="flex justify-between items-start mb-1">
-                      <h4 className="text-sm font-bold text-slate-900">{note.title}</h4>
-                      <span className="text-[10px] text-slate-400">{note.time}</span>
-                    </div>
-                    <p className="text-xs text-slate-500 leading-relaxed">
-                      {note.center || note.learner} action recorded.
-                    </p>
-                  </div>
-                ))}
-              </div>
+              <NotificationsPanel />
               <Button variant="ghost" className="w-full text-xs text-blue-600 font-bold py-3 hover:bg-blue-50" onClick={() => navigate('/districtoffice/notifications')}>
                 View All Notifications
               </Button>

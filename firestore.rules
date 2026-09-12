@@ -566,6 +566,20 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Personal read receipts only. Workflow content remains in its canonical
+    // collection and retains its existing authorization rules.
+    match /users/{userId}/notificationReads/{notificationId} {
+      allow read: if isOwner(userId) && resource.data.isDemo == isDemoUser();
+      allow create: if isOwner(userId) &&
+        incoming().keys().hasOnly(['isDemo', 'readAt']) &&
+        incoming().isDemo == isDemoUser() && incoming().readAt == request.time;
+      allow update: if isOwner(userId) &&
+        existing().isDemo == isDemoUser() &&
+        incoming().keys().hasOnly(['isDemo', 'readAt']) &&
+        incoming().isDemo == existing().isDemo && incoming().readAt == request.time;
+      allow delete: if false;
+    }
+
     match /organizations/{orgId} {
       allow read: if true;
       allow write: if isAdmin() || (isDemoUser() && incoming().get('isDemo', false) == true);

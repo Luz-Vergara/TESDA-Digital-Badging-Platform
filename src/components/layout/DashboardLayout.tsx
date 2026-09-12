@@ -1,5 +1,6 @@
 import React from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
+import { NotificationsProvider } from '../notifications/NotificationsProvider';
 import Navbar from './Navbar';
 import Sidebar from './Sidebar';
 import { useFirebase } from '@/src/lib/FirebaseProvider';
@@ -64,6 +65,7 @@ export default function DashboardLayout({ role }: DashboardLayoutProps) {
   }
 
   return (
+    <NotificationsProvider>
     <div className="min-h-screen bg-slate-50">
       <Navbar />
       <div className="flex">
@@ -75,5 +77,6 @@ export default function DashboardLayout({ role }: DashboardLayoutProps) {
         </main>
       </div>
     </div>
+    </NotificationsProvider>
   );
 }

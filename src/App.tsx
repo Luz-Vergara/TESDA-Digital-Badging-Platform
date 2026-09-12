@@ -1,4 +1,5 @@
 import React from 'react';
+import NotificationsPanel from './components/notifications/NotificationsPanel';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { FirebaseProvider } from './lib/FirebaseProvider';
 import Home from './pages/public/Home';
@@ -108,7 +109,7 @@ export default function App() {
             <Route path="status" element={<BadgeRequestStatus />} />
             <Route path="renewal" element={<RenewalManagement />} />
             <Route path="training-centers" element={<TrainingCenters />} />
-            <Route path="notifications" element={<div className="p-8 text-center text-slate-500">Notifications (Coming Soon)</div>} />
+            <Route path="notifications" element={<NotificationsPanel />} />
           </Route>
 
           {/* Training Center Portal */}
@@ -126,7 +127,7 @@ export default function App() {
             <Route path="applications" element={<LearnerApplications />} />
             <Route path="completions" element={<UCCompletions />} />
             <Route path="reports" element={<div className="p-8 text-center text-slate-500 font-medium">Training Center performance reports (Coming Soon)</div>} />
-            <Route path="notifications" element={<div className="p-8 text-center text-slate-500">Notifications (Coming Soon)</div>} />
+            <Route path="notifications" element={<NotificationsPanel />} />
           </Route>
 
           {/* Fallback */}
